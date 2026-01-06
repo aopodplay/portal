@@ -1,0 +1,47 @@
+@import "tailwindcss";
+
+/* Login page animations */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(-20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.login-container {
+  animation: fadeIn 0.5s ease-out;
+}
+
+/* Input focus styles */
+input:focus {
+  @apply outline-none;
+}
+
+/* Custom gradient background */
+.bg-gradient-custom {
+  background: linear-gradient(
+    to bottom right,
+    #00baff,
+    #00baff,
+    #ffffff
+  );
+  background-size: 400% 400%;
+  animation: gradientBG 15s ease infinite;
+}
+
+
+@keyframes gradientBG {
+  0% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+  100% {
+    background-position: 0% 50%;
+  }
+}
