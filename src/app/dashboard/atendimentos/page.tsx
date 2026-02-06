@@ -1,282 +1,283 @@
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
-import { PlusCircle, X } from 'lucide-react';
-import { getApiUrl, API_ENDPOINTS, getAuthHeaders } from '@/config/api';
+import { useEffect, useState } from 'react';
+import { PlusCircle, X, ChevronLeft, ChevronRight } from 'lucide-react';
+import { API_ENDPOINTS, getApiUrl, getAuthHeaders } from '@/config/api';
 
 interface Paciente {
-  id?: number;
+  id: number;
   nome: string;
   nif?: string;
 }
 
 interface Atendimento {
-  id?: number;
-  paciente_id: number;
-  usuario_id?: number;
+  id: number;
   status: 'aguardando' | 'em_consulta' | 'consulta_concluida' | 'em_faturacao' | 'finalizado';
   data_entrada: string;
   data_saida?: string;
-  paciente?: Paciente;
+  paciente: Paciente;
 }
 
-interface NotificationState {
-  show: boolean;
-  message: string;
-  type: 'success' | 'error';
-}
+const STATUS_FLOW = {
+  aguardando: { label: 'Iniciar Consulta', next: 'em_consulta', color: 'bg-yellow-400', title: 'Aguardando' },
+  em_consulta: { label: 'Concluir Consulta', next: 'consulta_concluida', color: 'bg-blue-400', title: 'Em Consulta' },
+  consulta_concluida: { label: 'Enviar para Faturação', next: 'em_faturacao', color: 'bg-purple-400', title: 'Concluída' },
+  em_faturacao: { label: 'Finalizar Atendimento', next: 'finalizado', color: 'bg-green-400', title: 'Em Faturação' },
+  finalizado: { label: '', next: '', color: 'bg-gray-300', title: 'Finalizado' },
+} as const;
 
-export default function AtendimentosPage() {
+const ITEMS_PER_PAGE = 5; // Quantos atendimentos por página
+
+export default function AtendimentosDashboard() {
   const [atendimentos, setAtendimentos] = useState<Atendimento[]>([]);
   const [pacientes, setPacientes] = useState<Paciente[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [searchTerm, setSearchTerm] = useState('');
-  const [currentPage, setCurrentPage] = useState(1);
-  const itemsPerPage = 8;
-
-  const [isModalOpen, setIsModalOpen] = useState(false);
-  const [selectedPacienteId, setSelectedPacienteId] = useState<number | undefined>(undefined);
-  const [pacienteSearch, setPacienteSearch] = useState('');
-
-  const [notification, setNotification] = useState<NotificationState>({
-    show: false,
-    message: '',
-    type: 'success',
-  });
-
-  /* ---------------- BUSCAR PACIENTES ---------------- */
-  const fetchPacientes = async () => {
-    try {
-      const response = await fetch(getApiUrl(API_ENDPOINTS.PACIENTES), {
-        headers: getAuthHeaders(),
-      });
-      const data = await response.json();
-      setPacientes(Array.isArray(data) ? data : []);
-    } catch (error) {
-      console.error(error);
-    }
-  };
-
-  /* ---------------- BUSCAR ATENDIMENTOS ---------------- */
-  const fetchAtendimentos = async () => {
-    setLoading(true);
-    try {
-      const response = await fetch(getApiUrl(API_ENDPOINTS.ATENDIMENTOS), {
-        headers: getAuthHeaders(),
-      });
-      const data = await response.json();
-      setAtendimentos(Array.isArray(data) ? data : []);
-    } catch (error) {
-      console.error(error);
-    } finally {
-      setLoading(false);
-    }
-  };
+  const [modalOpen, setModalOpen] = useState(false);
+  const [pacienteId, setPacienteId] = useState<number | ''>('');
+  const [searchPaciente, setSearchPaciente] = useState('');
+  const [filtroGlobal, setFiltroGlobal] = useState('');
+  const [filtroDataInicio, setFiltroDataInicio] = useState('');
+  const [filtroDataFim, setFiltroDataFim] = useState('');
+  const [paginaAtual, setPaginaAtual] = useState(1);
 
   useEffect(() => {
-    fetchPacientes();
-    fetchAtendimentos();
+    async function fetchData() {
+      try {
+        const atendRes = await fetch(getApiUrl(API_ENDPOINTS.ATENDIMENTOS), { headers: getAuthHeaders() });
+        const atendData = await atendRes.json();
+        setAtendimentos(atendData.data || atendData);
+
+        const pacRes = await fetch(getApiUrl(API_ENDPOINTS.PACIENTES), { headers: getAuthHeaders() });
+        const pacData = await pacRes.json();
+        setPacientes(pacData.data || []);
+      } catch (err) {
+        console.error(err);
+      }
+    }
+    fetchData();
   }, []);
 
-  /* ---------------- CRIAR ATENDIMENTO ---------------- */
-  const handleCreateAtendimento = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!selectedPacienteId) return;
+  const abrirAtendimento = async (e: React.FormEvent) => {
+  e.preventDefault();
+  if (!pacienteId) return;
 
-    try {
-      const response = await fetch(getApiUrl(API_ENDPOINTS.ATENDIMENTOS + '/abrir'), {
-        method: 'POST',
-        headers: { ...getAuthHeaders(), 'Content-Type': 'application/json' },
-        body: JSON.stringify({ paciente_id: selectedPacienteId }),
-      });
+  const res = await fetch(getApiUrl(`${API_ENDPOINTS.ATENDIMENTOS}/abrir`), {
+    method: 'POST',
+    headers: { ...getAuthHeaders(), 'Content-Type': 'application/json' },
+    body: JSON.stringify({ paciente_id: pacienteId }),
+  });
 
-      if (!response.ok) throw new Error();
+  if (!res.ok) {
+    const err = await res.text();
+    console.error('Erro ao abrir atendimento:', err);
+    return;
+  }
 
-      await fetchAtendimentos();
-      setIsModalOpen(false);
-      setSelectedPacienteId(undefined);
-      setPacienteSearch('');
-      setNotification({ show: true, message: 'Atendimento aberto com sucesso!', type: 'success' });
-      setTimeout(() => setNotification(prev => ({ ...prev, show: false })), 3000);
-    } catch {
-      setNotification({ show: true, message: 'Erro ao abrir atendimento', type: 'error' });
+  const novo = await res.json();
+
+  if (!novo || !novo.id) {
+    console.error('Resposta inválida:', novo);
+    return;
+  }
+
+  setAtendimentos(prev => [novo, ...prev]);
+  setModalOpen(false);
+  setPacienteId('');
+  setSearchPaciente('');
+};
+
+
+  const mudarStatus = async (a: Atendimento) => {
+  const next = STATUS_FLOW[a.status].next;
+  if (!next) return;
+
+  const res = await fetch(
+    getApiUrl(`${API_ENDPOINTS.ATENDIMENTOS}/${a.id}/status`),
+    {
+      method: 'PUT',
+      headers: { ...getAuthHeaders(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status: next }),
     }
-  };
-
-  /* ---------------- ALTERAR STATUS ---------------- */
-  const handleChangeStatus = async (id: number, novoStatus: Atendimento['status']) => {
-    try {
-      const response = await fetch(getApiUrl(`${API_ENDPOINTS.ATENDIMENTOS}/${id}/status`), {
-        method: 'PUT',
-        headers: { ...getAuthHeaders(), 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status: novoStatus }),
-      });
-
-      if (!response.ok) throw new Error();
-
-      await fetchAtendimentos();
-      setNotification({ show: true, message: 'Status atualizado com sucesso!', type: 'success' });
-      setTimeout(() => setNotification(prev => ({ ...prev, show: false })), 3000);
-    } catch {
-      setNotification({ show: true, message: 'Erro ao atualizar status', type: 'error' });
-    }
-  };
-
-  /* ---------------- ENVIAR PARA FATURA ---------------- */
-  const handleEnviarParaFaturacao = async (atendimento: Atendimento) => {
-    try {
-      // 1️⃣ Atualiza status do atendimento
-      const statusResponse = await fetch(getApiUrl(`${API_ENDPOINTS.ATENDIMENTOS}/${atendimento.id}/status`), {
-        method: 'PUT',
-        headers: { ...getAuthHeaders(), 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status: 'em_faturacao' }),
-      });
-      if (!statusResponse.ok) throw new Error();
-
-      // 2️⃣ Cria fatura
-      const faturaResponse = await fetch(getApiUrl(API_ENDPOINTS.FATURAS), {
-        method: 'POST',
-        headers: { ...getAuthHeaders(), 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          atendimento_id: atendimento.id,
-          paciente_id: atendimento.paciente_id,
-          valor: 0 // Pode ajustar o valor conforme sua regra
-        }),
-      });
-      if (!faturaResponse.ok) throw new Error();
-
-      await fetchAtendimentos();
-      setNotification({ show: true, message: 'Atendimento enviado para faturação!', type: 'success' });
-      setTimeout(() => setNotification(prev => ({ ...prev, show: false })), 3000);
-    } catch {
-      setNotification({ show: true, message: 'Erro ao enviar para faturação', type: 'error' });
-    }
-  };
-
-  /* ---------------- FILTRAGEM E PAGINAÇÃO ---------------- */
-  const filteredAtendimentos = useMemo(
-    () =>
-      atendimentos.filter(a =>
-        a.paciente?.nome.toLowerCase().includes(searchTerm.toLowerCase())
-      ),
-    [atendimentos, searchTerm]
   );
 
-  const totalPages = Math.ceil(filteredAtendimentos.length / itemsPerPage);
-  const currentItems = filteredAtendimentos.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
+  if (!res.ok) {
+    const err = await res.text();
+    console.error('Erro ao mudar status:', err);
+    return;
+  }
 
-  const filteredPacientes = useMemo(() => {
-    if (!pacienteSearch) return pacientes;
-    return pacientes.filter(
-      p =>
-        p.nome.toLowerCase().includes(pacienteSearch.toLowerCase()) ||
-        (p.nif && p.nif.includes(pacienteSearch))
-    );
-  }, [pacientes, pacienteSearch]);
+  const atualizado = await res.json();
 
-  if (loading) return <div className="p-6">Carregando atendimentos...</div>;
+  setAtendimentos(prev =>
+    prev.map(item => (item.id === atualizado.id ? atualizado : item))
+  );
+};
+
+
+  // Agrupa atendimentos por status
+  const groupedAtendimentos = Object.keys(STATUS_FLOW).reduce((acc: Record<string, Atendimento[]>, key) => {
+    acc[key] = atendimentos.filter(a => a.status === key);
+    return acc;
+  }, {} as Record<string, Atendimento[]>);
+
+  // Filtra pacientes no modal pelo search
+  const pacientesFiltrados = pacientes.filter(p =>
+    p.nome.toLowerCase().includes(searchPaciente.toLowerCase())
+  );
+
+  // Filtra atendimentos globalmente + por data
+  const filtrarAtendimento = (a: Atendimento) => {
+    const texto = filtroGlobal.toLowerCase();
+    const dataEntrada = new Date(a.data_entrada);
+    const inicio = filtroDataInicio ? new Date(filtroDataInicio) : null;
+    const fim = filtroDataFim ? new Date(filtroDataFim) : null;
+
+    const condGlobal =
+      a.paciente.nome.toLowerCase().includes(texto) ||
+      (a.paciente.nif?.toLowerCase().includes(texto) ?? false) ||
+      a.status.replace('_', ' ').toLowerCase().includes(texto) ||
+      dataEntrada.toLocaleDateString().includes(texto);
+
+    const condData =
+      (!inicio || dataEntrada >= inicio) &&
+      (!fim || dataEntrada <= fim);
+
+    return condGlobal && condData;
+  };
+
+  // Paginacao
+  const paginarLista = (lista: Atendimento[]) => {
+    const inicio = (paginaAtual - 1) * ITEMS_PER_PAGE;
+    return lista.slice(inicio, inicio + ITEMS_PER_PAGE);
+  };
+
+  const totalPaginas = (lista: Atendimento[]) => Math.ceil(lista.length / ITEMS_PER_PAGE);
 
   return (
-    <div className="p-6">
-      {/* Header */}
-      <div className="flex justify-between items-center mb-6">
-        <h1 className="text-2xl font-bold">Atendimentos</h1>
-        <button onClick={() => setIsModalOpen(true)} className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700">
-          <PlusCircle size={20} /> Novo Atendimento
-        </button>
-      </div>
-
-      {/* Notificação */}
-      {notification.show && (
-        <div className={`p-3 mb-4 rounded ${notification.type === 'success' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
-          {notification.message}
-        </div>
-      )}
-
-      {/* Busca */}
-      <div className="mb-4">
-        <input type="text" placeholder="Buscar por paciente..." value={searchTerm}
-          onChange={e => setSearchTerm(e.target.value)}
-          className="w-full px-4 py-2 border border-gray-300 rounded-lg"
-        />
-      </div>
-
-      {/* Tabela */}
-      <div className="overflow-x-auto bg-white border rounded-lg shadow-sm">
-        <table className="w-full">
-          <thead className="bg-gray-50">
-            <tr>
-              <th className="p-4 text-left">Paciente</th>
-              <th className="p-4 text-left">Status</th>
-              <th className="p-4 text-left">Data Entrada</th>
-              <th className="p-4 text-left">Data Saída</th>
-              <th className="p-4 text-left">Ações</th>
-            </tr>
-          </thead>
-          <tbody>
-            {currentItems.map(a => (
-              <tr key={a.id} className="hover:bg-gray-50">
-                <td className="p-4">{a.paciente?.nome}</td>
-                <td className="p-4">{a.status}</td>
-                <td className="p-4">{a.data_entrada?.split('T')[0]}</td>
-                <td className="p-4">{a.data_saida ? a.data_saida.split('T')[0] : '-'}</td>
-                <td className="p-4 flex gap-2">
-                  {a.status === 'aguardando' && (
-                    <button onClick={() => handleChangeStatus(a.id!, 'em_consulta')} className="px-2 py-1 bg-yellow-400 text-white rounded">Iniciar Consulta</button>
-                  )}
-                  {a.status === 'em_consulta' && (
-                    <button onClick={() => handleChangeStatus(a.id!, 'consulta_concluida')} className="px-2 py-1 bg-blue-500 text-white rounded">Concluir Consulta</button>
-                  )}
-                  {a.status === 'consulta_concluida' && (
-                    <button onClick={() => handleEnviarParaFaturacao(a)} className="px-2 py-1 bg-purple-500 text-white rounded">Enviar para Faturação</button>
-                  )}
-                  {a.status === 'em_faturacao' && (
-                    <button onClick={() => handleChangeStatus(a.id!, 'finalizado')} className="px-2 py-1 bg-green-600 text-white rounded">Finalizar Atendimento</button>
-                  )}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-
-      {/* Paginação */}
-      <div className="flex justify-between items-center mt-4">
-        <div className="text-sm text-gray-600">
-          Mostrando {(currentPage - 1) * itemsPerPage + 1} até {Math.min(currentPage * itemsPerPage, filteredAtendimentos.length)} de {filteredAtendimentos.length}
-        </div>
-        <div className="flex gap-2">
-          <button disabled={currentPage === 1} onClick={() => setCurrentPage(p => p - 1)} className="px-3 py-1 border rounded disabled:opacity-50">Anterior</button>
-          <button disabled={currentPage === totalPages} onClick={() => setCurrentPage(p => p + 1)} className="px-3 py-1 border rounded disabled:opacity-50">Próxima</button>
+    <div className="p-6 max-w-7xl mx-auto">
+      {/* Cabeçalho */}
+      <div className="flex flex-col md:flex-row justify-between items-center mb-6 gap-4">
+        <h1 className="text-3xl font-bold">Dashboard de Atendimentos</h1>
+        <div className="flex flex-col md:flex-row gap-2 w-full md:w-auto">
+          <input
+            type="text"
+            placeholder="Pesquisar atendimentos..."
+            value={filtroGlobal}
+            onChange={e => { setFiltroGlobal(e.target.value); setPaginaAtual(1); }}
+            className="flex-1 border rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-400"
+          />
+          <input
+            type="date"
+            value={filtroDataInicio}
+            onChange={e => { setFiltroDataInicio(e.target.value); setPaginaAtual(1); }}
+            className="border rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-400"
+          />
+          <input
+            type="date"
+            value={filtroDataFim}
+            onChange={e => { setFiltroDataFim(e.target.value); setPaginaAtual(1); }}
+            className="border rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-400"
+          />
+          <button
+            onClick={() => setModalOpen(true)}
+            className="flex items-center gap-2 bg-indigo-600 text-white px-5 py-2 rounded hover:bg-indigo-700 transition"
+          >
+            <PlusCircle /> Novo
+          </button>
         </div>
       </div>
 
-      {/* Modal Criar Atendimento */}
-      {isModalOpen && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg p-6 w-full max-w-md relative">
-            <button onClick={() => setIsModalOpen(false)} className="absolute top-4 right-4"><X size={24} /></button>
-            <h2 className="text-xl font-bold mb-4">Novo Atendimento</h2>
-            <form onSubmit={handleCreateAtendimento} className="space-y-3">
-              <input
-                type="text"
-                placeholder="Buscar paciente por nome ou NIF..."
-                value={pacienteSearch}
-                onChange={e => setPacienteSearch(e.target.value)}
-                className="w-full px-3 py-2 border rounded"
-              />
-              <select required value={selectedPacienteId || ''} onChange={e => setSelectedPacienteId(Number(e.target.value))} className="w-full px-3 py-2 border rounded">
-                <option value="">Selecione o paciente</option>
-                {filteredPacientes.map(p => (
-                  <option key={p.id} value={p.id}>{p.nome} {p.nif ? `- ${p.nif}` : ''}</option>
+      {/* Dashboard por status */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6">
+        {Object.keys(STATUS_FLOW).map(statusKey => {
+          const status = STATUS_FLOW[statusKey as keyof typeof STATUS_FLOW];
+          const listaFiltrada = (groupedAtendimentos[statusKey] || []).filter(filtrarAtendimento);
+          const lista = paginarLista(listaFiltrada);
+
+          return (
+            <div key={statusKey} className="bg-white rounded shadow p-4 flex flex-col">
+              <h2 className="font-bold mb-3">{status.title} ({listaFiltrada.length})</h2>
+              <div className="flex flex-col gap-3">
+                {lista.length === 0 && <p className="text-gray-400 text-sm">Nenhum atendimento</p>}
+                {lista.map(a => (
+                  <div key={a.id} className="bg-gray-50 p-3 rounded flex flex-col">
+                    <span className="font-semibold">{a.paciente.nome}</span>
+                    {a.paciente.nif && <span className="text-gray-500 text-sm">NIF: {a.paciente.nif}</span>}
+                    <span className="text-gray-500 text-sm">Entrada: {new Date(a.data_entrada).toLocaleString()}</span>
+                    {a.data_saida && <span className="text-gray-500 text-sm">Saída: {new Date(a.data_saida).toLocaleString()}</span>}
+                    {status.label && (
+                      <button
+                        onClick={() => mudarStatus(a)}
+                        className={`mt-2 w-full py-1 rounded text-white font-medium ${status.color} hover:opacity-90 transition`}
+                      >
+                        {status.label}
+                      </button>
+                    )}
+                  </div>
                 ))}
-              </select>
-              <div className="flex justify-end gap-2">
-                <button type="button" onClick={() => setIsModalOpen(false)} className="px-4 py-2 border rounded">Cancelar</button>
-                <button type="submit" className="px-4 py-2 bg-blue-600 text-white rounded">Abrir Atendimento</button>
               </div>
-            </form>
-          </div>
+
+              {/* Paginação */}
+              {listaFiltrada.length > ITEMS_PER_PAGE && (
+                <div className="flex justify-between mt-3 items-center">
+                  <button
+                    disabled={paginaAtual === 1}
+                    onClick={() => setPaginaAtual(paginaAtual - 1)}
+                    className="p-1 rounded hover:bg-gray-200 disabled:opacity-50"
+                  >
+                    <ChevronLeft />
+                  </button>
+                  <span className="text-sm">{paginaAtual}/{totalPaginas(listaFiltrada)}</span>
+                  <button
+                    disabled={paginaAtual === totalPaginas(listaFiltrada)}
+                    onClick={() => setPaginaAtual(paginaAtual + 1)}
+                    className="p-1 rounded hover:bg-gray-200 disabled:opacity-50"
+                  >
+                    <ChevronRight />
+                  </button>
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Modal Abrir Atendimento */}
+      {modalOpen && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
+          <form onSubmit={abrirAtendimento} className="bg-white rounded shadow-lg w-full max-w-md p-6">
+            <div className="flex justify-between items-center mb-4">
+              <h2 className="text-xl font-bold">Novo Atendimento</h2>
+              <button type="button" onClick={() => setModalOpen(false)}><X /></button>
+            </div>
+
+            {/* Pesquisa no modal */}
+            <input
+              type="text"
+              placeholder="Pesquisar paciente..."
+              value={searchPaciente}
+              onChange={e => setSearchPaciente(e.target.value)}
+              className="w-full border rounded p-2 mb-3 focus:outline-none focus:ring-2 focus:ring-indigo-400"
+            />
+
+            <select
+              required
+              value={pacienteId}
+              onChange={e => setPacienteId(Number(e.target.value))}
+              className="w-full border rounded p-2 mb-4 focus:outline-none focus:ring-2 focus:ring-indigo-400"
+            >
+              <option value="">Selecione o paciente</option>
+              {pacientesFiltrados.map(p => (
+                <option key={p.id} value={p.id}>{p.nome}</option>
+              ))}
+            </select>
+
+            <button
+              type="submit"
+              className="w-full bg-indigo-600 text-white py-2 rounded hover:bg-indigo-700 transition"
+            >
+              Abrir Atendimento
+            </button>
+          </form>
         </div>
       )}
     </div>

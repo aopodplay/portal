@@ -1,292 +1,207 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { PlusCircle, Edit2, Trash2, X } from 'lucide-react';
+import { useEffect, useState } from 'react';
 import { getApiUrl, API_ENDPOINTS, getAuthHeaders } from '@/config/api';
 
-interface User {
-  id?: number;
+interface Usuario {
+  id: number;
   nome: string;
   email: string;
   perfil: 'admin' | 'recepcao' | 'optometrista' | 'caixa';
   ativo: boolean;
-  senha?: string;
-  createdAt?: string;
-  updatedAt?: string;
+  created_at: string;
+  updated_at: string;
 }
 
-interface NotificationState {
-  show: boolean;
-  message: string;
-  type: 'success' | 'error';
-}
+const emptyForm = {
+  nome: '',
+  email: '',
+  senha: '',
+  perfil: 'recepcao',
+  ativo: true
+};
 
-export default function UsersPage() {
-  const [users, setUsers] = useState<User[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [searchTerm, setSearchTerm] = useState('');
-  const [currentPage, setCurrentPage] = useState(1);
-  const itemsPerPage = 8;
+export default function UsuariosPage() {
+  const [usuarios, setUsuarios] = useState<Usuario[]>([]);
+  const [form, setForm] = useState<any>(emptyForm);
+  const [editId, setEditId] = useState<number | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [message, setMessage] = useState('');
+  const [showForm, setShowForm] = useState(false);
+  const [deleteId, setDeleteId] = useState<number | null>(null);
 
-  const [isModalOpen, setIsModalOpen] = useState(false);
-  const [editingUser, setEditingUser] = useState<User | null>(null);
-  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
-  const [userToDelete, setUserToDelete] = useState<User | null>(null);
-  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+  const labelPerfil = (perfil: string) => {
+    switch (perfil) {
+      case 'admin': return 'Administrador';
+      case 'recepcao': return 'Recepção';
+      case 'optometrista': return 'Optometrista';
+      case 'caixa': return 'Caixa';
+      default: return perfil;
+    }
+  };
 
-  const [notification, setNotification] = useState<NotificationState>({
-    show: false,
-    message: '',
-    type: 'success'
-  });
-
-  const [newUser, setNewUser] = useState<User>({
-    nome: '',
-    email: '',
-    senha: '',
-    perfil: 'admin',
-    ativo: true
-  });
-
-  // Buscar usuários
-  const fetchUsers = async () => {
+  const loadUsuarios = async () => {
     try {
-      const response = await fetch(getApiUrl(API_ENDPOINTS.USUARIOS), { headers: getAuthHeaders() });
-      const data = await response.json();
-      setUsers(Array.isArray(data) ? data : []);
-    } catch (error) {
-      console.error(error);
+      const res = await fetch(getApiUrl(API_ENDPOINTS.USUARIOS), { headers: getAuthHeaders() });
+      const json = await res.json();
+      setUsuarios(json.data || json);
+    } catch {
+      setMessage('Erro ao carregar usuários');
+    }
+  };
+
+  useEffect(() => { loadUsuarios(); }, []);
+
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
+    const value = e.target.name === 'ativo' ? e.target.value === '1' : e.target.value;
+    setForm({ ...form, [e.target.name]: value });
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
+    setMessage('');
+
+    try {
+      const url = editId
+        ? `${getApiUrl(API_ENDPOINTS.USUARIOS)}/${editId}`
+        : getApiUrl(API_ENDPOINTS.USUARIOS);
+      const method = editId ? 'PUT' : 'POST';
+
+      await fetch(url, {
+        method,
+        headers: { ...getAuthHeaders(), 'Content-Type': 'application/json' },
+        body: JSON.stringify(form)
+      });
+
+      setMessage(editId ? 'Usuário atualizado' : 'Usuário criado');
+      setForm(emptyForm);
+      setEditId(null);
+      setShowForm(false);
+      loadUsuarios();
+    } catch {
+      setMessage('Erro ao salvar usuário');
     } finally {
       setLoading(false);
     }
   };
 
-  useEffect(() => { fetchUsers(); }, []);
+  const handleEdit = (u: Usuario) => {
+    setEditId(u.id);
+    setForm({ ...u, senha: '' });
+    setShowForm(true);
+  };
 
-  // Criar usuário
-  const handleCreateUser = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const confirmDelete = async () => {
+    if (!deleteId) return;
     try {
-      const response = await fetch(`${getApiUrl(API_ENDPOINTS.USUARIOS)}/register`, {
-        method: 'POST',
-        headers: getAuthHeaders(),
-        body: JSON.stringify(newUser)
+      await fetch(`${getApiUrl(API_ENDPOINTS.USUARIOS)}/${deleteId}`, {
+        method: 'DELETE', headers: getAuthHeaders()
       });
-
-      if (!response.ok) throw new Error('Erro ao criar usuário');
-
-      await fetchUsers();
-      setIsModalOpen(false);
-      setNewUser({ nome: '', email: '', senha: '', perfil: 'admin', ativo: true });
-      setNotification({ show: true, message: 'Usuário criado com sucesso!', type: 'success' });
-      setTimeout(() => setNotification(prev => ({ ...prev, show: false })), 3000);
-
-    } catch (error) {
-      console.error(error);
-      setNotification({ show: true, message: 'Erro ao criar usuário', type: 'error' });
-      setTimeout(() => setNotification(prev => ({ ...prev, show: false })), 3000);
+      setDeleteId(null);
+      setMessage('Usuário deletado');
+      loadUsuarios();
+    } catch {
+      setMessage('Erro ao eliminar usuário');
     }
   };
 
-  // Atualizar usuário
-  const handleUpdateUser = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!editingUser || !editingUser.id) return;
-
+  const toggleAtivo = async (u: Usuario) => {
     try {
-      const response = await fetch(`${getApiUrl(API_ENDPOINTS.USUARIOS)}/${editingUser.id}`, {
-        method: 'PUT',
-        headers: getAuthHeaders(),
-        body: JSON.stringify(editingUser)
-      });
-
-      if (!response.ok) throw new Error('Erro ao atualizar usuário');
-
-      await fetchUsers();
-      setIsEditModalOpen(false);
-      setNotification({ show: true, message: 'Usuário atualizado com sucesso!', type: 'success' });
-      setTimeout(() => setNotification(prev => ({ ...prev, show: false })), 3000);
-
-    } catch (error) {
-      console.error(error);
-      setNotification({ show: true, message: 'Erro ao atualizar usuário', type: 'error' });
-      setTimeout(() => setNotification(prev => ({ ...prev, show: false })), 3000);
+      const url = `${getApiUrl(API_ENDPOINTS.USUARIOS)}/${u.id}/${u.ativo ? 'desativar' : 'ativar'}`;
+      await fetch(url, { method: 'PATCH', headers: getAuthHeaders() });
+      loadUsuarios();
+    } catch {
+      setMessage('Erro ao alterar status');
     }
   };
-
-  // Deletar usuário
-  const handleDeleteUser = async () => {
-    if (!userToDelete?.id) return;
-
-    try {
-      const response = await fetch(`${getApiUrl(API_ENDPOINTS.USUARIOS)}/${userToDelete.id}`, {
-        method: 'DELETE',
-        headers: getAuthHeaders()
-      });
-
-      if (!response.ok) throw new Error('Erro ao excluir usuário');
-
-      await fetchUsers();
-      setIsDeleteModalOpen(false);
-      setNotification({ show: true, message: 'Usuário deletado com sucesso!', type: 'success' });
-      setTimeout(() => setNotification(prev => ({ ...prev, show: false })), 3000);
-
-    } catch (error) {
-      console.error(error);
-      setNotification({ show: true, message: 'Erro ao excluir usuário', type: 'error' });
-      setTimeout(() => setNotification(prev => ({ ...prev, show: false })), 3000);
-    }
-  };
-
-  // Filtragem e paginação
-  const filteredUsers = users.filter(user => user.nome.toLowerCase().includes(searchTerm.toLowerCase()));
-  const indexOfLastItem = currentPage * itemsPerPage;
-  const indexOfFirstItem = indexOfLastItem - itemsPerPage;
-  const currentItems = filteredUsers.slice(indexOfFirstItem, indexOfLastItem);
-  const totalPages = Math.ceil(filteredUsers.length / itemsPerPage);
-
-  if (loading) return <div className="p-6">Carregando...</div>;
 
   return (
-    <div className="p-6">
+    <div className="p-6 w-full flex flex-col md:flex-row gap-6">
 
-      {/* Notificação */}
-      {notification.show && (
-        <div className={`mb-4 p-3 rounded ${notification.type === 'success' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
-          {notification.message}
+      {/* FORM PANEL */}
+      {showForm && (
+        <div className="w-full md:w-1/3 bg-white p-6 rounded shadow-lg flex flex-col gap-4">
+          <h2 className="text-xl font-semibold">{editId ? 'Editar Usuário' : 'Novo Usuário'}</h2>
+          <form onSubmit={handleSubmit} className="flex flex-col gap-3">
+            <input name="nome" value={form.nome} onChange={handleChange} placeholder="Nome"
+              className="border px-3 py-2 rounded" required />
+            <input name="email" value={form.email} onChange={handleChange} placeholder="Email" type="email"
+              className="border px-3 py-2 rounded" required />
+            <input name="senha" value={form.senha} onChange={handleChange}
+              placeholder={editId ? "Deixe em branco para manter" : "Senha"} type="password"
+              className="border px-3 py-2 rounded" {...(!editId && { required: true })} />
+            <select name="perfil" value={form.perfil} onChange={handleChange} className="border px-3 py-2 rounded">
+              <option value="admin">Administrador</option>
+              <option value="recepcao">Recepção</option>
+              <option value="optometrista">Optometrista</option>
+              <option value="caixa">Caixa</option>
+            </select>
+            <select name="ativo" value={form.ativo ? '1' : '0'} onChange={handleChange} className="border px-3 py-2 rounded">
+              <option value="1">Ativo</option>
+              <option value="0">Inativo</option>
+            </select>
+
+            <div className="flex gap-3 justify-end">
+              <button type="button" onClick={() => { setShowForm(false); setForm(emptyForm); setEditId(null); }}
+                className="px-4 py-2 border rounded">Cancelar</button>
+              <button type="submit" className="px-4 py-2 bg-blue-600 text-white rounded">
+                {loading ? 'Salvando...' : 'Salvar'}
+              </button>
+            </div>
+          </form>
         </div>
       )}
 
-      {/* Header */}
-      <div className="flex justify-between items-center mb-6">
-        <h1 className="text-2xl font-bold">Usuários</h1>
-        <button onClick={() => setIsModalOpen(true)} className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700">
-          <PlusCircle size={20} /> Novo Usuário
-        </button>
-      </div>
-
-      {/* Busca */}
-      <div className="mb-4">
-        <input
-          type="text"
-          placeholder="Buscar usuários..."
-          className="w-full px-4 py-2 border border-gray-300 rounded-lg"
-          value={searchTerm}
-          onChange={e => setSearchTerm(e.target.value)}
-        />
-      </div>
-
-      {/* Tabela */}
-      <div className="overflow-x-auto bg-white border rounded-lg shadow-sm">
-        <table className="w-full">
-          <thead className="bg-gray-50">
-            <tr>
-              <th className="p-4 text-left">Nome</th>
-              <th className="p-4 text-left">Email</th>
-              <th className="p-4 text-left">Perfil</th>
-              <th className="p-4 text-left">Ativo</th>
-              <th className="p-4 text-left">Ações</th>
-            </tr>
-          </thead>
-          <tbody>
-            {currentItems.map((user, i) => (
-              <tr key={i} className="hover:bg-gray-50">
-                <td className="p-4">{user.nome}</td>
-                <td className="p-4">{user.email}</td>
-                <td className="p-4">{user.perfil}</td>
-                <td className="p-4">{user.ativo ? 'Sim' : 'Não'}</td>
-                <td className="p-4 flex gap-2">
-                  <button onClick={() => { setEditingUser(user); setIsEditModalOpen(true); }} className="p-1 hover:text-blue-600"><Edit2 size={18} /></button>
-                  <button onClick={() => { setUserToDelete(user); setIsDeleteModalOpen(true); }} className="p-1 hover:text-red-600"><Trash2 size={18} /></button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-
-      {/* Paginação */}
-      <div className="flex justify-between items-center mt-4">
-        <div className="text-sm text-gray-600">
-          Mostrando {indexOfFirstItem + 1} até {Math.min(indexOfLastItem, filteredUsers.length)} de {filteredUsers.length}
-        </div>
-        <div className="flex gap-2">
-          <button onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))} disabled={currentPage === 1}>Prev</button>
-          <button onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))} disabled={currentPage === totalPages}>Next</button>
-        </div>
-      </div>
-
-      {/* Modal Criar Usuário */}
-      {isModalOpen && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg p-6 w-full max-w-md relative">
-            <button onClick={() => setIsModalOpen(false)} className="absolute top-4 right-4"><X size={24} /></button>
-            <h2 className="text-xl font-bold mb-4">Novo Usuário</h2>
-            <form onSubmit={handleCreateUser} className="space-y-4">
-              <input type="text" required placeholder="Nome" value={newUser.nome} onChange={e => setNewUser({ ...newUser, nome: e.target.value })} className="w-full px-4 py-2 border rounded-lg" />
-              <input type="email" required placeholder="Email" value={newUser.email} onChange={e => setNewUser({ ...newUser, email: e.target.value })} className="w-full px-4 py-2 border rounded-lg" />
-              <input type="password" required placeholder="Senha" value={newUser.senha} onChange={e => setNewUser({ ...newUser, senha: e.target.value })} className="w-full px-4 py-2 border rounded-lg" />
-              <select value={newUser.perfil} onChange={e => setNewUser({ ...newUser, perfil: e.target.value as User['perfil'] })} className="w-full px-4 py-2 border rounded-lg">
-                <option value="admin">Admin</option>
-                <option value="recepcao">Recepção</option>
-                <option value="optometrista">Optometrista</option>
-                <option value="caixa">Caixa</option>
-              </select>
-              <div className="flex items-center gap-2">
-                <input type="checkbox" checked={newUser.ativo} onChange={e => setNewUser({ ...newUser, ativo: e.target.checked })} />
-                <span>Ativo</span>
-              </div>
-              <div className="flex justify-end gap-2">
-                <button type="button" onClick={() => setIsModalOpen(false)} className="px-4 py-2 rounded-lg border">Cancelar</button>
-                <button type="submit" className="px-4 py-2 rounded-lg bg-blue-600 text-white">Salvar</button>
-              </div>
-            </form>
+      {/* USERS GRID */}
+      <div className="flex-1 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+        {usuarios.map(u => (
+          <div key={u.id} className="bg-white rounded shadow p-4 flex flex-col justify-between">
+            <div>
+              <h3 className="text-lg font-semibold">{u.nome}</h3>
+              <p className="text-sm text-gray-600">{u.email}</p>
+              <p className="text-sm">{labelPerfil(u.perfil)}</p>
+              <p className={`text-sm font-medium ${u.ativo ? 'text-green-600' : 'text-red-600'}`}>
+                {u.ativo ? 'Ativo' : 'Inativo'}
+              </p>
+            </div>
+            <div className="flex gap-2 mt-4">
+              <button onClick={() => handleEdit(u)} className="flex-1 py-1 bg-blue-600 text-white rounded">Editar</button>
+              <button onClick={() => toggleAtivo(u)}
+                className={`flex-1 py-1 rounded ${u.ativo ? 'bg-gray-300' : 'bg-green-600 text-white'}`}>
+                {u.ativo ? 'Desativar' : 'Ativar'}
+              </button>
+              <button onClick={() => setDeleteId(u.id)} className="flex-1 py-1 bg-red-600 text-white rounded">Eliminar</button>
+            </div>
           </div>
-        </div>
-      )}
+        ))}
+      </div>
 
-      {/* Modal Editar Usuário */}
-      {isEditModalOpen && editingUser && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg p-6 w-full max-w-md relative">
-            <button onClick={() => setIsEditModalOpen(false)} className="absolute top-4 right-4"><X size={24} /></button>
-            <h2 className="text-xl font-bold mb-4">Editar Usuário</h2>
-            <form onSubmit={handleUpdateUser} className="space-y-4">
-              <input type="text" required value={editingUser.nome} onChange={e => setEditingUser({ ...editingUser, nome: e.target.value })} className="w-full px-4 py-2 border rounded-lg" />
-              <input type="email" required value={editingUser.email} onChange={e => setEditingUser({ ...editingUser, email: e.target.value })} className="w-full px-4 py-2 border rounded-lg" />
-              <select value={editingUser.perfil} onChange={e => setEditingUser({ ...editingUser, perfil: e.target.value as User['perfil'] })} className="w-full px-4 py-2 border rounded-lg">
-                <option value="admin">Admin</option>
-                <option value="recepcao">Recepção</option>
-                <option value="optometrista">Optometrista</option>
-                <option value="caixa">Caixa</option>
-              </select>
-              <div className="flex items-center gap-2">
-                <input type="checkbox" checked={editingUser.ativo} onChange={e => setEditingUser({ ...editingUser, ativo: e.target.checked })} />
-                <span>Ativo</span>
-              </div>
-              <div className="flex justify-end gap-2">
-                <button type="button" onClick={() => setIsEditModalOpen(false)} className="px-4 py-2 rounded-lg border">Cancelar</button>
-                <button type="submit" className="px-4 py-2 rounded-lg bg-blue-600 text-white">Salvar</button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* Modal Excluir Usuário */}
-      {isDeleteModalOpen && userToDelete && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg p-6 w-full max-w-md relative">
-            <h2 className="text-xl font-bold mb-4">Confirmar Exclusão</h2>
-            <p>Tem certeza que deseja excluir <strong>{userToDelete.nome}</strong>?</p>
-            <div className="flex justify-end gap-2 mt-4">
-              <button onClick={() => setIsDeleteModalOpen(false)} className="px-4 py-2 rounded-lg border">Cancelar</button>
-              <button onClick={handleDeleteUser} className="px-4 py-2 rounded-lg bg-red-600 text-white">Excluir</button>
+      {/* DELETE MODAL */}
+      {deleteId && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
+          <div className="bg-white p-6 rounded w-full max-w-md">
+            <h3 className="text-lg font-semibold mb-4">Confirmar eliminação</h3>
+            <p className="mb-6">Tem certeza que deseja eliminar este usuário?</p>
+            <div className="flex justify-end gap-3">
+              <button onClick={() => setDeleteId(null)} className="px-6 py-2 border rounded">Cancelar</button>
+              <button onClick={confirmDelete} className="px-6 py-2 bg-red-600 text-white rounded">Eliminar</button>
             </div>
           </div>
         </div>
       )}
 
+      {/* ADD BUTTON */}
+      {!showForm && (
+        <button onClick={() => setShowForm(true)}
+          className="fixed bottom-8 right-8 bg-blue-600 text-white px-6 py-3 rounded-full shadow-lg text-lg">
+          + Novo Usuário
+        </button>
+      )}
+
+      {message && (
+        <div className="fixed top-6 right-6 p-3 bg-gray-100 rounded border">{message}</div>
+      )}
     </div>
   );
 }

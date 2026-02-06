@@ -1,276 +1,429 @@
 'use client';
-
 import { useEffect, useState } from 'react';
-import { PlusCircle, Edit2, Trash2, X } from 'lucide-react';
-import { getApiUrl, API_ENDPOINTS, getAuthHeaders } from '@/config/api';
+import { getApiUrl, getAuthHeaders } from '@/config/api';
+
+interface Paciente {
+  id: number;
+  nome: string;
+  telefone?: string;
+  nif?: string;
+}
+
+interface Atendimento {
+  id: number;
+  status: string;
+}
+
+interface Usuario {
+  id: number;
+  nome: string;
+}
+
+interface Consulta {
+  id: number;
+  paciente: Paciente;
+  atendimento: Atendimento;
+  optometrista?: Usuario;
+  od_esferico?: string;
+  od_cilindrico?: string;
+  od_eixo?: string;
+  oe_esferico?: string;
+  oe_cilindrico?: string;
+  oe_eixo?: string;
+  adicao?: string;
+  dnp?: string;
+  diagnostico?: string;
+  observacoes?: string;
+  receita?: Receita;
+}
 
 interface Receita {
   id?: number;
-  paciente_id: number;
-  paciente_nome?: string;
-  medicamento: string;
-  dosagem: string;
+  consulta_id: number;
+  numero_receita?: string;
+  pdf_path?: string;
+  olho_direito?: string;
+  olho_esquerdo?: string;
   observacoes?: string;
+  od_esferico?: string;
+  od_cilindrico?: string;
+  od_eixo?: string;
+  oe_esferico?: string;
+  oe_cilindrico?: string;
+  oe_eixo?: string;
+  adicao?: string;
+  dnp?: string;
+  diagnostico?: string;
 }
 
-interface NotificationState {
-  show: boolean;
-  message: string;
-  type: 'success' | 'error';
-}
+export default function ReceitasPage() {
+  const [consultas, setConsultas] = useState<Consulta[]>([]);
+  const [search, setSearch] = useState('');
+  const [selectedConsulta, setSelectedConsulta] = useState<Consulta | null>(null);
+  const [receita, setReceita] = useState<Partial<Receita>>({});
+  const [loading, setLoading] = useState(false);
+  const [message, setMessage] = useState('');
 
-export default function ReceitaPage() {
-  const [receitas, setReceitas] = useState<Receita[]>([]);
-  const [loading, setLoading] = useState(true);
+  useEffect(() => {
+    async function fetchConsultas() {
+      try {
+        const res = await fetch(getApiUrl('/consultas/concluidas'), {
+          headers: getAuthHeaders(),
+        });
+        const data = await res.json();
+        setConsultas(Array.isArray(data) ? data : data.data ?? []);
+      } catch (err) {
+        console.error(err);
+        setMessage('Erro ao carregar consultas concluídas');
+      }
+    }
+    fetchConsultas();
+  }, []);
 
-  const [isModalOpen, setIsModalOpen] = useState(false);
-  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
-  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
-
-  const [editingReceita, setEditingReceita] = useState<Receita | null>(null);
-  const [receitaToDelete, setReceitaToDelete] = useState<Receita | null>(null);
-
-  const [notification, setNotification] = useState<NotificationState>({
-    show: false,
-    message: '',
-    type: 'success',
+  const filteredConsultas = consultas.filter((c) => {
+    const nome = c.paciente?.nome.toLowerCase() || '';
+    const nif = c.paciente?.nif?.toLowerCase() || '';
+    return nome.includes(search.toLowerCase()) || nif.includes(search.toLowerCase());
   });
 
-  const [newReceita, setNewReceita] = useState<Receita>({
-    paciente_id: 0,
-    medicamento: '',
-    dosagem: '',
-    observacoes: '',
-  });
+  const handleSelectConsulta = (c: Consulta) => {
+    setSelectedConsulta(c);
+    setMessage('');
 
-  // ====================== BUSCAR RECEITAS ======================
-  const fetchReceitas = async () => {
+    const existing = c.receita;
+    setReceita({
+      consulta_id: c.id,
+      id: existing?.id,
+      numero_receita: existing?.numero_receita,
+      pdf_path: existing?.pdf_path,
+      olho_direito:
+        existing?.olho_direito ||
+        (c.od_esferico ? `${c.od_esferico} ${c.od_cilindrico || ''} ${c.od_eixo || ''}`.trim() : ''),
+      olho_esquerdo:
+        existing?.olho_esquerdo ||
+        (c.oe_esferico ? `${c.oe_esferico} ${c.oe_cilindrico || ''} ${c.oe_eixo || ''}`.trim() : ''),
+      observacoes: existing?.observacoes || c.observacoes || '',
+      od_esferico: existing?.od_esferico || c.od_esferico || '',
+      od_cilindrico: existing?.od_cilindrico || c.od_cilindrico || '',
+      od_eixo: existing?.od_eixo || c.od_eixo || '',
+      oe_esferico: existing?.oe_esferico || c.oe_esferico || '',
+      oe_cilindrico: existing?.oe_cilindrico || c.oe_cilindrico || '',
+      oe_eixo: existing?.oe_eixo || c.oe_eixo || '',
+      adicao: existing?.adicao || c.adicao || '',
+      dnp: existing?.dnp || c.dnp || '',
+      diagnostico: existing?.diagnostico || c.diagnostico || '',
+    });
+  };
+
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+    setReceita({ ...receita, [e.target.name]: e.target.value });
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedConsulta) return;
+
     setLoading(true);
+    setMessage('');
+
     try {
-      const res = await fetch(getApiUrl(API_ENDPOINTS.RECEITA), { headers: getAuthHeaders() });
+      const payload = { ...receita };
+
+      let res;
+      if (receita.id) {
+        res = await fetch(getApiUrl(`/receitas/${receita.id}`), {
+          method: 'PUT',
+          headers: { ...getAuthHeaders(), 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+      } else {
+        res = await fetch(getApiUrl('/receitas'), {
+          method: 'POST',
+          headers: { ...getAuthHeaders(), 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+      }
+
+      if (!res.ok) throw new Error();
+
       const data = await res.json();
-      setReceitas(Array.isArray(data) ? data : []);
+      setReceita(data);
+      setMessage('Receita registrada com sucesso! PDF gerado.');
     } catch (err) {
       console.error(err);
+      setMessage('Erro ao registrar receita');
     } finally {
       setLoading(false);
     }
   };
 
-  useEffect(() => {
-    fetchReceitas();
-  }, []);
+  const handleDelete = async () => {
+    if (!receita.id || !confirm('Tem certeza que deseja deletar esta receita?')) return;
 
-  // ====================== CRIAR RECEITA ======================
-  const handleCreateReceita = async (e: React.FormEvent) => {
-    e.preventDefault();
     try {
-      const res = await fetch(getApiUrl(API_ENDPOINTS.RECEITA), {
-        method: 'POST',
-        headers: getAuthHeaders(),
-        body: JSON.stringify(newReceita),
-      });
-      if (!res.ok) throw new Error('Erro ao criar receita');
-      await fetchReceitas();
-      setIsModalOpen(false);
-      setNewReceita({ paciente_id: 0, medicamento: '', dosagem: '', observacoes: '' });
-      setNotification({ show: true, message: 'Receita criada com sucesso!', type: 'success' });
-      setTimeout(() => setNotification(prev => ({ ...prev, show: false })), 3000);
-    } catch (err) {
-      console.error(err);
-      setNotification({ show: true, message: 'Erro ao criar receita', type: 'error' });
-      setTimeout(() => setNotification(prev => ({ ...prev, show: false })), 3000);
-    }
-  };
-
-  // ====================== EDITAR RECEITA ======================
-  const handleUpdateReceita = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!editingReceita?.id) return;
-    try {
-      const res = await fetch(`${getApiUrl(API_ENDPOINTS.RECEITA)}/${editingReceita.id}`, {
-        method: 'PUT',
-        headers: getAuthHeaders(),
-        body: JSON.stringify(editingReceita),
-      });
-      if (!res.ok) throw new Error('Erro ao atualizar receita');
-      await fetchReceitas();
-      setIsEditModalOpen(false);
-    } catch (err) {
-      console.error(err);
-    }
-  };
-
-  // ====================== DELETAR RECEITA ======================
-  const handleDeleteReceita = async () => {
-    if (!receitaToDelete?.id) return;
-    try {
-      const res = await fetch(`${getApiUrl(API_ENDPOINTS.RECEITA)}/${receitaToDelete.id}`, {
+      const res = await fetch(getApiUrl(`/receitas/${receita.id}`), {
         method: 'DELETE',
         headers: getAuthHeaders(),
       });
-      if (!res.ok) throw new Error('Erro ao excluir receita');
-      await fetchReceitas();
-      setIsDeleteModalOpen(false);
+
+      if (!res.ok) throw new Error();
+
+      setMessage('Receita deletada com sucesso');
+      setSelectedConsulta(null);
+      setReceita({});
+      setConsultas((prev) =>
+        prev.map((c) => (c.id === selectedConsulta?.id ? { ...c, receita: undefined } : c))
+      );
     } catch (err) {
       console.error(err);
+      setMessage('Erro ao deletar receita');
     }
   };
 
-  // ====================== IMPRIMIR RECEITA ======================
-  const handlePrintReceita = (receita: Receita) => {
-    const printContent = `
-      <html>
-        <head>
-          <title>Receita do Paciente</title>
-          <style>
-            body { font-family: Arial, sans-serif; padding: 20px; }
-            h2 { text-align: center; }
-            table { width: 100%; border-collapse: collapse; margin-top: 20px; }
-            th, td { border: 1px solid #333; padding: 8px; text-align: left; }
-          </style>
-        </head>
-        <body>
-          <h2>Receita Médica</h2>
-          <p><strong>Paciente ID:</strong> ${receita.paciente_id}</p>
-          ${receita.paciente_nome ? `<p><strong>Paciente Nome:</strong> ${receita.paciente_nome}</p>` : ''}
-          <table>
-            <thead>
-              <tr>
-                <th>Medicamento</th>
-                <th>Dosagem</th>
-                <th>Observações</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr>
-                <td>${receita.medicamento}</td>
-                <td>${receita.dosagem}</td>
-                <td>${receita.observacoes || '-'}</td>
-              </tr>
-            </tbody>
-          </table>
-        </body>
-      </html>
-    `;
-    const printWindow = window.open('', '_blank', 'width=800,height=600');
-    if (printWindow) {
-      printWindow.document.write(printContent);
-      printWindow.document.close();
-      printWindow.focus();
-      printWindow.print();
-    }
-  };
+  const pdfUrl = receita.pdf_path
+  ? `${process.env.NEXT_PUBLIC_API_URL}${receita.pdf_path.startsWith('/') ? '' : '/'}${receita.pdf_path}`
+  : '';
 
-  if (loading) return <div className="p-6">Carregando receitas...</div>;
 
   return (
-    <div className="p-6">
-      <div className="flex justify-between items-center mb-6">
-        <h1 className="text-2xl font-bold">Receitas</h1>
-        <button
-          onClick={() => setIsModalOpen(true)}
-          className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700"
-        >
-          <PlusCircle size={20} /> Nova Receita
-        </button>
-      </div>
+    <div className="p-6 w-full">
+      <div className="max-w-7xl mx-auto">
+        <h1 className="text-2xl font-bold mb-6">Receitas</h1>
 
-      {notification.show && (
-        <div className={`p-3 mb-4 rounded ${notification.type === 'success' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
-          {notification.message}
+        {message && <div className="mb-4 p-3 rounded bg-gray-100 text-gray-800">{message}</div>}
+
+        <input
+          type="text"
+          placeholder="Pesquisar por paciente ou NIF..."
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          className="mb-4 border px-3 py-2 rounded w-full"
+        />
+
+        <div className="bg-white rounded border divide-y">
+          {filteredConsultas.length === 0 && (
+            <p className="p-4 text-gray-500">Nenhum paciente encontrado</p>
+          )}
+          {filteredConsultas.map((c) => (
+            <div
+              key={c.id}
+              className="p-4 flex flex-col md:flex-row justify-between items-start md:items-center"
+            >
+              <div>
+                <span className="font-semibold">{c.paciente?.nome}</span>
+                {c.paciente?.nif && <span className="text-gray-500 text-sm ml-2">({c.paciente.nif})</span>}
+                <div className="text-gray-500 text-sm">Consulta ID: {c.id}</div>
+                {c.optometrista && (
+                  <div className="text-gray-500 text-sm">Optometrista: {c.optometrista.nome}</div>
+                )}
+              </div>
+              <div className="mt-2 md:mt-0">
+                <button
+                  onClick={() => handleSelectConsulta(c)}
+                  className={`px-4 py-1 rounded text-white ${
+                    c.receita ? 'bg-gray-500 cursor-not-allowed' : 'bg-green-600 hover:bg-green-700'
+                  }`}
+                  disabled={!!c.receita}
+                >
+                  {c.receita ? 'Receita Gerada' : 'Gerar Receita'}
+                </button>
+              </div>
+            </div>
+          ))}
         </div>
-      )}
 
-      {/* ====================== TABELA ====================== */}
-      <div className="overflow-x-auto bg-white border rounded-lg shadow-sm">
-        <table className="w-full">
-          <thead className="bg-gray-50">
-            <tr>
-              <th className="p-4 text-left">Paciente</th>
-              <th className="p-4 text-left">Medicamento</th>
-              <th className="p-4 text-left">Dosagem</th>
-              <th className="p-4 text-left">Observações</th>
-              <th className="p-4 text-left">Ações</th>
-            </tr>
-          </thead>
-          <tbody>
-            {receitas.map((receita, i) => (
-              <tr key={i} className="hover:bg-gray-50">
-                <td className="p-4">{receita.paciente_nome || receita.paciente_id}</td>
-                <td className="p-4">{receita.medicamento}</td>
-                <td className="p-4">{receita.dosagem}</td>
-                <td className="p-4">{receita.observacoes}</td>
-                <td className="p-4 flex gap-2">
-                  <button onClick={() => { setEditingReceita(receita); setIsEditModalOpen(true); }} className="p-1 hover:text-blue-600"><Edit2 size={18} /></button>
-                  <button onClick={() => { setReceitaToDelete(receita); setIsDeleteModalOpen(true); }} className="p-1 hover:text-red-600"><Trash2 size={18} /></button>
-                  <button onClick={() => handlePrintReceita(receita)} className="p-1 hover:text-green-600" title="Imprimir Receita">🖨️</button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+        {selectedConsulta && (
+          <form onSubmit={handleSubmit} className="mt-6 bg-white p-6 rounded border space-y-4">
+            <h2 className="font-semibold text-lg">
+              Gerar Receita - {selectedConsulta.paciente?.nome}
+              {selectedConsulta.optometrista && (
+                <span className="text-gray-500 text-sm ml-2">({selectedConsulta.optometrista.nome})</span>
+              )}
+            </h2>
+
+            <div>
+              <label className="block mb-1 font-semibold">Número da Receita:</label>
+              <input
+                type="text"
+                value={receita.numero_receita || 'Gerado automaticamente'}
+                readOnly
+                className="w-full border px-3 py-2 rounded bg-gray-100"
+              />
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className="block mb-1 font-semibold">Olho Direito:</label>
+                <input
+                  type="text"
+                  name="olho_direito"
+                  value={receita.olho_direito || ''}
+                  onChange={handleChange}
+                  className="w-full border px-3 py-2 rounded"
+                />
+              </div>
+              <div>
+                <label className="block mb-1 font-semibold">Olho Esquerdo:</label>
+                <input
+                  type="text"
+                  name="olho_esquerdo"
+                  value={receita.olho_esquerdo || ''}
+                  onChange={handleChange}
+                  className="w-full border px-3 py-2 rounded"
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className="block mb-1 font-semibold">OD Esférico:</label>
+                <input
+                  type="text"
+                  name="od_esferico"
+                  value={receita.od_esferico || ''}
+                  onChange={handleChange}
+                  className="w-full border px-3 py-2 rounded"
+                />
+              </div>
+              <div>
+                <label className="block mb-1 font-semibold">OD Cilíndrico:</label>
+                <input
+                  type="text"
+                  name="od_cilindrico"
+                  value={receita.od_cilindrico || ''}
+                  onChange={handleChange}
+                  className="w-full border px-3 py-2 rounded"
+                />
+              </div>
+              <div>
+                <label className="block mb-1 font-semibold">OD Eixo:</label>
+                <input
+                  type="text"
+                  name="od_eixo"
+                  value={receita.od_eixo || ''}
+                  onChange={handleChange}
+                  className="w-full border px-3 py-2 rounded"
+                />
+              </div>
+
+              <div>
+                <label className="block mb-1 font-semibold">OE Esférico:</label>
+                <input
+                  type="text"
+                  name="oe_esferico"
+                  value={receita.oe_esferico || ''}
+                  onChange={handleChange}
+                  className="w-full border px-3 py-2 rounded"
+                />
+              </div>
+              <div>
+                <label className="block mb-1 font-semibold">OE Cilíndrico:</label>
+                <input
+                  type="text"
+                  name="oe_cilindrico"
+                  value={receita.oe_cilindrico || ''}
+                  onChange={handleChange}
+                  className="w-full border px-3 py-2 rounded"
+                />
+              </div>
+              <div>
+                <label className="block mb-1 font-semibold">OE Eixo:</label>
+                <input
+                  type="text"
+                  name="oe_eixo"
+                  value={receita.oe_eixo || ''}
+                  onChange={handleChange}
+                  className="w-full border px-3 py-2 rounded"
+                />
+              </div>
+
+              <div>
+                <label className="block mb-1 font-semibold">Adição:</label>
+                <input
+                  type="text"
+                  name="adicao"
+                  value={receita.adicao || ''}
+                  onChange={handleChange}
+                  className="w-full border px-3 py-2 rounded"
+                />
+              </div>
+              <div>
+                <label className="block mb-1 font-semibold">DNP:</label>
+                <input
+                  type="text"
+                  name="dnp"
+                  value={receita.dnp || ''}
+                  onChange={handleChange}
+                  className="w-full border px-3 py-2 rounded"
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="block mb-1 font-semibold">Diagnóstico:</label>
+              <textarea
+                name="diagnostico"
+                value={receita.diagnostico || ''}
+                onChange={handleChange}
+                className="w-full border px-3 py-2 rounded"
+                rows={3}
+              />
+            </div>
+
+            <div>
+              <label className="block mb-1 font-semibold">Observações:</label>
+              <textarea
+                name="observacoes"
+                value={receita.observacoes || ''}
+                onChange={handleChange}
+                className="w-full border px-3 py-2 rounded"
+                rows={3}
+              />
+            </div>
+
+            {pdfUrl && (
+              <div className="mt-2 flex gap-2">
+                <a
+  href={getApiUrl(receita.pdf_path || '')}
+  target="_blank"
+  rel="noopener noreferrer"
+  className="text-blue-600 underline"
+>
+  Visualizar/Imprimir PDF
+</a>
+
+                <button
+                  type="button"
+                  onClick={handleDelete}
+                  className="px-4 py-1 rounded bg-red-600 text-white hover:bg-red-700"
+                >
+                  Deletar Receita
+                </button>
+              </div>
+            )}
+
+            <div className="flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setSelectedConsulta(null);
+                  setReceita({});
+                }}
+                className="px-4 py-2 rounded border text-gray-700 hover:bg-gray-100"
+              >
+                Cancelar
+              </button>
+              <button
+                type="submit"
+                disabled={loading}
+                className="bg-blue-600 text-white px-6 py-2 rounded hover:bg-blue-700 disabled:opacity-50"
+              >
+                {loading ? 'Salvando...' : 'Salvar Receita'}
+              </button>
+            </div>
+          </form>
+        )}
       </div>
-
-      {/* ====================== MODAL NOVA RECEITA ====================== */}
-      {isModalOpen && (
-        <Modal title="Nova Receita" onClose={() => setIsModalOpen(false)}>
-          <form onSubmit={handleCreateReceita} className="space-y-4">
-            <input type="number" required placeholder="ID do Paciente" value={newReceita.paciente_id} onChange={e => setNewReceita({...newReceita, paciente_id: Number(e.target.value)})} className="w-full px-4 py-2 border rounded-lg" />
-            <input type="text" required placeholder="Medicamento" value={newReceita.medicamento} onChange={e => setNewReceita({...newReceita, medicamento:e.target.value})} className="w-full px-4 py-2 border rounded-lg" />
-            <input type="text" required placeholder="Dosagem" value={newReceita.dosagem} onChange={e => setNewReceita({...newReceita, dosagem:e.target.value})} className="w-full px-4 py-2 border rounded-lg" />
-            <textarea placeholder="Observações" value={newReceita.observacoes} onChange={e => setNewReceita({...newReceita, observacoes:e.target.value})} className="w-full px-4 py-2 border rounded-lg" />
-            <div className="flex justify-end gap-2">
-              <button type="button" onClick={() => setIsModalOpen(false)} className="px-4 py-2 rounded-lg border">Cancelar</button>
-              <button type="submit" className="px-4 py-2 rounded-lg bg-blue-600 text-white">Salvar</button>
-            </div>
-          </form>
-        </Modal>
-      )}
-
-      {/* ====================== MODAL EDITAR RECEITA ====================== */}
-      {isEditModalOpen && editingReceita && (
-        <Modal title="Editar Receita" onClose={() => setIsEditModalOpen(false)}>
-          <form onSubmit={handleUpdateReceita} className="space-y-4">
-            <input type="number" required placeholder="ID do Paciente" value={editingReceita.paciente_id} onChange={e => setEditingReceita({...editingReceita, paciente_id:Number(e.target.value)})} className="w-full px-4 py-2 border rounded-lg" />
-            <input type="text" required placeholder="Medicamento" value={editingReceita.medicamento} onChange={e => setEditingReceita({...editingReceita, medicamento:e.target.value})} className="w-full px-4 py-2 border rounded-lg" />
-            <input type="text" required placeholder="Dosagem" value={editingReceita.dosagem} onChange={e => setEditingReceita({...editingReceita, dosagem:e.target.value})} className="w-full px-4 py-2 border rounded-lg" />
-            <textarea placeholder="Observações" value={editingReceita.observacoes} onChange={e => setEditingReceita({...editingReceita, observacoes:e.target.value})} className="w-full px-4 py-2 border rounded-lg" />
-            <div className="flex justify-end gap-2">
-              <button type="button" onClick={()=>setIsEditModalOpen(false)} className="px-4 py-2 rounded-lg border">Cancelar</button>
-              <button type="submit" className="px-4 py-2 rounded-lg bg-blue-600 text-white">Salvar</button>
-            </div>
-          </form>
-        </Modal>
-      )}
-
-      {/* ====================== MODAL DELETAR ====================== */}
-      {isDeleteModalOpen && receitaToDelete && (
-        <Modal title="Confirmar Exclusão" onClose={() => setIsDeleteModalOpen(false)}>
-          <p>Tem certeza que deseja excluir a receita do paciente <strong>{receitaToDelete.paciente_nome || receitaToDelete.paciente_id}</strong>?</p>
-          <div className="flex justify-end gap-2 mt-4">
-            <button onClick={()=>setIsDeleteModalOpen(false)} className="px-4 py-2 rounded-lg border">Cancelar</button>
-            <button onClick={handleDeleteReceita} className="px-4 py-2 rounded-lg bg-red-600 text-white">Excluir</button>
-          </div>
-        </Modal>
-      )}
     </div>
   );
 }
-
-// ====================== COMPONENTE MODAL ======================
-interface ModalProps {
-  title: string;
-  children: React.ReactNode;
-  onClose: () => void;
-}
-
-const Modal = ({ title, children, onClose }: ModalProps) => (
-  <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-    <div className="bg-white rounded-lg p-6 w-full max-w-md relative">
-      <button onClick={onClose} className="absolute top-4 right-4"><X size={24} /></button>
-      <h2 className="text-xl font-bold mb-4">{title}</h2>
-      {children}
-    </div>
-  </div>
-);
