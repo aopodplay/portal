@@ -29,7 +29,8 @@ export default function CriarConsultaPage() {
     adicao: '',
     dnp: '',
     diagnostico: '',
-    observacoes: ''
+    observacoes: '',
+    medicacao: '' //  novo campo
   });
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState('');
@@ -40,7 +41,6 @@ export default function CriarConsultaPage() {
       .then(res => res.json())
       .then(data => {
         if (Array.isArray(data)) {
-          // apenas atendimentos "em_consulta"
           setAtendimentos(data.filter(a => a.status === 'em_consulta'));
         }
       })
@@ -71,11 +71,9 @@ export default function CriarConsultaPage() {
       setForm({
         od_esferico: '', od_cilindrico: '', od_eixo: '',
         oe_esferico: '', oe_cilindrico: '', oe_eixo: '',
-        adicao: '', dnp: '', diagnostico: '', observacoes: ''
+        adicao: '', dnp: '', diagnostico: '', observacoes: '', medicacao: '' //  resetar
       });
       setAtendimentoId('');
-
-      // Remove atendimento concluído da lista
       setAtendimentos(prev => prev.filter(a => a.id !== atendimento.id));
     } catch {
       setMessage('Erro ao registrar consulta');
@@ -84,7 +82,7 @@ export default function CriarConsultaPage() {
     }
   };
 
-  /* ---------------- FILTRAR ATENDIMENTOS POR PACIENTE ---------------- */
+  /* FILTRAR ATENDIMENTOS POR PACIENTE*/
   const atendimentosFiltrados = atendimentos.filter(a => {
     if (!a.paciente) return false;
     const termo = searchPaciente.toLowerCase();
@@ -148,8 +146,18 @@ export default function CriarConsultaPage() {
             <input name="dnp" placeholder="DNP" value={form.dnp} onChange={handleChange} className="border px-3 py-2 rounded" />
           </div>
 
+          {/* Textareas */}
           <textarea name="diagnostico" placeholder="Diagnóstico" value={form.diagnostico} onChange={handleChange} className="border px-3 py-2 rounded w-full" />
           <textarea name="observacoes" placeholder="Observações" value={form.observacoes} onChange={handleChange} className="border px-3 py-2 rounded w-full" />
+
+          {/*  Campo de Medicação */}
+          <textarea
+            name="medicacao"
+            placeholder="Medicação (opcional)"
+            value={form.medicacao}
+            onChange={handleChange}
+            className="border px-3 py-2 rounded w-full"
+          />
 
           <div className="flex justify-end">
             <button disabled={loading} className="bg-blue-600 text-white px-8 py-2 rounded hover:bg-blue-700">

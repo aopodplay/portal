@@ -2,12 +2,45 @@
 
 import { Bell, Search, User, LogOut } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
+import { useNotifications } from '@/contexts/NotificationContext';
 import Link from 'next/link';
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 
 export default function Header() {
   const { user, logout } = useAuth();
+  const { notifications, unreadCount, markAsRead, error } = useNotifications();
+
   const [showDropdown, setShowDropdown] = useState(false);
+  const [showNotifications, setShowNotifications] = useState(false);
+
+  const dropdownRef = useRef<HTMLDivElement>(null);
+  const notificationRef = useRef<HTMLDivElement>(null);
+
+  // Fecha dropdown e notificações ao clicar fora
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        setShowDropdown(false);
+      }
+      if (notificationRef.current && !notificationRef.current.contains(event.target as Node)) {
+        setShowNotifications(false);
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  // Marcar notificação como lida ao clicar
+  const handleNotificationClick = (id: number) => {
+    markAsRead(id);
+    setShowNotifications(false);
+  };
+
+  // Função para formatar a data da notificação
+  const formatDate = (dateString: string) => {
+    const date = new Date(dateString);
+    return isNaN(date.getTime()) ? '' : date.toLocaleString('pt-BR');
+  };
 
   return (
     <header className="bg-white border-b border-gray-200 px-6 py-4">
@@ -15,7 +48,10 @@ export default function Header() {
         {/* Search */}
         <div className="flex items-center gap-4 flex-1">
           <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
+            <Search
+              className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
+              size={20}
+            />
             <input
               type="search"
               placeholder="Pesquisar..."
@@ -24,18 +60,63 @@ export default function Header() {
           </div>
         </div>
 
-        {/* Notificações e Usuário */}
+        {/* Notificações + 👤 Usuário */}
         <div className="flex items-center gap-6">
-          {/* Notificação */}
-          <button className="relative p-2 hover:bg-gray-50 rounded-lg">
-            <Bell size={20} className="text-gray-600" />
-            <span className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full"></span>
-          </button>
+          {/* Notificações */}
+          <div className="relative" ref={notificationRef}>
+            <button
+              onClick={() => setShowNotifications(prev => !prev)}
+              className="relative p-2 hover:bg-gray-50 rounded-lg transition"
+            >
+              <Bell size={20} className="text-gray-600" />
+              {unreadCount > 0 && (
+                <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs px-2 py-0.5 rounded-full">
+                  {unreadCount}
+                </span>
+              )}
+            </button>
+
+            {showNotifications && (
+              <div className="absolute right-0 mt-2 w-80 bg-white rounded-lg shadow-lg border border-gray-100 z-50 max-h-96 overflow-y-auto">
+                <div className="p-4 border-b font-semibold text-gray-700">
+                  Notificações
+                </div>
+
+                {error && (
+                  <div className="p-4 text-sm text-red-600 bg-red-50 border-b">
+                    {error}
+                  </div>
+                )}
+
+                {!error && notifications.length === 0 && (
+                  <div className="p-4 text-sm text-gray-500">
+                    Nenhuma notificação
+                  </div>
+                )}
+
+                {notifications.map(notificacao => (
+                  <div
+                    key={`${notificacao.id}-${notificacao.createdAt}`} // 🔹 key única
+                    onClick={() => handleNotificationClick(notificacao.id)}
+                    className={`p-4 border-b text-sm cursor-pointer hover:bg-gray-50 transition ${
+                      !notificacao.lida ? 'bg-blue-50' : ''
+                    }`}
+                  >
+                    <p className="font-medium text-gray-800">{notificacao.titulo}</p>
+                    <p className="text-gray-600">{notificacao.mensagem}</p>
+                    <p className="text-xs text-gray-400 mt-1">
+                      {formatDate(notificacao.createdAt)}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
 
           {/* Usuário */}
-          <div className="relative">
+          <div className="relative" ref={dropdownRef}>
             <button
-              onClick={() => setShowDropdown(!showDropdown)}
+              onClick={() => setShowDropdown(prev => !prev)}
               className="flex items-center gap-3 border-l pl-6 hover:opacity-80 transition-opacity"
             >
               <div className="w-10 h-10 rounded-full bg-gradient-to-r from-blue-500 to-purple-500 flex items-center justify-center text-white">
@@ -45,13 +126,12 @@ export default function Header() {
                   <User size={20} />
                 )}
               </div>
-              <div className="text-sm">
+              <div className="text-sm text-left">
                 <p className="font-medium text-gray-700">{user?.nome || 'Usuário'}</p>
                 <p className="text-gray-500">{user?.perfil || 'Usuário'}</p>
               </div>
             </button>
 
-            {/* Dropdown */}
             {showDropdown && (
               <div className="absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-lg py-1 border border-gray-100 z-50">
                 <Link
@@ -62,6 +142,7 @@ export default function Header() {
                   <User size={16} />
                   Meu Perfil
                 </Link>
+
                 <button
                   onClick={() => {
                     setShowDropdown(false);

@@ -11,7 +11,7 @@ interface Categoria {
 interface Produto {
   id: number;
   nome: string;
-  tipo: 'armacao' | 'lente' | 'servico';
+  tipo: 'armacao' | 'lente';
   preco: number;
   estoque: number;
   descricao?: string;
@@ -39,15 +39,14 @@ export default function ProdutosPage() {
   // modal delete
   const [deleteId, setDeleteId] = useState<number | null>(null);
 
-  /* ---------------- HELPERS ---------------- */
+  /*  HELPERS */
   const labelTipo = (tipo: string) => {
     if (tipo === 'armacao') return 'Armação';
     if (tipo === 'lente') return 'Lente';
-    if (tipo === 'servico') return 'Serviço';
     return tipo;
   };
 
-  /* ---------------- LOAD ---------------- */
+  /*  LOAD */
   const loadProdutos = async () => {
     const res = await fetch(getApiUrl(API_ENDPOINTS.PRODUTOS), {
       headers: getAuthHeaders()
@@ -69,7 +68,7 @@ export default function ProdutosPage() {
     loadCategorias();
   }, []);
 
-  /* ---------------- FORM ---------------- */
+  /* FORM  */
   const handleChange = (
     e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>
   ) => setForm({ ...form, [e.target.name]: e.target.value });
@@ -124,7 +123,7 @@ export default function ProdutosPage() {
     });
   };
 
-  /* ---------------- DELETE ---------------- */
+  /* DELETE */
   const confirmDelete = async () => {
     if (!deleteId) return;
 
@@ -174,7 +173,6 @@ export default function ProdutosPage() {
             >
               <option value="armacao">Armação</option>
               <option value="lente">Lente</option>
-              <option value="servico">Serviço</option>
             </select>
 
             <select

@@ -65,16 +65,24 @@ export default function ConfiguracaoPage() {
     formData.append('logo', logoFile);
 
     try {
+      const { Authorization } = getAuthHeaders();
+
       const res = await fetch(getApiUrl('/configuracoes-sistema/logo'), {
         method: 'POST',
-        headers: getAuthHeaders(),
+        headers: {
+          Authorization
+        },
         body: formData
       });
 
       if (!res.ok) throw new Error('Erro ao enviar logo');
+
       const data = await res.json();
+
+      // Atualiza config com o novo caminho da logo
       setConfig({ ...config, logo: data.logo });
       setMessage('Logo atualizada com sucesso');
+
     } catch (err: any) {
       console.error(err);
       setMessage(err.message);
@@ -105,19 +113,26 @@ export default function ConfiguracaoPage() {
     }
   };
 
+  // qui está o ajuste importante
+  const logoUrl = config?.logo ? getApiUrl(config.logo) : null;
+
   return (
     <div className="p-8 bg-gray-100 min-h-screen">
       <h1 className="text-2xl font-bold mb-6">Configuração do Sistema</h1>
 
       {message && (
-        <div className="mb-6 p-3 bg-green-100 text-green-700 rounded shadow">{message}</div>
+        <div className="mb-6 p-3 bg-green-100 text-green-700 rounded shadow">
+          {message}
+        </div>
       )}
 
       {config && (
         <form onSubmit={updateConfig} className="grid grid-cols-1 md:grid-cols-2 gap-8">
+
           {/* CARD DADOS DO SISTEMA */}
           <div className="bg-white p-6 rounded shadow space-y-4">
             <h2 className="text-xl font-semibold mb-2">Dados do Sistema</h2>
+
             <div className="flex flex-col">
               <label className="mb-1 font-medium">Nome do Sistema</label>
               <input
@@ -128,6 +143,7 @@ export default function ConfiguracaoPage() {
                 required
               />
             </div>
+
             <div className="flex flex-col">
               <label className="mb-1 font-medium">Endereço</label>
               <input
@@ -137,6 +153,7 @@ export default function ConfiguracaoPage() {
                 className="border px-3 py-2 rounded focus:ring focus:ring-blue-200"
               />
             </div>
+
             <div className="flex flex-col">
               <label className="mb-1 font-medium">Telefone</label>
               <input
@@ -146,6 +163,7 @@ export default function ConfiguracaoPage() {
                 className="border px-3 py-2 rounded focus:ring focus:ring-blue-200"
               />
             </div>
+
             <div className="flex flex-col">
               <label className="mb-1 font-medium">Email</label>
               <input
@@ -155,6 +173,7 @@ export default function ConfiguracaoPage() {
                 className="border px-3 py-2 rounded focus:ring focus:ring-blue-200"
               />
             </div>
+
             <div className="flex flex-col">
               <label className="mb-1 font-medium">Moeda</label>
               <input
@@ -164,6 +183,7 @@ export default function ConfiguracaoPage() {
                 className="border px-3 py-2 rounded focus:ring focus:ring-blue-200"
               />
             </div>
+
             <div className="flex flex-col">
               <label className="mb-1 font-medium">Desconto Padrão (%)</label>
               <input
@@ -178,6 +198,7 @@ export default function ConfiguracaoPage() {
           {/* CARD EMPRESA E LOGO */}
           <div className="bg-white p-6 rounded shadow space-y-4">
             <h2 className="text-xl font-semibold mb-2">Dados da Empresa & Logo</h2>
+
             <div className="flex flex-col">
               <label className="mb-1 font-medium">Nome da Empresa</label>
               <input
@@ -188,6 +209,7 @@ export default function ConfiguracaoPage() {
                 required
               />
             </div>
+
             <div className="flex flex-col">
               <label className="mb-1 font-medium">NIF</label>
               <input
@@ -198,6 +220,7 @@ export default function ConfiguracaoPage() {
                 required
               />
             </div>
+
             <div className="flex flex-col">
               <label className="mb-1 font-medium">Morada</label>
               <input
@@ -208,9 +231,15 @@ export default function ConfiguracaoPage() {
                 required
               />
             </div>
+
             <div className="flex flex-col items-start gap-3">
               <label className="font-medium">Logo</label>
-              <input type="file" onChange={e => setLogoFile(e.target.files?.[0] || null)} />
+
+              <input
+                type="file"
+                onChange={e => setLogoFile(e.target.files?.[0] || null)}
+              />
+
               <button
                 type="button"
                 onClick={uploadLogo}
@@ -218,16 +247,25 @@ export default function ConfiguracaoPage() {
               >
                 Enviar Logo
               </button>
-              {config.logo && <img src={config.logo} alt="Logo" className="h-24 mt-2" />}
+
+              {logoUrl && (
+                <img
+                  src={logoUrl}
+                  alt="Logo"
+                  className="h-16 mt-2 object-contain"
+                />
+              )}
             </div>
           </div>
 
           {/* CARD SAF-T */}
           <div className="md:col-span-2 bg-white p-6 rounded shadow space-y-4">
             <h2 className="text-xl font-semibold mb-2">Gerar SAF-T</h2>
+
             <p className="mb-3 text-gray-700">
               Clique no botão abaixo para gerar o SAF-T completo no padrão AGT.
             </p>
+
             <button
               type="button"
               onClick={gerarSAFT}
@@ -236,7 +274,10 @@ export default function ConfiguracaoPage() {
             >
               {loading ? 'Gerando...' : 'Gerar SAF-T'}
             </button>
-            {saftMessage && <p className="mt-2 text-green-700">{saftMessage}</p>}
+
+            {saftMessage && (
+              <p className="mt-2 text-green-700">{saftMessage}</p>
+            )}
           </div>
 
           {/* BOTÃO SALVAR */}
@@ -249,6 +290,7 @@ export default function ConfiguracaoPage() {
               {loading ? 'Salvando...' : 'Salvar Configuração'}
             </button>
           </div>
+
         </form>
       )}
     </div>

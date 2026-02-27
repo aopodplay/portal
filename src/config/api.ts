@@ -23,6 +23,7 @@ export const API_ENDPOINTS = {
   ATENDIMENTOS: "/atendimentos",
   CONSULTAS: "/consultas",
   RECEITAS: "/receitas",
+  SERVICOS: "/servicos",
 
   // Vendas e financeiro
   VENDAS: "/vendas",
@@ -46,11 +47,8 @@ export const defaultHeaders = {
 
 // Headers com autenticação
 export const getAuthHeaders = () => {
-  const token =
-    Cookies.get("token") || localStorage.getItem("token");
-
-  return {
-    ...defaultHeaders,
-    ...(token ? { Authorization: `Bearer ${token}` } : {}),
-  };
+  const token = Cookies.get("token") || localStorage.getItem("token");
+  return token
+    ? { Authorization: `Bearer ${token}`, "Content-Type": "application/json" }
+    : { "Content-Type": "application/json" };
 };
