@@ -4,7 +4,7 @@ import Cookies from "js-cookie";
 export const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_URL || "http://localhost:3000";
 
-// Endpoints da API da Óptica (alinhados com o backend)
+// Endpoints da API da Óptica
 export const API_ENDPOINTS = {
   // Auth
   LOGIN: "/auth/login",
@@ -31,6 +31,16 @@ export const API_ENDPOINTS = {
   FATURAS: "/faturas",
   PAGAMENTOS: "/pagamentos",
 
+  // MÓDULO DE SEGURO
+  SEGURADORAS: "/seguradoras",
+  SEGURADORAS_ATIVAS: "/seguradoras/ativas",
+
+  PLANOS: "/planos",
+  PLANOS_ATIVOS: "/planos/ativos",
+
+  COBERTURAS: "/coberturas",
+  AUTORIZACOES: "/autorizacoes",
+
   // Configurações do sistema
   CONFIGURACOES_SISTEMA: "/configuracoes-sistema",
 };
@@ -40,15 +50,27 @@ export const getApiUrl = (endpoint: string) =>
   `${API_BASE_URL}${endpoint}`;
 
 // Headers padrão
-export const defaultHeaders = {
+export const defaultHeaders: HeadersInit = {
   "Content-Type": "application/json",
   Accept: "application/json",
 };
 
-// Headers com autenticação
-export const getAuthHeaders = () => {
-  const token = Cookies.get("token") || localStorage.getItem("token");
+// Headers com autenticação (corrigido para não quebrar no SSR)
+export const getAuthHeaders = (): HeadersInit => {
+  let token = Cookies.get("token");
+
+  if (!token && typeof window !== "undefined") {
+    token = localStorage.getItem("token") || undefined;
+  }
+
   return token
-    ? { Authorization: `Bearer ${token}`, "Content-Type": "application/json" }
-    : { "Content-Type": "application/json" };
+    ? {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+        Accept: "application/json",
+      }
+    : {
+        "Content-Type": "application/json",
+        Accept: "application/json",
+      };
 };

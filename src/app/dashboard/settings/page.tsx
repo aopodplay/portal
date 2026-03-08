@@ -15,8 +15,10 @@ export default function ConfiguracaoPage() {
       const res = await fetch(getApiUrl('/configuracoes-sistema'), {
         headers: getAuthHeaders()
       });
+
       const data = await res.json();
       setConfig(data);
+
     } catch (err) {
       console.error(err);
       setMessage('Erro ao carregar configuração');
@@ -30,6 +32,7 @@ export default function ConfiguracaoPage() {
   const updateConfig = async (e: any) => {
     e.preventDefault();
     if (!config) return;
+
     setLoading(true);
 
     try {
@@ -46,9 +49,14 @@ export default function ConfiguracaoPage() {
       });
 
       if (!res.ok) throw new Error('Erro ao atualizar configuração');
+
       const updated = await res.json();
+
       setConfig(updated);
       setMessage('Configuração atualizada com sucesso');
+
+      window.dispatchEvent(new Event('configUpdated'));
+
     } catch (err: any) {
       console.error(err);
       setMessage(err.message);
@@ -59,6 +67,7 @@ export default function ConfiguracaoPage() {
 
   const uploadLogo = async () => {
     if (!logoFile || !config) return;
+
     setLoading(true);
 
     const formData = new FormData();
@@ -79,9 +88,12 @@ export default function ConfiguracaoPage() {
 
       const data = await res.json();
 
-      // Atualiza config com o novo caminho da logo
       setConfig({ ...config, logo: data.logo });
+
       setMessage('Logo atualizada com sucesso');
+
+      // dispara evento para o Sidebar atualizar
+      window.dispatchEvent(new Event('configUpdated'));
 
     } catch (err: any) {
       console.error(err);
@@ -93,6 +105,7 @@ export default function ConfiguracaoPage() {
 
   const gerarSAFT = async () => {
     if (!config) return;
+
     setSaftMessage('Gerando SAF-T...');
     setLoading(true);
 
@@ -103,8 +116,11 @@ export default function ConfiguracaoPage() {
       });
 
       if (!res.ok) throw new Error('Erro ao gerar SAF-T');
+
       const data = await res.json();
+
       setSaftMessage(`SAF-T gerado com sucesso! Arquivo: ${data.path}`);
+
     } catch (err: any) {
       console.error(err);
       setSaftMessage(err.message);
@@ -113,7 +129,6 @@ export default function ConfiguracaoPage() {
     }
   };
 
-  // qui está o ajuste importante
   const logoUrl = config?.logo ? getApiUrl(config.logo) : null;
 
   return (
@@ -210,28 +225,6 @@ export default function ConfiguracaoPage() {
               />
             </div>
 
-            <div className="flex flex-col">
-              <label className="mb-1 font-medium">NIF</label>
-              <input
-                type="text"
-                value={config.empresa_nif || ''}
-                onChange={e => setConfig({ ...config, empresa_nif: e.target.value })}
-                className="border px-3 py-2 rounded focus:ring focus:ring-blue-200"
-                required
-              />
-            </div>
-
-            <div className="flex flex-col">
-              <label className="mb-1 font-medium">Morada</label>
-              <input
-                type="text"
-                value={config.empresa_morada || ''}
-                onChange={e => setConfig({ ...config, empresa_morada: e.target.value })}
-                className="border px-3 py-2 rounded focus:ring focus:ring-blue-200"
-                required
-              />
-            </div>
-
             <div className="flex flex-col items-start gap-3">
               <label className="font-medium">Logo</label>
 
@@ -258,29 +251,6 @@ export default function ConfiguracaoPage() {
             </div>
           </div>
 
-          {/* CARD SAF-T */}
-          <div className="md:col-span-2 bg-white p-6 rounded shadow space-y-4">
-            <h2 className="text-xl font-semibold mb-2">Gerar SAF-T</h2>
-
-            <p className="mb-3 text-gray-700">
-              Clique no botão abaixo para gerar o SAF-T completo no padrão AGT.
-            </p>
-
-            <button
-              type="button"
-              onClick={gerarSAFT}
-              className="px-6 py-3 bg-yellow-600 text-white rounded hover:bg-yellow-700"
-              disabled={loading}
-            >
-              {loading ? 'Gerando...' : 'Gerar SAF-T'}
-            </button>
-
-            {saftMessage && (
-              <p className="mt-2 text-green-700">{saftMessage}</p>
-            )}
-          </div>
-
-          {/* BOTÃO SALVAR */}
           <div className="md:col-span-2 flex justify-end">
             <button
               type="submit"

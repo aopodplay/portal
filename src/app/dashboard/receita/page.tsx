@@ -6,41 +6,41 @@ import { getApiUrl, getAuthHeaders } from '@/config/api';
 interface Paciente { id: number; nome: string; telefone?: string; nif?: string; }
 interface Atendimento { id: number; status: string; }
 interface Usuario { id: string; nome: string; }
-interface Receita { 
-  id?: number; 
-  consulta_id: number; 
-  numero_receita?: string; 
-  pdf_path?: string; 
-  olho_direito?: string; 
-  olho_esquerdo?: string; 
-  observacoes?: string; 
-  od_esferico?: string; 
-  od_cilindrico?: string; 
-  od_eixo?: string; 
-  oe_esferico?: string; 
-  oe_cilindrico?: string; 
-  oe_eixo?: string; 
-  adicao?: string; 
-  dnp?: string; 
-  diagnostico?: string; 
-  medicacao?: string; 
+interface Receita {
+  id?: number;
+  consulta_id: number;
+  numero_receita?: string;
+  pdf_path?: string;
+  olho_direito?: string;
+  olho_esquerdo?: string;
+  observacoes?: string;
+  od_esferico?: string;
+  od_cilindrico?: string;
+  od_eixo?: string;
+  oe_esferico?: string;
+  oe_cilindrico?: string;
+  oe_eixo?: string;
+  adicao?: string;
+  dnp?: string;
+  diagnostico?: string;
+  medicacao?: string;
 }
-interface Consulta { 
-  id: number; 
-  paciente: Paciente; 
-  atendimento: Atendimento; 
-  optometrista?: Usuario; 
-  od_esferico?: string; 
-  od_cilindrico?: string; 
-  od_eixo?: string; 
-  oe_esferico?: string; 
-  oe_cilindrico?: string; 
-  oe_eixo?: string; 
-  adicao?: string; 
-  dnp?: string; 
-  diagnostico?: string; 
-  observacoes?: string; 
-  receita?: Receita; 
+interface Consulta {
+  id: number;
+  paciente: Paciente;
+  atendimento: Atendimento;
+  optometrista?: Usuario;
+  od_esferico?: string;
+  od_cilindrico?: string;
+  od_eixo?: string;
+  oe_esferico?: string;
+  oe_cilindrico?: string;
+  oe_eixo?: string;
+  adicao?: string;
+  dnp?: string;
+  diagnostico?: string;
+  observacoes?: string;
+  receita?: Receita;
 }
 
 export default function ReceitasPage() {
@@ -51,8 +51,8 @@ export default function ReceitasPage() {
   const [receita, setReceita] = useState<Partial<Receita>>({});
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState('');
+  const [modalMessage, setModalMessage] = useState<string | null>(null);
 
-  // Buscar configuração do sistema
   useEffect(() => {
     const fetchConfig = async () => {
       try {
@@ -66,7 +66,6 @@ export default function ReceitasPage() {
     fetchConfig();
   }, []);
 
-  // Buscar consultas concluídas
   useEffect(() => {
     const fetchConsultas = async () => {
       try {
@@ -90,7 +89,6 @@ export default function ReceitasPage() {
     return nome.includes(search.toLowerCase()) || nif.includes(search.toLowerCase());
   });
 
-  // Ajuste: preenche o campo de medicação da receita com valores da consulta
   const handleSelectConsulta = (c: Consulta) => {
     setSelectedConsulta(c);
     setMessage('');
@@ -113,7 +111,7 @@ export default function ReceitasPage() {
       adicao: existing?.adicao || c.adicao || '',
       dnp: existing?.dnp || c.dnp || '',
       diagnostico: existing?.diagnostico || c.diagnostico || '',
-      medicacao: existing?.medicacao || c.observacoes || '', 
+      medicacao: existing?.medicacao || c.observacoes || '',
     });
   };
 
@@ -145,15 +143,36 @@ export default function ReceitasPage() {
 
   const handleDelete = async () => {
     if (!receita.id) return;
-    if (!confirm('Tem certeza que deseja deletar esta receita?')) return;
+    // Substituí confirm por modal
+    setModalMessage('Tem certeza que deseja deletar esta receita?');
+  };
+
+  const confirmDelete = async () => {
+    if (!receita.id) return;
+    setModalMessage(null);
     try {
       const res = await fetch(getApiUrl(`/receitas/${receita.id}`), { method: 'DELETE', headers: getAuthHeaders() });
-      if (!res.ok) { console.error('Erro na API ao deletar receita', await res.text()); setMessage('Erro ao deletar receita'); return; }
+      const text = await res.text();
+
+      if (!res.ok) {
+        // Verifica se é "Acesso negado"
+        if (text.includes('Acesso negado') || text.includes('"error":"Acesso negado"')) {
+          setModalMessage('Você não tem acesso para deletar esta receita.');
+        } else {
+          setModalMessage('Erro ao deletar receita');
+        }
+        return; // não dispara console.error
+      }
+
+      // Se deletou com sucesso
       setMessage('Receita deletada com sucesso');
       setSelectedConsulta(null);
       setReceita({});
       setConsultas((prev) => prev.map((c) => (c.id === receita.consulta_id ? { ...c, receita: undefined } : c)));
-    } catch (err) { console.error('Erro ao deletar receita:', err); setMessage('Erro ao deletar receita'); }
+    } catch (err) {
+      console.error('Erro ao deletar receita:', err);
+      setModalMessage('Erro ao deletar receita');
+    }
   };
 
   const imprimirReceitaA4 = (r: Partial<Receita>, c: Consulta | null) => {
@@ -183,7 +202,7 @@ export default function ReceitasPage() {
             .observacoes { margin-bottom: 40px; }
             .assinatura { display: flex; justify-content: space-between; margin-top: 60px; }
             .assinatura div { text-align: center; font-size: 14px; }
-            .footer { font-size: 12px; text-align: center; color: #777; margin-top: 40px; }
+            .footer { font-size: 12px; text-align: center; color: #777; margin-top: 40px;margin-top:36em;position: fixed; bottom: 0; width: 100%; text-align: center; font-size: 11px; border-top: 1px solid #000; padding-top: 5px; }
           </style>
         </head>
         <body>
@@ -233,12 +252,8 @@ export default function ReceitasPage() {
               <strong>Medicação:</strong> ${r.medicacao || '-'}
             </div>
 
-            <div class="assinatura">
-              <div>___________________________<br/>Assinatura do Optometrista</div>
-              <div>___________________________<br/>Assinatura do Paciente</div>
-            </div>
 
-            <div class="footer">Documento gerado pelo sistema • Obrigado pela preferência</div>
+            <div class="footer">Receita gerado pelo sistema • Obrigado pela preferência <strong>Nº Receita:</strong> ${r.numero_receita || '-'}</div>
           </div>
 
           <script>
@@ -317,6 +332,21 @@ export default function ReceitasPage() {
               {receita.id && <button type="button" onClick={handleDelete} className="px-4 py-1 rounded bg-red-600 text-white hover:bg-red-700">Deletar Receita</button>}
             </div>
           </form>
+        )}
+
+        {modalMessage && (
+          <div className="fixed inset-0 flex items-center justify-center z-50 pointer-events-none">
+            <div className="absolute inset-0 bg-black opacity-30"></div>
+            <div className="relative bg-white rounded p-6 w-96 max-w-full space-y-4 shadow-lg pointer-events-auto">
+              <p>{modalMessage}</p>
+              <div className="flex justify-end gap-2">
+                {modalMessage === 'Tem certeza que deseja deletar esta receita?' && (
+                  <button onClick={confirmDelete} className="bg-red-600 text-white px-4 py-2 rounded hover:bg-red-700">Confirmar</button>
+                )}
+                <button onClick={() => setModalMessage(null)} className="px-4 py-2 rounded border text-gray-700 hover:bg-gray-100">Fechar</button>
+              </div>
+            </div>
+          </div>
         )}
       </div>
     </div>

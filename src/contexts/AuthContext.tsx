@@ -9,6 +9,7 @@ interface Usuario {
   id: number;
   nome: string;
   perfil: string;
+  foto?: string;
   token?: string;
 }
 
@@ -18,6 +19,7 @@ interface AuthContextType {
   loading: boolean;
   login: (email: string, senha: string) => Promise<void>;
   logout: () => void;
+  updateUser: (novoUsuario: Partial<Usuario>) => void;
 }
 
 const AuthContext = createContext<AuthContextType>({} as AuthContextType);
@@ -27,7 +29,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [socket, setSocket] = useState<Socket | null>(null);
   const [loading, setLoading] = useState(true);
 
-  // Restaurar sessão e inicializar socket
   useEffect(() => {
     const token = Cookies.get('token') || localStorage.getItem('token');
     const storedUser = localStorage.getItem('user');
@@ -36,14 +37,12 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       const parsedUser: Usuario = JSON.parse(storedUser);
       setUser(parsedUser);
 
-      // Criar socket
       const s = io('http://localhost:3000', {
         autoConnect: false,
         transports: ['websocket', 'polling'],
         auth: { token },
       });
 
-      // Conectar socket e entrar na sala do perfil
       s.connect();
       s.emit('join_perfil', parsedUser.perfil);
 
@@ -52,16 +51,13 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
     setLoading(false);
 
-    // Desconectar socket ao desmontar
     return () => {
       socket?.disconnect();
     };
   }, []);
 
-  // Login
   const login = async (email: string, senha: string) => {
     setLoading(true);
-
     try {
       const res = await fetch(getApiUrl(API_ENDPOINTS.LOGIN), {
         method: 'POST',
@@ -70,30 +66,25 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       });
 
       const data = await res.json();
-
       if (!res.ok) throw new Error(data.error || 'Erro no login');
 
       const { token, usuario } = data;
-      const userWithToken = { ...usuario, token };
+      const userWithToken: Usuario = { ...usuario, token };
 
-      // Salvar token e usuário
       Cookies.set('token', token);
       localStorage.setItem('token', token);
       localStorage.setItem('user', JSON.stringify(userWithToken));
+
       setUser(userWithToken);
 
-      // Criar e conectar socket
       const s = io('http://localhost:3000', {
         autoConnect: false,
         transports: ['websocket', 'polling'],
         auth: { token },
       });
-
       s.connect();
       s.emit('join_perfil', userWithToken.perfil);
-
       setSocket(s);
-
     } catch (err: any) {
       console.error('Login error:', err.message);
       throw err;
@@ -102,7 +93,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     }
   };
 
-  // Logout
   const logout = () => {
     Cookies.remove('token');
     localStorage.removeItem('token');
@@ -113,8 +103,15 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     setSocket(null);
   };
 
+  const updateUser = (novoUsuario: Partial<Usuario>) => {
+    if (!user) return;
+    const updatedUser = { ...user, ...novoUsuario };
+    setUser(updatedUser);
+    localStorage.setItem('user', JSON.stringify(updatedUser));
+  };
+
   return (
-    <AuthContext.Provider value={{ user, socket, loading, login, logout }}>
+    <AuthContext.Provider value={{ user, socket, loading, login, logout, updateUser }}>
       {children}
     </AuthContext.Provider>
   );

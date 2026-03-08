@@ -38,11 +38,37 @@ export default function VendasPage() {
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState('');
 
-  // Fetch produtos e serviços
+  // --- Paginação Produtos ---
+  const [paginaProdutos, setPaginaProdutos] = useState(1);
+  const produtosPorPagina = 8;
+  const totalPaginasProdutos = Math.ceil(produtos.length / produtosPorPagina);
+  const indexUltimoProduto = paginaProdutos * produtosPorPagina;
+  const indexPrimeiroProduto = indexUltimoProduto - produtosPorPagina;
+  const produtosPagina = produtos.slice(indexPrimeiroProduto, indexUltimoProduto);
+
+  const irParaPaginaProdutos = (num: number) => {
+    if (num < 1 || num > totalPaginasProdutos) return;
+    setPaginaProdutos(num);
+  };
+
+  // --- Paginação Vendas ---
+  const [paginaVendas, setPaginaVendas] = useState(1);
+  const vendasPorPagina = 5;
+  const totalPaginasVendas = Math.ceil(vendas.length / vendasPorPagina);
+  const indexUltimaVenda = paginaVendas * vendasPorPagina;
+  const indexPrimeiraVenda = indexUltimaVenda - vendasPorPagina;
+  const vendasPagina = vendas.slice(indexPrimeiraVenda, indexUltimaVenda);
+
+  const irParaPaginaVendas = (num: number) => {
+    if (num < 1 || num > totalPaginasVendas) return;
+    setPaginaVendas(num);
+  };
+
+  // --- Fetch produtos e serviços ---
   const fetchItensDisponiveis = async () => {
     try {
       const [produtosRes, servicosRes] = await Promise.all([
-        fetch(getApiUrl('/produtos/venda'), { headers: getAuthHeaders() }),
+        fetch(getApiUrl('/produtos'), { headers: getAuthHeaders() }),
         fetch(getApiUrl('/servicos'), { headers: getAuthHeaders() })
       ]);
 
@@ -52,7 +78,7 @@ export default function VendasPage() {
       const produtosData = await produtosRes.json();
       const servicosData = await servicosRes.json();
 
-      const listaProdutos: Produto[] = produtosData.map(p => ({
+      const listaProdutos: Produto[] = (produtosData.data || produtosData).map((p: any) => ({
         id: p.id,
         nome: p.nome,
         tipo: 'produto',
@@ -60,7 +86,7 @@ export default function VendasPage() {
         estoque: Number(p.estoque || 0),
       }));
 
-      const listaServicos: Produto[] = servicosData.map(s => ({
+      const listaServicos: Produto[] = (servicosData.data || servicosData).map((s: any) => ({
         id: s.id,
         nome: s.nome,
         tipo: 'servico',
@@ -75,15 +101,16 @@ export default function VendasPage() {
     }
   };
 
-  // Fetch vendas
+  // --- Fetch vendas ---
   const fetchVendas = async () => {
     try {
       const res = await fetch(getApiUrl('/vendas'), { headers: getAuthHeaders() });
+      if (!res.ok) throw new Error('Erro ao buscar vendas');
       const data = await res.json();
-      setVendas(data);
+      setVendas(data.data || data);
     } catch (err: any) {
       console.error(err);
-      setMessage('Erro ao buscar vendas');
+      setMessage(err.message || 'Erro ao buscar vendas');
     }
   };
 
@@ -92,6 +119,7 @@ export default function VendasPage() {
     fetchVendas();
   }, []);
 
+  // --- Carrinho ---
   const addItem = (produto: Produto) => {
     if (itens.find(i => (i.produto_id === produto.id || i.servico_id === produto.id))) {
       setMessage('Item já adicionado');
@@ -112,6 +140,7 @@ export default function VendasPage() {
   };
 
   const removeItem = (index: number) => setItens(itens.filter((_, i) => i !== index));
+
   const updateQuantidade = (index: number, quantidade: number) => {
     if (quantidade <= 0) return;
     const item = itens[index];
@@ -163,11 +192,11 @@ export default function VendasPage() {
 
   return (
     <div className="p-6 flex flex-col md:flex-row gap-6">
-      {/* Produtos/Serviços */}
+      {/* Produtos/Serviços com paginação */}
       <div className="w-full md:w-1/3 bg-white p-4 rounded shadow flex flex-col gap-3">
         <h2 className="text-xl font-semibold">Produtos / Serviços</h2>
-        {produtos.length === 0 && <p>Nenhum item disponível</p>}
-        {produtos.map(p => (
+        {produtosPagina.length === 0 && <p>Nenhum item disponível</p>}
+        {produtosPagina.map(p => (
           <div key={p.id} className="flex justify-between items-center border-b py-2">
             <div>
               <p className="font-medium">{p.nome}</p>
@@ -185,6 +214,35 @@ export default function VendasPage() {
             </button>
           </div>
         ))}
+        {totalPaginasProdutos > 1 && (
+          <div className="flex justify-center gap-2 mt-2">
+            <button
+              onClick={() => irParaPaginaProdutos(paginaProdutos - 1)}
+              disabled={paginaProdutos === 1}
+              className="px-3 py-1 bg-gray-200 rounded disabled:opacity-50"
+            >
+              &lt;
+            </button>
+            {Array.from({ length: totalPaginasProdutos }, (_, i) => (
+              <button
+                key={i + 1}
+                onClick={() => irParaPaginaProdutos(i + 1)}
+                className={`px-3 py-1 rounded ${
+                  paginaProdutos === i + 1 ? "bg-blue-500 text-white" : "bg-gray-200"
+                }`}
+              >
+                {i + 1}
+              </button>
+            ))}
+            <button
+              onClick={() => irParaPaginaProdutos(paginaProdutos + 1)}
+              disabled={paginaProdutos === totalPaginasProdutos}
+              className="px-3 py-1 bg-gray-200 rounded disabled:opacity-50"
+            >
+              &gt;
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Carrinho */}
@@ -209,7 +267,9 @@ export default function VendasPage() {
             <button onClick={() => removeItem(index)} className="px-2 py-1 bg-red-600 text-white rounded">Remover</button>
           </div>
         ))}
-        <div className="mt-4 flex justify-between items-center">
+
+        <p>Desconto:</p>
+        <div className="mt-0 flex justify-between items-center">
           <input type="number" min={0} value={desconto} onChange={e => setDesconto(Number(e.target.value))} placeholder="Desconto" className="border px-3 py-2 rounded w-32"/>
           <select value={formaPagamento} onChange={e => setFormaPagamento(e.target.value)} className="border px-3 py-2 rounded">
             <option value="dinheiro">Dinheiro</option>
@@ -223,11 +283,11 @@ export default function VendasPage() {
         </div>
       </div>
 
-      {/* Vendas recentes */}
+      {/* Vendas recentes com paginação */}
       <div className="w-full md:w-1/3 bg-white p-4 rounded shadow flex flex-col gap-3">
         <h2 className="text-xl font-semibold">Vendas Recentes</h2>
-        {vendas.length === 0 && <p>Nenhuma venda realizada</p>}
-        {vendas.map(v => (
+        {vendasPagina.length === 0 && <p>Nenhuma venda realizada</p>}
+        {vendasPagina.map(v => (
           <div key={v.id} className="border-b py-2">
             <p className="font-medium">Venda #{v.id}</p>
             <p>Total: Kz {Number(v.total).toFixed(2)}</p>
@@ -235,6 +295,37 @@ export default function VendasPage() {
             <p>Pagamento: {v.forma_pagamento}</p>
           </div>
         ))}
+
+        {/* Paginação */}
+        {totalPaginasVendas > 1 && (
+          <div className="flex justify-center gap-2 mt-4">
+            <button
+              onClick={() => irParaPaginaVendas(paginaVendas - 1)}
+              disabled={paginaVendas === 1}
+              className="px-3 py-1 bg-gray-200 rounded disabled:opacity-50"
+            >
+              &lt;
+            </button>
+            {Array.from({ length: totalPaginasVendas }, (_, i) => (
+              <button
+                key={i + 1}
+                onClick={() => irParaPaginaVendas(i + 1)}
+                className={`px-3 py-1 rounded ${
+                  paginaVendas === i + 1 ? "bg-blue-500 text-white" : "bg-gray-200"
+                }`}
+              >
+                {i + 1}
+              </button>
+            ))}
+            <button
+              onClick={() => irParaPaginaVendas(paginaVendas + 1)}
+              disabled={paginaVendas === totalPaginasVendas}
+              className="px-3 py-1 bg-gray-200 rounded disabled:opacity-50"
+            >
+              &gt;
+            </button>
+          </div>
+        )}
       </div>
 
       {message && <div className="fixed top-6 right-6 p-3 bg-gray-100 rounded border shadow-lg">{message}</div>}

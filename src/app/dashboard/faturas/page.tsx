@@ -1,10 +1,9 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import { getApiUrl, getAuthHeaders } from '@/config/api';
 
 /* Tipagens */
-
 interface Paciente { id: number; nome: string; nif?: string }
 interface Produto { id: number; nome: string; preco: number }
 interface Servico { id: number; nome: string; valor: number }
@@ -13,11 +12,10 @@ interface Atendimento { id: number; status: string; paciente: Paciente }
 interface Venda { id: number; atendimento?: Atendimento; itens: VendaItem[] }
 interface Pagamento { id: number; valor: number; forma_pagamento: string; paciente?: Paciente }
 type StatusFatura = 'pendente' | 'pago' | 'cancelada'
-interface Fatura { id: number; numero: string; total: number; status: StatusFatura; data_emissao: string; venda?: Venda; pagamentos: Pagamento[] }
+interface Fatura { id: number; numero: string; total: number; status: StatusFatura; data_emissao: string; venda?: Venda; pagamentos: Pagamento[]; forma_pagamento?: string }
 interface User { role?: string }
 
 /* FALLBACK CLÍNICA */
-
 const CLINICA = {
   nome: 'Prestígio Óptica',
   endereco: 'Via camama-fubu junto ao primeiro retorno, rua 14.',
@@ -26,7 +24,6 @@ const CLINICA = {
 };
 
 /*Página */
-
 export default function FaturasPage({ user }: { user?: User }) {
   const [faturas, setFaturas] = useState<Fatura[]>([]);
   const [loading, setLoading] = useState(true);
@@ -37,9 +34,38 @@ export default function FaturasPage({ user }: { user?: User }) {
   const [servicos, setServicos] = useState<Servico[]>([]);
   const [config, setConfig] = useState<any>(null);
 
+  // Estados de pesquisa e filtro
+  const [numeroPesquisa, setNumeroPesquisa] = useState('');
+  const [dataPesquisa, setDataPesquisa] = useState('');
+  const [statusFiltro, setStatusFiltro] = useState<StatusFatura | ''>('');
+
+  // Paginação
+  const [paginaAtual, setPaginaAtual] = useState(1);
+  const itensPorPagina = 9;
+
   const logoUrl = config?.logo ? getApiUrl(config.logo) : null;
 
-  /* Função imprimir fatura */
+  /* FILTRO */
+  const faturasFiltradas = useMemo(() => {
+    return faturas.filter(f => {
+      const matchNumero = numeroPesquisa
+        ? f.numero.toLowerCase().includes(numeroPesquisa.toLowerCase())
+        : true;
+
+      const matchData = dataPesquisa
+        ? new Date(f.data_emissao).toISOString().split('T')[0] === dataPesquisa
+        : true;
+
+      const matchStatus = statusFiltro ? f.status === statusFiltro : true;
+
+      return matchNumero && matchData && matchStatus;
+    });
+  }, [faturas, numeroPesquisa, dataPesquisa, statusFiltro]);
+
+  const totalPaginas = Math.ceil(faturasFiltradas.length / itensPorPagina);
+  const faturasPagina = faturasFiltradas.slice((paginaAtual - 1) * itensPorPagina, paginaAtual * itensPorPagina);
+
+  /* FUNÇÃO DE IMPRESSÃO */
   const imprimirFatura = (f: Fatura, pacienteNome: string, logo: string | null) => {
     const win = window.open('', '_blank');
     if (!win) return;
@@ -47,7 +73,6 @@ export default function FaturasPage({ user }: { user?: User }) {
     const itens = f.venda?.itens || [];
     const formasPagamento = f.pagamentos?.map(p => p.forma_pagamento.toUpperCase()).join(', ') || 'DINHEIRO';
 
-    //  Linhas de produtos e serviços  
     const linhasProdutos = itens.length
       ? itens.map(item => {
         const descricao = item.produto?.nome || item.servico?.nome || '-';
@@ -70,8 +95,14 @@ export default function FaturasPage({ user }: { user?: User }) {
     const telefone = config?.telefone || CLINICA.telefone;
     const nif = config?.nif || CLINICA.nif;
 
-    const totalPago = f.pagamentos?.reduce((acc, p) => acc + Number(p.valor), 0) || 0;
-    const saldo = Number(f.total) - totalPago;
+    const totalPago =
+      f.pagamentos?.reduce(
+        (sum: number, p: any) =>
+          sum + Number(p.valor_total ?? p.valor ?? 0),
+        0
+      ) || 0;
+
+    const saldo = Number(f.total || 0) - totalPago;
 
     win.document.write(`
 <html>
@@ -114,8 +145,9 @@ th { background: #f2f2f2; text-align: center; }
 
 <div class="info">
   <strong>Nº:</strong> ${f.numero}<br/>
-  <strong>Data de Emissão:</strong> ${new Date(f.data_emissao).toLocaleString()}<br/>
+  <strong>Data de Emissão:</strong> ${new Date(f.data_emissao).toLocaleDateString('pt-AO')}<br/>
   <strong>Cliente:</strong> ${pacienteNome}<br/>
+  <strong>Responsável:</strong> ${f.usuario?.nome || "-"}<br/>
   <strong>Status:</strong> ${f.status.toUpperCase()}<br/>
   <strong>Forma Pagamento:</strong> ${formasPagamento}
 </div>
@@ -140,10 +172,10 @@ ${linhasProdutos}
   <div class="total-line">Total Geral: ${Number(f.total).toLocaleString('pt-AO')} Kz</div>
 </div>
 
-<div class="signature">
+<!--<div class="signature">
   <div>___________________________<br/>Assinatura do Cliente</div>
-  <div>___________________________<br/>Assinatura do Responsável</div>
-</div>
+  <div>___________________________<br/>Assinatura do Responsável <br/></div>
+</div>-->
 
 <div class="footer">
   Documento processado por programa informático certificado • 
@@ -161,8 +193,7 @@ window.onload = function() { window.print(); window.close(); }
     win.document.close();
   };
 
-  /* Buscar Faturas e Extras*/
-
+  /* BUSCAR FATURAS */
   async function fetchFaturas() {
     try {
       const res = await fetch(getApiUrl('/faturas'), { headers: getAuthHeaders() });
@@ -172,7 +203,6 @@ window.onload = function() { window.print(); window.close(); }
       const normalizadas = arr.map((f: any) => ({ ...f, status: String(f.status).toLowerCase() as StatusFatura }));
       setFaturas(normalizadas);
     } catch (err: any) {
-      console.error('Erro ao buscar faturas:', err);
       setError(err.message || 'Erro desconhecido');
     } finally { setLoading(false); }
   }
@@ -196,37 +226,35 @@ window.onload = function() { window.print(); window.close(); }
     fetchExtras();
   }, []);
 
-  /* Cancelar Fatura (permitido para admin e caixa)*/
-const cancelarFatura = async (fatura: Fatura) => {
-  const role = (user?.role || '').toLowerCase(); 
-  if (!role || !['admin', 'caixa'].includes(role)) {
-    setShowModal(true);
-    return;
-  }
-
-  if (!confirm(`Deseja cancelar a fatura ${fatura.numero}?`)) return;
-
-  try {
-    const res = await fetch(getApiUrl(`/faturas/${fatura.id}`), {
-      method: 'DELETE',
-      headers: getAuthHeaders()
-    });
-
-    if (!res.ok) {
-      const data = await res.json().catch(() => ({}));
-      throw new Error(data.error || 'Erro ao cancelar a fatura');
+  /* CANCELAR FATURA */
+  const cancelarFatura = async (fatura: Fatura) => {
+    const role = (user?.role || '').toLowerCase();
+    if (!role || !['admin', 'caixa'].includes(role)) {
+      setShowModal(true);
+      return;
     }
 
-    setFaturas(prev => prev.map(f => f.id === fatura.id ? { ...f, status: 'cancelada' } : f));
-    alert(`Fatura ${fatura.numero} cancelada com sucesso.`);
-  } catch (err: any) {
-    console.error('Erro ao cancelar fatura:', err);
-    alert('Erro ao cancelar fatura: ' + (err.message || 'Desconhecido'));
-  }
-};
+    if (!confirm(`Deseja cancelar a fatura ${fatura.numero}?`)) return;
 
-  /* Salvar edição */
+    try {
+      const res = await fetch(getApiUrl(`/faturas/${fatura.id}`), {
+        method: 'DELETE',
+        headers: getAuthHeaders()
+      });
 
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || 'Erro ao cancelar a fatura');
+      }
+
+      setFaturas(prev => prev.map(f => f.id === fatura.id ? { ...f, status: 'cancelada' } : f));
+      alert(`Fatura ${fatura.numero} cancelada com sucesso.`);
+    } catch (err: any) {
+      alert('Erro ao cancelar fatura: ' + (err.message || 'Desconhecido'));
+    }
+  };
+
+  /* SALVAR EDIÇÃO */
   const salvarEdicao = async () => {
     if (!editingFatura) return;
 
@@ -255,34 +283,80 @@ const cancelarFatura = async (fatura: Fatura) => {
     } catch (err: any) { alert(err.message); }
   };
 
-  /* Render */
-
+  /* RENDER */
   if (loading) return <p className="p-6 text-gray-500">Carregando faturas...</p>;
   if (error) return <p className="p-6 text-red-500">Erro: {error}</p>;
-  if (!faturas.length) return <p className="p-6 text-gray-500">Nenhuma fatura encontrada.</p>;
 
   return (
     <div className="p-6 max-w-7xl mx-auto relative">
       <h1 className="text-3xl font-bold mb-6">Faturas</h1>
 
+      {/* FILTROS AVANÇADOS */}
+      <div className="bg-white p-4 rounded shadow mb-6 flex flex-col md:flex-row gap-4 items-center">
+        <input
+          type="text"
+          placeholder="Pesquisar por número da fatura..."
+          value={numeroPesquisa}
+          onChange={(e) => setNumeroPesquisa(e.target.value)}
+          className="border p-2 rounded w-full md:w-1/3"
+        />
+        <input
+          type="date"
+          value={dataPesquisa}
+          onChange={(e) => setDataPesquisa(e.target.value)}
+          className="border p-2 rounded w-full md:w-1/4"
+        />
+        <select
+          value={statusFiltro}
+          onChange={(e) => setStatusFiltro(e.target.value as StatusFatura | '')}
+          className="border p-2 rounded w-full md:w-1/4"
+        >
+          <option value="">Todos os Status</option>
+          <option value="pendente">Pendente</option>
+          <option value="pago">Pago</option>
+          <option value="cancelada">Cancelada</option>
+        </select>
+        <button
+          onClick={() => { setNumeroPesquisa(''); setDataPesquisa(''); setStatusFiltro(''); }}
+          className="bg-gray-500 text-white px-4 py-2 rounded hover:bg-gray-600"
+        >
+          Limpar
+        </button>
+      </div>
+
+      {/* LISTA DE FATURAS */}
+      {!faturasFiltradas.length && <p className="text-gray-500">Nenhuma fatura encontrada.</p>}
+
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {faturas.map(f => {
-          const pacienteNome = f.pagamentos?.find(p => p.paciente)?.paciente?.nome
+        {faturasPagina.map(f => {
+          const pacienteNome =
+            f.pagamentos?.find(p => p.paciente)?.paciente?.nome
             || f.venda?.atendimento?.paciente?.nome
             || 'Cliente Avulso';
+
           return (
             <div key={f.id} className="bg-white shadow rounded p-4 flex flex-col gap-2">
               <div className="flex justify-between items-center">
                 <span className="font-semibold">{f.numero}</span>
-                <span className={`px-2 py-1 rounded text-white text-xs ${f.status === 'pendente' ? 'bg-yellow-400' : f.status === 'pago' ? 'bg-green-500' : 'bg-red-500'}`}>{f.status.toUpperCase()}</span>
+                <span className={`px-2 py-1 rounded text-white text-xs ${f.status === 'pendente'
+                  ? 'bg-yellow-400'
+                  : f.status === 'pago'
+                    ? 'bg-green-500'
+                    : 'bg-red-500'
+                  }`}>
+                  {f.status.toUpperCase()}
+                </span>
               </div>
+
               <span className="text-sm text-gray-500">Paciente: {pacienteNome}</span>
               <span className="text-sm text-gray-500">Total: {Number(f.total).toLocaleString('pt-AO')} Kz</span>
-              <span className="text-sm text-gray-500">Emitida: {new Date(f.data_emissao).toLocaleDateString()}</span>
+              <span className="text-sm text-gray-500">
+                Emitida: {new Date(f.data_emissao).toLocaleDateString()}
+              </span>
 
               <div className="flex gap-2 mt-3">
                 <button
-                  onClick={() => imprimirFatura(f, pacienteNome, logoUrl)} // <--- passar logoUrl
+                  onClick={() => imprimirFatura(f, pacienteNome, logoUrl)}
                   className="flex-1 bg-blue-600 text-white py-1 rounded text-sm hover:bg-blue-700"
                 >
                   Imprimir
@@ -298,6 +372,15 @@ const cancelarFatura = async (fatura: Fatura) => {
           );
         })}
       </div>
+
+      {/* PAGINAÇÃO */}
+      {totalPaginas > 1 && (
+        <div className="flex justify-center mt-6 gap-2">
+          <button disabled={paginaAtual === 1} onClick={() => setPaginaAtual(prev => prev - 1)} className="px-3 py-1 bg-gray-200 rounded hover:bg-gray-300">Anterior</button>
+          <span className="px-3 py-1">{paginaAtual} / {totalPaginas}</span>
+          <button disabled={paginaAtual === totalPaginas} onClick={() => setPaginaAtual(prev => prev + 1)} className="px-3 py-1 bg-gray-200 rounded hover:bg-gray-300">Próxima</button>
+        </div>
+      )}
 
       {/* Modal de edição */}
       {editingFatura && (

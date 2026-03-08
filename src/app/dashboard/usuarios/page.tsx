@@ -9,6 +9,7 @@ interface Usuario {
   email: string;
   perfil: 'admin' | 'recepcao' | 'optometrista' | 'caixa';
   ativo: boolean;
+  foto?: string;
   created_at: string;
   updated_at: string;
 }
@@ -18,7 +19,9 @@ const emptyForm = {
   email: '',
   senha: '',
   perfil: 'recepcao',
-  ativo: true
+  ativo: true,
+  foto: null,
+  removerFoto: false
 };
 
 export default function UsuariosPage() {
@@ -57,6 +60,16 @@ export default function UsuariosPage() {
     setForm({ ...form, [e.target.name]: value });
   };
 
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files?.[0]) {
+      setForm({ ...form, foto: e.target.files[0], removerFoto: false });
+    }
+  };
+
+  const handleRemoveFoto = () => {
+    setForm({ ...form, foto: null, removerFoto: true });
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
@@ -68,10 +81,19 @@ export default function UsuariosPage() {
         : getApiUrl(API_ENDPOINTS.USUARIOS);
       const method = editId ? 'PUT' : 'POST';
 
+      const formData = new FormData();
+      formData.append('nome', form.nome);
+      formData.append('email', form.email);
+      if (form.senha) formData.append('senha', form.senha);
+      formData.append('perfil', form.perfil);
+      formData.append('ativo', form.ativo ? '1' : '0');
+      if (form.foto instanceof File) formData.append('foto', form.foto);
+      if (form.removerFoto) formData.append('removerFoto', 'true');
+
       await fetch(url, {
         method,
-        headers: { ...getAuthHeaders(), 'Content-Type': 'application/json' },
-        body: JSON.stringify(form)
+        headers: getAuthHeaders(), // sem Content-Type, multipart/form-data
+        body: formData
       });
 
       setMessage(editId ? 'Usuário atualizado' : 'Usuário criado');
@@ -88,7 +110,7 @@ export default function UsuariosPage() {
 
   const handleEdit = (u: Usuario) => {
     setEditId(u.id);
-    setForm({ ...u, senha: '' });
+    setForm({ ...u, senha: '', removerFoto: false, foto: null });
     setShowForm(true);
   };
 
@@ -131,16 +153,31 @@ export default function UsuariosPage() {
             <input name="senha" value={form.senha} onChange={handleChange}
               placeholder={editId ? "Deixe em branco para manter" : "Senha"} type="password"
               className="border px-3 py-2 rounded" {...(!editId && { required: true })} />
+
             <select name="perfil" value={form.perfil} onChange={handleChange} className="border px-3 py-2 rounded">
               <option value="admin">Administrador</option>
               <option value="recepcao">Recepção</option>
               <option value="optometrista">Optometrista</option>
               <option value="caixa">Caixa</option>
             </select>
+
             <select name="ativo" value={form.ativo ? '1' : '0'} onChange={handleChange} className="border px-3 py-2 rounded">
               <option value="1">Ativo</option>
               <option value="0">Inativo</option>
             </select>
+
+            {/* FOTO */}
+            <div className="flex flex-col gap-2">
+              <input type="file" accept="image/*" onChange={handleFileChange} />
+              {editId && !form.foto && (
+                <button type="button" onClick={handleRemoveFoto} className="text-red-600 text-sm underline">
+                  Remover foto atual
+                </button>
+              )}
+              {form.foto && (
+                <p className="text-sm text-gray-700">Nova foto selecionada: {form.foto.name || 'preview'}</p>
+              )}
+            </div>
 
             <div className="flex gap-3 justify-end">
               <button type="button" onClick={() => { setShowForm(false); setForm(emptyForm); setEditId(null); }}
@@ -155,26 +192,46 @@ export default function UsuariosPage() {
 
       {/* USERS GRID */}
       <div className="flex-1 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-        {usuarios.map(u => (
-          <div key={u.id} className="bg-white rounded shadow p-4 flex flex-col justify-between">
-            <div>
-              <h3 className="text-lg font-semibold">{u.nome}</h3>
-              <p className="text-sm text-gray-600">{u.email}</p>
-              <p className="text-sm">{labelPerfil(u.perfil)}</p>
-              <p className={`text-sm font-medium ${u.ativo ? 'text-green-600' : 'text-red-600'}`}>
-                {u.ativo ? 'Ativo' : 'Inativo'}
-              </p>
+        {usuarios.map(u => {
+          const fotoUrl = u.foto ? `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000'}/uploads/${u.foto}` : null;
+          return (
+            <div key={u.id} className="bg-white rounded shadow p-4 flex flex-col justify-between items-center">
+              
+              {/* FOTO DO USUÁRIO */}
+              <div className="mb-4">
+                {fotoUrl ? (
+                  <img
+                    src={fotoUrl}
+                    alt={u.nome}
+                    className="w-20 h-20 rounded-full object-cover border"
+                  />
+                ) : (
+                  <div className="w-20 h-20 rounded-full bg-gray-200 flex items-center justify-center text-gray-500 text-xl font-semibold">
+                    {u.nome[0]?.toUpperCase()}
+                  </div>
+                )}
+              </div>
+
+              <div className="text-center">
+                <h3 className="text-lg font-semibold">{u.nome}</h3>
+                <p className="text-sm text-gray-600">{u.email}</p>
+                <p className="text-sm">{labelPerfil(u.perfil)}</p>
+                <p className={`text-sm font-medium ${u.ativo ? 'text-green-600' : 'text-red-600'}`}>
+                  {u.ativo ? 'Ativo' : 'Inativo'}
+                </p>
+              </div>
+
+              <div className="flex gap-2 mt-4 w-full">
+                <button onClick={() => handleEdit(u)} className="flex-1 py-1 bg-blue-600 text-white rounded">Editar</button>
+                <button onClick={() => toggleAtivo(u)}
+                  className={`flex-1 py-1 rounded ${u.ativo ? 'bg-gray-300' : 'bg-green-600 text-white'}`}>
+                  {u.ativo ? 'Desativar' : 'Ativar'}
+                </button>
+                <button onClick={() => setDeleteId(u.id)} className="flex-1 py-1 bg-red-600 text-white rounded">Eliminar</button>
+              </div>
             </div>
-            <div className="flex gap-2 mt-4">
-              <button onClick={() => handleEdit(u)} className="flex-1 py-1 bg-blue-600 text-white rounded">Editar</button>
-              <button onClick={() => toggleAtivo(u)}
-                className={`flex-1 py-1 rounded ${u.ativo ? 'bg-gray-300' : 'bg-green-600 text-white'}`}>
-                {u.ativo ? 'Desativar' : 'Ativar'}
-              </button>
-              <button onClick={() => setDeleteId(u.id)} className="flex-1 py-1 bg-red-600 text-white rounded">Eliminar</button>
-            </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
 
       {/* DELETE MODAL */}

@@ -14,7 +14,10 @@ import {
   Activity,
   Package,
   Glasses,
-} from 'lucide-react';
+  ShieldCheck,
+} 
+
+from 'lucide-react';
 
 import { useAuth } from '@/contexts/AuthContext';
 import { getApiUrl, getAuthHeaders } from '@/config/api';
@@ -69,15 +72,16 @@ export default function Sidebar() {
   const menuItems = [
     { label: 'Dashboard', href: '/dashboard', icon: <LayoutDashboard size={20} />, roles: ['admin','optometrista','caixa', 'recepcao'] },
     { label: 'Pacientes', href: '/dashboard/pacientes', icon: <Users size={20} />, roles: ['admin','caixa', 'recepcao'] },
-    { label: 'Consultas', href: '/dashboard/consultas', icon: <Stethoscope size={20} />, roles: ['admin','optometrista'] },
-    { label: 'Receitas', href: '/dashboard/receita', icon: <FileText size={20} />, roles: ['admin','optometrista'] },
     { label: 'Vendas', href: '/dashboard/vendas', icon: <ShoppingCart size={20} />, roles: ['admin','caixa'] },
     { label: 'Pagamentos', href: '/dashboard/pagamentos', icon: <CreditCard size={20} />, roles: ['admin','caixa'] },
-    { label: 'Faturas', href: '/dashboard/faturas', icon: <FileText size={20} />, roles: ['admin','caixa'] },
     { label: 'Atendimentos', href: '/dashboard/atendimentos', icon: <Activity size={20} />, roles: ['admin','caixa','optometrista', 'recepcao'] },
+    { label: 'Consultas', href: '/dashboard/consultas', icon: <Stethoscope size={20} />, roles: ['admin','optometrista'] },
+    { label: 'Receitas', href: '/dashboard/receita', icon: <FileText size={20} />, roles: ['admin','optometrista'] },
+    { label: 'Faturas', href: '/dashboard/faturas', icon: <FileText size={20} />, roles: ['admin','caixa'] },
     { label: 'Serviços', href: '/dashboard/servicos', icon: <Glasses size={20} />, roles: ['admin','caixa','recepcao'] },
     { label: 'Produtos', href: '/dashboard/produtos', icon: <Package size={20} />, roles: ['admin'] },
     { label: 'Usuários', href: '/dashboard/usuarios', icon: <User size={20} />, roles: ['admin'] },
+    { label: 'Seguradoras', href: '/dashboard/seguradoras', icon: <ShieldCheck size={20} />, roles: ['admin','caixa'] },
     { label: 'Configurações', href: '/dashboard/settings', icon: <Settings size={20} />, roles: ['admin'] },
   ];
 
@@ -94,12 +98,12 @@ export default function Sidebar() {
   return (
     <aside className="fixed left-0 top-0 h-screen w-64 bg-white border-r border-gray-200 p-6">
 
-      <div className="mb-8">
+      <div className="mb-4">
         {logoUrl ? (
           <img
             src={logoUrl}
             alt="Logo"
-            className="h-14 object-contain mb-2"
+            className="h-14 object-contain mb-0"
           />
         ) : (
           <h1 className="text-2xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
@@ -107,11 +111,11 @@ export default function Sidebar() {
           </h1>
         )}
 
-        {user && (
+        {/* {user && (
           <p className="text-sm text-gray-500 mt-1">
             {user.nome} • {user.perfil}
           </p>
-        )}
+        )} */}
       </div>
 
       <nav className="space-y-1">
