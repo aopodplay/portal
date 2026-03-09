@@ -92,7 +92,7 @@ export default function UsuariosPage() {
 
       await fetch(url, {
         method,
-        headers: getAuthHeaders(), // sem Content-Type, multipart/form-data
+        headers: getAuthHeaders(),
         body: formData
       });
 
