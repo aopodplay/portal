@@ -4,9 +4,7 @@ import { useEffect, useState } from 'react';
 import { getApiUrl, getAuthHeaders } from '@/config/api';
 import { Printer } from "lucide-react";
 
-/* =============================== */
-/* TIPAGENS ======================= */
-/* =============================== */
+/* TIPAGENS */
 
 interface Paciente {
   id: number;
@@ -29,6 +27,10 @@ interface Fatura {
   data_emissao: string;
   venda?: Venda;
   pagamentos: PagamentoFatura[];
+   usuario?: {
+    id: number
+    nome: string
+  }
 }
 
 interface Pagamento {

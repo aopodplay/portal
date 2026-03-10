@@ -4,15 +4,70 @@ import { useEffect, useState, useMemo } from 'react';
 import { getApiUrl, getAuthHeaders } from '@/config/api';
 
 /* Tipagens */
-interface Paciente { id: number; nome: string; nif?: string }
-interface Produto { id: number; nome: string; preco: number }
-interface Servico { id: number; nome: string; valor: number }
-interface VendaItem { id?: number; quantidade: number; preco_unitario: number; subtotal: number; produto?: Produto; servico?: Servico; produto_id?: number; servico_id?: number }
-interface Atendimento { id: number; status: string; paciente: Paciente }
-interface Venda { id: number; atendimento?: Atendimento; itens: VendaItem[] }
-interface Pagamento { id: number; valor: number; forma_pagamento: string; paciente?: Paciente }
+interface Paciente { 
+  id: number; 
+  nome: string; 
+  nif?: string 
+}
+interface Produto { 
+  id: number; 
+  nome: string; 
+  preco: number 
+}
+
+interface Servico { 
+  id: number; 
+  nome: string; 
+  valor: number 
+}
+
+interface VendaItem { 
+  id?: number; 
+  quantidade: 
+  number; 
+  preco_unitario: number; 
+  subtotal: number; 
+  produto?: Produto; 
+  servico?: Servico; 
+  produto_id?: number; 
+  servico_id?: number 
+}
+
+interface Atendimento { 
+  id: number; 
+  status: string; 
+  paciente: Paciente 
+}
+
+interface Venda { 
+  id: number; 
+  atendimento?: Atendimento; 
+  itens: VendaItem[] 
+}
+
+interface Pagamento { 
+  id: number; 
+  valor: number; 
+  forma_pagamento: string; 
+  paciente?: Paciente 
+}
+
 type StatusFatura = 'pendente' | 'pago' | 'cancelada'
-interface Fatura { id: number; numero: string; total: number; status: StatusFatura; data_emissao: string; venda?: Venda; pagamentos: Pagamento[]; forma_pagamento?: string }
+
+interface Fatura { 
+  id: number; numero: string; 
+  total: number; 
+  status: StatusFatura; 
+  data_emissao: string; 
+  venda?: Venda; 
+  pagamentos: Pagamento[]; 
+  forma_pagamento?: string 
+   usuario?: {
+    id: number
+    nome: string
+  }
+}
+
 interface User { role?: string }
 
 /* FALLBACK CLÍNICA */

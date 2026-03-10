@@ -62,65 +62,83 @@ export default function AtendimentosDashboard() {
     }
   };
 
-  //   FETCH INICIAL + SOCKET  
-  useEffect(() => {
-    const token = localStorage.getItem('token');
-    if (!token) return;
+  // FETCH INICIAL + SOCKET
+useEffect(() => {
+  if (typeof window === "undefined") return;
 
-    async function fetchData() {
-      try {
-        setLoading(true);
-        setErroModal(null);
-        const headers = getAuthHeaders();
+  const token = localStorage.getItem("token");
+  let s: ReturnType<typeof io> | null = null;
 
-        const [atendRes, pacRes] = await Promise.all([
-          fetch(getApiUrl(API_ENDPOINTS.ATENDIMENTOS), { headers }),
-          fetch(getApiUrl(API_ENDPOINTS.PACIENTES), { headers })
-        ]);
+  async function fetchData() {
+    try {
+      setLoading(true);
+      setErroModal(null);
+      const headers = getAuthHeaders();
 
-        if (atendRes.ok) {
-          const data = await atendRes.json();
-          setAtendimentos(data.data || data);
-        } else await tratarErroPermissao(atendRes);
+      const [atendRes, pacRes] = await Promise.all([
+        fetch(getApiUrl(API_ENDPOINTS.ATENDIMENTOS), { headers }),
+        fetch(getApiUrl(API_ENDPOINTS.PACIENTES), { headers })
+      ]);
 
-        if (pacRes.ok) {
-          const data = await pacRes.json();
-          setPacientes(data.data || data);
-        }
-      } catch (err) {
-        console.warn('Erro geral:', err);
-      } finally {
-        setLoading(false);
+      if (atendRes.ok) {
+        const data = await atendRes.json();
+        setAtendimentos(data.data || data);
+      } else {
+        await tratarErroPermissao(atendRes);
       }
-    }
 
+      if (pacRes.ok) {
+        const data = await pacRes.json();
+        setPacientes(data.data || data);
+      }
+
+    } catch (err) {
+      console.warn("Erro geral:", err);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  if (token) {
     fetchData();
 
-    //   SOCKET.IO REALTIME  
-    const s = io(getApiUrl(''), {
-      path: '/socket.io',
-      transports: ['websocket'],
+    // SOCKET.IO REALTIME
+    s = io(getApiUrl(""), {
+      path: "/socket.io",
+      transports: ["websocket"],
       auth: { token }
     });
 
     setSocket(s);
 
-    s.on('connect', () => console.log('Socket conectado:', s.id));
+    s.on("connect", () => console.log("Socket conectado:", s?.id));
 
-    s.on('novo-atendimento', (atendimento: Atendimento) => {
-      setAtendimentos(prev => prev.find(a => a.id === atendimento.id) ? prev : [atendimento, ...prev]);
+    s.on("novo-atendimento", (atendimento: Atendimento) => {
+      setAtendimentos(prev =>
+        prev.find(a => a.id === atendimento.id)
+          ? prev
+          : [atendimento, ...prev]
+      );
     });
 
-    s.on('atendimento-atualizado', (atendimento: Atendimento) => {
-      setAtendimentos(prev => prev.map(a => a.id === atendimento.id ? atendimento : a));
+    s.on("atendimento-atualizado", (atendimento: Atendimento) => {
+      setAtendimentos(prev =>
+        prev.map(a => (a.id === atendimento.id ? atendimento : a))
+      );
     });
 
-    s.on('atendimento-removido', ({ id }: { id: number }) => {
+    s.on("atendimento-removido", ({ id }: { id: number }) => {
       setAtendimentos(prev => prev.filter(a => a.id !== id));
     });
+  }
 
-    return () => s.disconnect();
-  }, []);
+  return () => {
+    if (s) {
+      s.disconnect();
+    }
+  };
+
+}, []);
 
   //  FUNÇÕES 
   const abrirAtendimento = async (e: React.FormEvent) => {

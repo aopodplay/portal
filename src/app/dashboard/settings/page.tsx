@@ -74,7 +74,8 @@ export default function ConfiguracaoPage() {
     formData.append('logo', logoFile);
 
     try {
-      const { Authorization } = getAuthHeaders();
+      const headers = getAuthHeaders() as Record<string, string>;
+      const Authorization = headers.Authorization;
 
       const res = await fetch(getApiUrl('/configuracoes-sistema/logo'), {
         method: 'POST',
