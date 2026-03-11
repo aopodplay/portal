@@ -151,12 +151,15 @@ export default function VendasPage() {
 
   const total = itens.reduce((sum, i) => sum + i.subtotal, 0) - desconto;
 
+  // --- Criar Venda ---
   const criarVenda = async () => {
     if (!itens.length) { setMessage('Adicione pelo menos um item'); return; }
     setLoading(true);
+    setMessage('');
+
     try {
       const body = {
-        paciente_id: null,
+        paciente_id: null, // opcional para PDV
         forma_pagamento: formaPagamento,
         desconto,
         itens: itens.map(i => ({
@@ -169,12 +172,19 @@ export default function VendasPage() {
       const res = await fetch(getApiUrl('/vendas'), {
         method: 'POST',
         headers: { ...getAuthHeaders(), 'Content-Type': 'application/json' },
-        body: JSON.stringify(body)
+        body: JSON.stringify(body),
       });
 
       if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.error || 'Erro ao criar venda');
+        // Log detalhado do erro do backend
+        const text = await res.text();
+        console.error('Erro ao criar venda:', text);
+        let errMsg = 'Erro ao criar venda';
+        try {
+          const json = JSON.parse(text);
+          errMsg = json.error || json.message || errMsg;
+        } catch {}
+        throw new Error(errMsg);
       }
 
       const vendaCriada = await res.json();
@@ -192,7 +202,7 @@ export default function VendasPage() {
 
   return (
     <div className="p-6 flex flex-col md:flex-row gap-6">
-      {/* Produtos/Serviços com paginação */}
+      {/* Produtos/Serviços */}
       <div className="w-full md:w-1/3 bg-white p-4 rounded shadow flex flex-col gap-3">
         <h2 className="text-xl font-semibold">Produtos / Serviços</h2>
         {produtosPagina.length === 0 && <p>Nenhum item disponível</p>}
@@ -216,31 +226,11 @@ export default function VendasPage() {
         ))}
         {totalPaginasProdutos > 1 && (
           <div className="flex justify-center gap-2 mt-2">
-            <button
-              onClick={() => irParaPaginaProdutos(paginaProdutos - 1)}
-              disabled={paginaProdutos === 1}
-              className="px-3 py-1 bg-gray-200 rounded disabled:opacity-50"
-            >
-              &lt;
-            </button>
+            <button onClick={() => irParaPaginaProdutos(paginaProdutos - 1)} disabled={paginaProdutos === 1} className="px-3 py-1 bg-gray-200 rounded disabled:opacity-50">&lt;</button>
             {Array.from({ length: totalPaginasProdutos }, (_, i) => (
-              <button
-                key={i + 1}
-                onClick={() => irParaPaginaProdutos(i + 1)}
-                className={`px-3 py-1 rounded ${
-                  paginaProdutos === i + 1 ? "bg-blue-500 text-white" : "bg-gray-200"
-                }`}
-              >
-                {i + 1}
-              </button>
+              <button key={i + 1} onClick={() => irParaPaginaProdutos(i + 1)} className={`px-3 py-1 rounded ${paginaProdutos === i + 1 ? "bg-blue-500 text-white" : "bg-gray-200"}`}>{i + 1}</button>
             ))}
-            <button
-              onClick={() => irParaPaginaProdutos(paginaProdutos + 1)}
-              disabled={paginaProdutos === totalPaginasProdutos}
-              className="px-3 py-1 bg-gray-200 rounded disabled:opacity-50"
-            >
-              &gt;
-            </button>
+            <button onClick={() => irParaPaginaProdutos(paginaProdutos + 1)} disabled={paginaProdutos === totalPaginasProdutos} className="px-3 py-1 bg-gray-200 rounded disabled:opacity-50">&gt;</button>
           </div>
         )}
       </div>
@@ -255,13 +245,8 @@ export default function VendasPage() {
               <p className="font-medium">{i.nome} {i.servico_id ? '(Serviço)' : ''}</p>
               <p className="text-sm text-gray-600">
                 Kz {i.preco_unitario.toFixed(2)} x
-                <input
-                  type="number"
-                  min={1}
-                  value={i.quantidade}
-                  onChange={e => updateQuantidade(index, Number(e.target.value))}
-                  className="w-16 ml-2 border px-2 py-1 rounded"
-                /> = Kz {i.subtotal.toFixed(2)}
+                <input type="number" min={1} value={i.quantidade} onChange={e => updateQuantidade(index, Number(e.target.value))} className="w-16 ml-2 border px-2 py-1 rounded"/>
+                 = Kz {i.subtotal.toFixed(2)}
               </p>
             </div>
             <button onClick={() => removeItem(index)} className="px-2 py-1 bg-red-600 text-white rounded">Remover</button>
@@ -283,7 +268,7 @@ export default function VendasPage() {
         </div>
       </div>
 
-      {/* Vendas recentes com paginação */}
+      {/* Vendas recentes */}
       <div className="w-full md:w-1/3 bg-white p-4 rounded shadow flex flex-col gap-3">
         <h2 className="text-xl font-semibold">Vendas Recentes</h2>
         {vendasPagina.length === 0 && <p>Nenhuma venda realizada</p>}
@@ -295,35 +280,13 @@ export default function VendasPage() {
             <p>Pagamento: {v.forma_pagamento}</p>
           </div>
         ))}
-
-        {/* Paginação */}
         {totalPaginasVendas > 1 && (
           <div className="flex justify-center gap-2 mt-4">
-            <button
-              onClick={() => irParaPaginaVendas(paginaVendas - 1)}
-              disabled={paginaVendas === 1}
-              className="px-3 py-1 bg-gray-200 rounded disabled:opacity-50"
-            >
-              &lt;
-            </button>
+            <button onClick={() => irParaPaginaVendas(paginaVendas - 1)} disabled={paginaVendas === 1} className="px-3 py-1 bg-gray-200 rounded disabled:opacity-50">&lt;</button>
             {Array.from({ length: totalPaginasVendas }, (_, i) => (
-              <button
-                key={i + 1}
-                onClick={() => irParaPaginaVendas(i + 1)}
-                className={`px-3 py-1 rounded ${
-                  paginaVendas === i + 1 ? "bg-blue-500 text-white" : "bg-gray-200"
-                }`}
-              >
-                {i + 1}
-              </button>
+              <button key={i + 1} onClick={() => irParaPaginaVendas(i + 1)} className={`px-3 py-1 rounded ${paginaVendas === i + 1 ? "bg-blue-500 text-white" : "bg-gray-200"}`}>{i + 1}</button>
             ))}
-            <button
-              onClick={() => irParaPaginaVendas(paginaVendas + 1)}
-              disabled={paginaVendas === totalPaginasVendas}
-              className="px-3 py-1 bg-gray-200 rounded disabled:opacity-50"
-            >
-              &gt;
-            </button>
+            <button onClick={() => irParaPaginaVendas(paginaVendas + 1)} disabled={paginaVendas === totalPaginasVendas} className="px-3 py-1 bg-gray-200 rounded disabled:opacity-50">&gt;</button>
           </div>
         )}
       </div>
