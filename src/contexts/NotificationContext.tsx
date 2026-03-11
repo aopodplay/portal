@@ -32,7 +32,7 @@ export const NotificationProvider = ({ children }: { children: ReactNode }) => {
 
     const carregarNotificacoes = async () => {
       try {
-        const response = await axios.get('http://localhost:3000/notificacoes/minhas', {
+        const response = await axios.get('https://opticaapi-production.up.railway.app/notificacoes/minhas', {
           headers: { Authorization: `Bearer ${user.token}` },
         });
         setNotifications(response.data);
@@ -76,7 +76,7 @@ export const NotificationProvider = ({ children }: { children: ReactNode }) => {
 
     try {
       await axios.put(
-        `http://localhost:3000/notificacoes/${id}/lida`,
+        `https://opticaapi-production.up.railway.app/notificacoes/${id}/lida`,
         {},
         { headers: { Authorization: `Bearer ${user.token}` } }
       );

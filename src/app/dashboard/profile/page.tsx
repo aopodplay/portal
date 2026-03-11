@@ -96,13 +96,13 @@ export default function UserProfile() {
       setRemoverFoto(false);
       setSucesso('Perfil atualizado com sucesso!');
 
-      updateUser({ nome: data.nome, foto: data.foto || '' }); // 🔥 atualiza header em tempo real
+      updateUser({ nome: data.nome, foto: data.foto || '' }); 
     } catch (err: any) { setErro(err.message || 'Erro inesperado'); }
   };
 
   if (loading) return <div className="p-10 text-center text-gray-500">Carregando perfil...</div>;
 
-  const fotoUrl = preview || (user.foto ? `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000'}/uploads/${user.foto}` : null);
+  const fotoUrl = preview || (user.foto ? `${process.env.NEXT_PUBLIC_API_URL || 'https://opticaapi-production.up.railway.app'}/uploads/${user.foto}` : null);
   const inicial = user.nome ? user.nome.charAt(0).toUpperCase() : 'U';
 
   return (

@@ -2,7 +2,8 @@ import Cookies from "js-cookie";
 
 // Base URL da API
 export const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_URL || "http://localhost:3000";
+  process.env.NEXT_PUBLIC_API_URL ||
+  "https://opticaapi-production.up.railway.app";
 
 // Endpoints da API da Óptica
 export const API_ENDPOINTS = {
@@ -55,22 +56,30 @@ export const defaultHeaders: HeadersInit = {
   Accept: "application/json",
 };
 
-// Headers com autenticação (corrigido para não quebrar no SSR)
+// Headers com autenticação
 export const getAuthHeaders = (): HeadersInit => {
-  let token = Cookies.get("token");
+  let token: string | undefined;
 
+  // Primeiro tenta pegar do cookie
+  token = Cookies.get("token");
+
+  // Se não tiver cookie, tenta localStorage (apenas no browser)
   if (!token && typeof window !== "undefined") {
     token = localStorage.getItem("token") || undefined;
   }
 
-  return token
-    ? {
-        Authorization: `Bearer ${token}`,
-        "Content-Type": "application/json",
-        Accept: "application/json",
-      }
-    : {
-        "Content-Type": "application/json",
-        Accept: "application/json",
-      };
+  // Se tiver token adiciona Authorization
+  if (token) {
+    return {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+      Accept: "application/json",
+    };
+  }
+
+  // Sem token
+  return {
+    "Content-Type": "application/json",
+    Accept: "application/json",
+  };
 };
