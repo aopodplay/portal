@@ -193,7 +193,7 @@ export default function UsuariosPage() {
       {/* USERS GRID */}
       <div className="flex-1 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
         {usuarios.map(u => {
-          const fotoUrl = u.foto ? `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000'}/uploads/${u.foto}` : null;
+          const fotoUrl = u.foto ? `${process.env.NEXT_PUBLIC_API_URL || 'https://api.apisemsaida.co.ao'}/uploads/${u.foto}` : null;
           return (
             <div key={u.id} className="bg-white rounded shadow p-4 flex flex-col justify-between items-center">
               

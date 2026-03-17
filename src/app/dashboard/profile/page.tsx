@@ -60,7 +60,7 @@ export default function UserProfile() {
     setFotoFile(null);
     setRemoverFoto(true);
     setUser({ ...user, foto: '' });
-    updateUser({ foto: '' }); // 🔥 atualiza header em tempo real
+    updateUser({ foto: '' });
   };
 
   const handleSave = async (e: React.FormEvent) => {
@@ -102,7 +102,7 @@ export default function UserProfile() {
 
   if (loading) return <div className="p-10 text-center text-gray-500">Carregando perfil...</div>;
 
-  const fotoUrl = preview || (user.foto ? `${process.env.NEXT_PUBLIC_API_URL || 'https://opticaapi-production.up.railway.app'}/uploads/${user.foto}` : null);
+  const fotoUrl = preview || (user.foto ? `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000'}/uploads/${user.foto}` : null);
   const inicial = user.nome ? user.nome.charAt(0).toUpperCase() : 'U';
 
   return (

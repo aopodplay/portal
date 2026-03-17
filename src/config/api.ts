@@ -1,37 +1,37 @@
-/* import Cookies from "js-cookie";
+import Cookies from "js-cookie";
 
-// Base URL da API
+// Detecta ambiente
+const isDevelopment = process.env.NODE_ENV === "development";
+
+// Base URL dinâmica
 export const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_URL || "http://localhost:3000";
+  process.env.NEXT_PUBLIC_API_URL ||
+  (isDevelopment
+    ? "http://localhost:3000"
+    : "https://opticaapi-production.up.railway.app");
 
 // Endpoints da API da Óptica
 export const API_ENDPOINTS = {
-  // Auth
   LOGIN: "/auth/login",
   ME: "/auth/me",
 
-  // Dashboard
   DASHBOARD: "/dashboard",
 
-  // Cadastros base
   USUARIOS: "/usuarios",
   PACIENTES: "/pacientes",
   CATEGORIAS: "/categorias",
   PRODUTOS: "/produtos",
 
-  // Fluxo de atendimento
   ATENDIMENTOS: "/atendimentos",
   CONSULTAS: "/consultas",
   RECEITAS: "/receitas",
   SERVICOS: "/servicos",
 
-  // Vendas e financeiro
   VENDAS: "/vendas",
   VENDA_ITENS: "/venda-itens",
   FATURAS: "/faturas",
   PAGAMENTOS: "/pagamentos",
 
-  // MÓDULO DE SEGURO
   SEGURADORAS: "/seguradoras",
   SEGURADORAS_ATIVAS: "/seguradoras/ativas",
 
@@ -41,11 +41,10 @@ export const API_ENDPOINTS = {
   COBERTURAS: "/coberturas",
   AUTORIZACOES: "/autorizacoes",
 
-  // Configurações do sistema
   CONFIGURACOES_SISTEMA: "/configuracoes-sistema",
 };
 
-// Monta a URL completa
+// Monta URL completa
 export const getApiUrl = (endpoint: string) =>
   `${API_BASE_URL}${endpoint}`;
 
@@ -55,7 +54,7 @@ export const defaultHeaders: HeadersInit = {
   Accept: "application/json",
 };
 
-// Headers com autenticação (corrigido para não quebrar no SSR)
+// Headers com autenticação
 export const getAuthHeaders = (): HeadersInit => {
   let token = Cookies.get("token");
 
@@ -73,93 +72,4 @@ export const getAuthHeaders = (): HeadersInit => {
         "Content-Type": "application/json",
         Accept: "application/json",
       };
-};
- */
-
-
-/* =========railway========== */
-import Cookies from "js-cookie";
-
-// Base URL da API
-export const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_URL ||
-  "https://opticaapi-production.up.railway.app";
-
-// Endpoints da API da Óptica
-export const API_ENDPOINTS = {
-  // Auth
-  LOGIN: "/auth/login",
-  ME: "/auth/me",
-
-  // Dashboard
-  DASHBOARD: "/dashboard",
-
-  // Cadastros base
-  USUARIOS: "/usuarios",
-  PACIENTES: "/pacientes",
-  CATEGORIAS: "/categorias",
-  PRODUTOS: "/produtos",
-
-  // Fluxo de atendimento
-  ATENDIMENTOS: "/atendimentos",
-  CONSULTAS: "/consultas",
-  RECEITAS: "/receitas",
-  SERVICOS: "/servicos",
-
-  // Vendas e financeiro
-  VENDAS: "/vendas",
-  VENDA_ITENS: "/venda-itens",
-  FATURAS: "/faturas",
-  PAGAMENTOS: "/pagamentos",
-
-  // MÓDULO DE SEGURO
-  SEGURADORAS: "/seguradoras",
-  SEGURADORAS_ATIVAS: "/seguradoras/ativas",
-
-  PLANOS: "/planos",
-  PLANOS_ATIVOS: "/planos/ativos",
-
-  COBERTURAS: "/coberturas",
-  AUTORIZACOES: "/autorizacoes",
-
-  // Configurações do sistema
-  CONFIGURACOES_SISTEMA: "/configuracoes-sistema",
-};
-
-// Monta a URL completa
-export const getApiUrl = (endpoint: string) =>
-  `${API_BASE_URL}${endpoint}`;
-
-// Headers padrão
-export const defaultHeaders: HeadersInit = {
-  "Content-Type": "application/json",
-  Accept: "application/json",
-};
-
-// Headers com autenticação
-export const getAuthHeaders = (): HeadersInit => {
-  let token: string | undefined;
-
-  // Primeiro tenta pegar do cookie
-  token = Cookies.get("token");
-
-  // Se não tiver cookie, tenta localStorage (apenas no browser)
-  if (!token && typeof window !== "undefined") {
-    token = localStorage.getItem("token") || undefined;
-  }
-
-  // Se tiver token adiciona Authorization
-  if (token) {
-    return {
-      Authorization: `Bearer ${token}`,
-      "Content-Type": "application/json",
-      Accept: "application/json",
-    };
-  }
-
-  // Sem token
-  return {
-    "Content-Type": "application/json",
-    Accept: "application/json",
-  };
 };

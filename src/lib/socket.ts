@@ -7,7 +7,7 @@ let socket: Socket | null = null;
 
 export const getSocket = (token?: string): Socket => {
   if (!socket) {
-    socket = io('http://localhost:3000', {
+    socket = io('https://opticaapi-production.up.railway.app', {
       autoConnect: false,
       transports: ['websocket', 'polling'],
       auth: {

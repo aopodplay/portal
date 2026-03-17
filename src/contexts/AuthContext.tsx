@@ -77,7 +77,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
       setUser(userWithToken);
 
-      const s = io('http://localhost:3000', {
+      const s = io('https://opticaapi-production.up.railway.app', {
         autoConnect: false,
         transports: ['websocket', 'polling'],
         auth: { token },
