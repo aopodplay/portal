@@ -1,14 +1,8 @@
+// src/config/api.ts
 import Cookies from "js-cookie";
 
-// Detecta ambiente
-const isDevelopment = process.env.NODE_ENV === "development";
-
-// Base URL dinâmica
-export const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_URL ||
-  (isDevelopment
-    ? "http://localhost:3000"
-    : "https://opticaapi-production.up.railway.app");
+// URL da API (apenas ambiente local)
+export const API_BASE_URL = "http://localhost:3000";
 
 // Endpoints da API da Óptica
 export const API_ENDPOINTS = {
@@ -32,6 +26,10 @@ export const API_ENDPOINTS = {
   FATURAS: "/faturas",
   PAGAMENTOS: "/pagamentos",
 
+  // Encomendas de Óculos - CORRIGIDO
+  ENCOMENDAS_OCULOS: "/encomendas-oculos",
+  ENCOMENDAS_STATUS: "/encomendas-oculos/status", // usado para PUT /:id/status
+
   SEGURADORAS: "/seguradoras",
   SEGURADORAS_ATIVAS: "/seguradoras/ativas",
 
@@ -42,6 +40,12 @@ export const API_ENDPOINTS = {
   AUTORIZACOES: "/autorizacoes",
 
   CONFIGURACOES_SISTEMA: "/configuracoes-sistema",
+
+  // Endpoint agregado para Gestão Comercial
+  GESTAO_COMERCIAL: "/gestao-comercial",
+
+  // src/config/api.ts - adicione
+  RELATORIOS: "/relatorios",
 };
 
 // Monta URL completa
@@ -64,12 +68,12 @@ export const getAuthHeaders = (): HeadersInit => {
 
   return token
     ? {
-        Authorization: `Bearer ${token}`,
-        "Content-Type": "application/json",
-        Accept: "application/json",
-      }
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+      Accept: "application/json",
+    }
     : {
-        "Content-Type": "application/json",
-        Accept: "application/json",
-      };
+      "Content-Type": "application/json",
+      Accept: "application/json",
+    };
 };

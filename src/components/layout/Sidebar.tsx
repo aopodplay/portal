@@ -1,12 +1,14 @@
 'use client';
 
 import Link from 'next/link';
+import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useState, useCallback } from 'react';
 import {
   LayoutDashboard,
   Users,
   Stethoscope,
   ShoppingCart,
+  ClipboardList,
   FileText,
   User,
   Settings,
@@ -15,121 +17,404 @@ import {
   Package,
   Glasses,
   ShieldCheck,
-} 
-
-from 'lucide-react';
+  LogOut,
+  ChevronLeft,
+  ChevronRight,
+  Menu,
+  X,
+  HelpCircle,
+  TrendingUp,
+  CalendarCheck,
+  Briefcase,
+  FlaskConical,
+  AlertCircle,
+  ChevronDown
+} from 'lucide-react';
 
 import { useAuth } from '@/contexts/AuthContext';
 import { getApiUrl, getAuthHeaders } from '@/config/api';
 
-type Perfil = 'admin' | 'funcionario' | 'caixa' | 'optometrista';
+type Perfil = 'admin' | 'recepcao' | 'caixa' | 'optometrista';
+
+interface MenuItem {
+  label: string;
+  href: string;
+  icon: React.ReactNode;
+  roles: Perfil[];
+}
 
 export default function Sidebar() {
-  const { user, loading } = useAuth();
+  const pathname = usePathname();
+  const router = useRouter();
+  const { user, loading, logout } = useAuth();
   const perfil = user?.perfil as Perfil | undefined;
-
+  const [collapsed, setCollapsed] = useState(false);
+  const [mobileOpen, setMobileOpen] = useState(false);
   const [config, setConfig] = useState<any>(null);
   const [imageVersion, setImageVersion] = useState<number>(Date.now());
+  const [showLogoutModal, setShowLogoutModal] = useState(false);
+  const [showUserDropdown, setShowUserDropdown] = useState(false);
 
-  // usar useCallback para evitar recriação
+  // Foto do usuário
+  const fotoUrl = user?.foto 
+    ? `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000'}/uploads/${user.foto}`
+    : null;
+
   const fetchConfig = useCallback(async () => {
     try {
       const res = await fetch(getApiUrl('/configuracoes-sistema'), {
         headers: getAuthHeaders(),
       });
-
       const data = await res.json();
       setConfig(data);
-
-      // força atualização da imagem (quebra cache)
       setImageVersion(Date.now());
-
     } catch (err) {
       console.error('Erro ao carregar config:', err);
     }
   }, []);
 
-  // carrega ao montar
   useEffect(() => {
     fetchConfig();
   }, [fetchConfig]);
 
-  // escuta evento global
   useEffect(() => {
     const handleConfigUpdate = () => {
       fetchConfig();
     };
-
     window.addEventListener('configUpdated', handleConfigUpdate);
-
     return () => {
       window.removeEventListener('configUpdated', handleConfigUpdate);
     };
   }, [fetchConfig]);
 
-  if (loading) return null;
+  // Fechar menu mobile ao redimensionar para desktop
+  useEffect(() => {
+    const handleResize = () => {
+      if (window.innerWidth >= 1024 && mobileOpen) {
+        setMobileOpen(false);
+      }
+    };
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, [mobileOpen]);
 
-  const menuItems = [
-    { label: 'Dashboard', href: '/dashboard', icon: <LayoutDashboard size={20} />, roles: ['admin','optometrista','caixa', 'recepcao'] },
-    { label: 'Pacientes', href: '/dashboard/pacientes', icon: <Users size={20} />, roles: ['admin','caixa', 'recepcao'] },
-    { label: 'Vendas', href: '/dashboard/vendas', icon: <ShoppingCart size={20} />, roles: ['admin','caixa'] },
-    { label: 'Pagamentos', href: '/dashboard/pagamentos', icon: <CreditCard size={20} />, roles: ['admin','caixa'] },
-    { label: 'Atendimentos', href: '/dashboard/atendimentos', icon: <Activity size={20} />, roles: ['admin','caixa','optometrista', 'recepcao'] },
-    { label: 'Consultas', href: '/dashboard/consultas', icon: <Stethoscope size={20} />, roles: ['admin','optometrista'] },
-    { label: 'Receitas', href: '/dashboard/receita', icon: <FileText size={20} />, roles: ['admin','optometrista'] },
-    { label: 'Faturas', href: '/dashboard/faturas', icon: <FileText size={20} />, roles: ['admin','caixa'] },
-    { label: 'Serviços', href: '/dashboard/servicos', icon: <Glasses size={20} />, roles: ['admin','caixa','recepcao'] },
-    { label: 'Produtos', href: '/dashboard/produtos', icon: <Package size={20} />, roles: ['admin'] },
-    { label: 'Usuários', href: '/dashboard/usuarios', icon: <User size={20} />, roles: ['admin'] },
-    { label: 'Seguradoras', href: '/dashboard/seguradoras', icon: <ShieldCheck size={20} />, roles: ['admin','caixa'] },
-    { label: 'Configurações', href: '/dashboard/settings', icon: <Settings size={20} />, roles: ['admin'] },
+  // Impedir scroll do body quando menu mobile estiver aberto
+  useEffect(() => {
+    if (mobileOpen) {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = 'unset';
+    }
+    return () => {
+      document.body.style.overflow = 'unset';
+    };
+  }, [mobileOpen]);
+
+  const handleLogout = () => {
+    setShowLogoutModal(false);
+    logout();
+    router.push('/login');
+  };
+
+  const menuItems: MenuItem[] = [
+    { 
+      label: 'Dashboard', 
+      href: '/dashboard', 
+      icon: <LayoutDashboard size={20} />, 
+      roles: ['admin', 'optometrista', 'caixa', 'recepcao'] 
+    },
+    { 
+      label: 'Gestão Comercial', 
+      href: '/dashboard/gestao-comercial', 
+      icon: <ShoppingCart size={20} />, 
+      roles: ['admin', 'optometrista', 'caixa', 'recepcao'] 
+    },
+    { 
+      label: 'Faturas', 
+      href: '/dashboard/faturas', 
+      icon: <FileText size={20} />, 
+      roles: ['admin', 'caixa'] 
+    },
+    { 
+      label: 'Relatórios', 
+      href: '/dashboard/relatorios', 
+      icon: <TrendingUp size={20} />, 
+      roles: ['admin'] 
+    },
+    { 
+      label: 'Configurações', 
+      href: '/dashboard/settings', 
+      icon: <Settings size={20} />, 
+      roles: ['admin'] 
+    },
   ];
 
   const allowedMenu = menuItems.filter(
     (item) => perfil && item.roles.includes(perfil)
   );
 
-  // adicionamos ?v=timestamp para quebrar cache
-  const logoUrl =
-    config?.logo
-      ? `${getApiUrl(config.logo)}?v=${imageVersion}`
-      : null;
+  const isActive = (href: string) => {
+    if (href === '/dashboard') {
+      return pathname === href;
+    }
+    return pathname.startsWith(href);
+  };
 
-  return (
-    <aside className="fixed left-0 top-0 h-screen w-64 bg-white border-r border-gray-200 p-6">
+  const logoUrl = config?.logo ? `${getApiUrl(config.logo)}?v=${imageVersion}` : null;
+  const empresaNome = config?.empresa_nome || config?.nome_sistema || 'Sistema Óptica';
 
-      <div className="mb-4">
+  if (loading) return null;
+
+  const SidebarContent = () => (
+    <div className="flex flex-col h-full">
+      {/* Logo e Nome da Empresa */}
+      <div className="mb-8 px-2">
         {logoUrl ? (
-          <img
-            src={logoUrl}
-            alt="Logo"
-            className="h-14 object-contain mb-0"
-          />
+          <div className="flex justify-center">
+            <img
+              src={logoUrl}
+              alt="Logo"
+              className={`object-contain transition-all duration-300 ${
+                collapsed ? 'h-10 w-10 rounded-full' : 'h-14'
+              }`}
+            />
+          </div>
         ) : (
-          <h1 className="text-2xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
-            {config?.nome_sistema || 'Sistema Óptica'}
-          </h1>
+          <div className={`text-center ${collapsed ? 'text-xs' : 'text-sm'}`}>
+            <div className="w-12 h-12 mx-auto bg-gradient-to-r from-indigo-600 to-purple-600 rounded-xl flex items-center justify-center">
+              <Glasses className="text-white" size={24} />
+            </div>
+            {!collapsed && (
+              <p className="font-bold text-gray-800 mt-2 text-sm">{empresaNome}</p>
+            )}
+          </div>
         )}
-
-        {/* {user && (
-          <p className="text-sm text-gray-500 mt-1">
-            {user.nome} • {user.perfil}
-          </p>
-        )} */}
       </div>
 
-      <nav className="space-y-1">
-        {allowedMenu.map((item) => (
-          <Link
-            key={item.href}
-            href={item.href}
-            className="flex items-center gap-3 p-3 rounded-lg hover:bg-gray-50 text-gray-700 hover:text-blue-600 transition-colors"
+      {/* Informações do Usuário com Dropdown */}
+      {!collapsed && user && (
+        <div className="relative mb-6">
+          <button
+            onClick={() => setShowUserDropdown(!showUserDropdown)}
+            className="w-full p-3 bg-gradient-to-r from-indigo-50 to-purple-50 rounded-xl hover:from-indigo-100 hover:to-purple-100 transition-all duration-200"
           >
-            {item.icon}
-            <span className="font-medium">{item.label}</span>
-          </Link>
-        ))}
+            <div className="flex items-center gap-3">
+              {fotoUrl ? (
+                <img
+                  src={fotoUrl}
+                  alt={user.nome}
+                  className="w-10 h-10 rounded-full object-cover border-2 border-indigo-300"
+                />
+              ) : (
+                <div className="w-10 h-10 rounded-full bg-gradient-to-r from-indigo-600 to-purple-600 flex items-center justify-center text-white font-bold text-lg">
+                  {user.nome?.charAt(0).toUpperCase()}
+                </div>
+              )}
+              <div className="flex-1 text-left">
+                <p className="font-semibold text-gray-800 text-sm truncate">{user.nome}</p>
+                <p className="text-xs text-gray-500 capitalize">{user.perfil}</p>
+              </div>
+              <ChevronDown size={16} className="text-gray-400" />
+            </div>
+          </button>
+
+          {/* Dropdown Menu */}
+          {showUserDropdown && (
+            <>
+              <div
+                className="fixed inset-0 z-40"
+                onClick={() => setShowUserDropdown(false)}
+              />
+              <div className="absolute left-0 right-0 top-full mt-2 bg-white rounded-xl shadow-lg border border-gray-100 overflow-hidden z-50">
+                <Link
+                  href="/dashboard/profile"
+                  className="flex items-center gap-3 px-4 py-3 text-sm text-gray-700 hover:bg-gray-50 transition-colors"
+                  onClick={() => setShowUserDropdown(false)}
+                >
+                  <User size={16} className="text-gray-400" />
+                  <span>Meu Perfil</span>
+                </Link>
+                <button
+                  onClick={() => {
+                    setShowUserDropdown(false);
+                    setShowLogoutModal(true);
+                  }}
+                  className="w-full flex items-center gap-3 px-4 py-3 text-sm text-red-600 hover:bg-red-50 transition-colors border-t"
+                >
+                  <LogOut size={16} />
+                  <span>Sair</span>
+                </button>
+              </div>
+            </>
+          )}
+        </div>
+      )}
+
+      {/* Versão colapsada - apenas avatar */}
+      {collapsed && user && (
+        <div className="mb-6 flex justify-center">
+          <button
+            onClick={() => setShowLogoutModal(true)}
+            className="w-10 h-10 rounded-full bg-gradient-to-r from-indigo-600 to-purple-600 flex items-center justify-center text-white font-bold text-lg hover:opacity-80 transition-opacity"
+            title={user.nome}
+          >
+            {user.nome?.charAt(0).toUpperCase()}
+          </button>
+        </div>
+      )}
+
+      {/* Menu de Navegação */}
+      <nav className="flex-1 space-y-1 overflow-y-auto">
+        {allowedMenu.map((item) => {
+          const active = isActive(item.href);
+          return (
+            <Link
+              key={item.href}
+              href={item.href}
+              onClick={() => setMobileOpen(false)}
+              className={`flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all duration-200 group ${
+                active
+                  ? 'bg-gradient-to-r from-indigo-600 to-purple-600 text-white shadow-md'
+                  : 'text-gray-600 hover:bg-gray-100 hover:text-indigo-600'
+              } ${collapsed ? 'justify-center' : ''}`}
+              title={collapsed ? item.label : ''}
+            >
+              <span className={active ? 'text-white' : 'text-gray-500 group-hover:text-indigo-600'}>
+                {item.icon}
+              </span>
+              {!collapsed && <span className="font-medium text-sm">{item.label}</span>}
+            </Link>
+          );
+        })}
       </nav>
-    </aside>
+
+      {/* Footer com Botões */}
+      <div className="mt-auto pt-4 border-t border-gray-100 space-y-2">
+        {/* Botão de Ajuda */}
+        <button
+          className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-gray-500 hover:bg-gray-100 transition-colors group ${
+            collapsed ? 'justify-center' : ''
+          }`}
+          title={collapsed ? 'Ajuda' : ''}
+          onClick={() => window.open('/help', '_blank')}
+        >
+          <HelpCircle size={20} className="group-hover:text-indigo-600" />
+          {!collapsed && <span className="text-sm">Ajuda</span>}
+        </button>
+
+        {/* Botão de Colapsar (Desktop) */}
+        <button
+          onClick={() => setCollapsed(!collapsed)}
+          className="hidden lg:flex w-full items-center justify-center gap-2 px-3 py-2 rounded-lg text-gray-400 hover:bg-gray-100 transition-colors"
+        >
+          {collapsed ? <ChevronRight size={18} /> : <ChevronLeft size={18} />}
+          {!collapsed && <span className="text-xs">Recolher menu</span>}
+        </button>
+      </div>
+    </div>
+  );
+
+  return (
+    <>
+      {/* Botão do Menu Mobile */}
+      <button
+        onClick={() => setMobileOpen(true)}
+        className="lg:hidden fixed top-4 left-4 z-50 p-2 bg-white rounded-lg shadow-md text-gray-600 hover:text-indigo-600 transition-colors"
+      >
+        <Menu size={24} />
+      </button>
+
+      {/* Overlay Mobile */}
+      {mobileOpen && (
+        <div
+          className="fixed inset-0 bg-black/50 z-40 lg:hidden"
+          onClick={() => setMobileOpen(false)}
+        />
+      )}
+
+      {/* Sidebar Desktop */}
+      <aside
+        className={`hidden lg:flex flex-col fixed left-0 top-0 h-screen bg-white border-r border-gray-200 shadow-lg transition-all duration-300 z-30 ${
+          collapsed ? 'w-20' : 'w-64'
+        }`}
+      >
+        <div className="flex-1 overflow-y-auto p-4">
+          <SidebarContent />
+        </div>
+      </aside>
+
+      {/* Sidebar Mobile */}
+      <aside
+        className={`fixed top-0 left-0 h-full bg-white shadow-xl z-50 transition-transform duration-300 transform lg:hidden ${
+          mobileOpen ? 'translate-x-0' : '-translate-x-full'
+        } w-72`}
+      >
+        <div className="flex flex-col h-full">
+          {/* Header Mobile */}
+          <div className="flex justify-between items-center p-4 border-b">
+            <div className="flex items-center gap-2">
+              {logoUrl ? (
+                <img src={logoUrl} alt="Logo" className="h-8 object-contain" />
+              ) : (
+                <div className="w-8 h-8 bg-gradient-to-r from-indigo-600 to-purple-600 rounded-lg flex items-center justify-center">
+                  <Glasses className="text-white" size={16} />
+                </div>
+              )}
+              <span className="font-bold text-gray-800">{empresaNome}</span>
+            </div>
+            <button
+              onClick={() => setMobileOpen(false)}
+              className="p-1 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100"
+            >
+              <X size={20} />
+            </button>
+          </div>
+
+          {/* Conteúdo Mobile */}
+          <div className="flex-1 overflow-y-auto p-4">
+            <SidebarContent />
+          </div>
+        </div>
+      </aside>
+
+      {/* Modal de Confirmação de Logout */}
+      {showLogoutModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60] p-4">
+          <div className="bg-white rounded-xl shadow-lg w-full max-w-md p-6">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-12 h-12 rounded-full bg-red-100 flex items-center justify-center">
+                <LogOut className="text-red-600" size={24} />
+              </div>
+              <div>
+                <h2 className="text-xl font-bold text-gray-800">Confirmar Saída</h2>
+                <p className="text-sm text-gray-500">Tem certeza que deseja sair do sistema?</p>
+              </div>
+            </div>
+            
+            <p className="text-gray-600 mb-6">
+              Você será redirecionado para a página de login e precisará inserir suas credenciais novamente para acessar o sistema.
+            </p>
+            
+            <div className="flex gap-3">
+              <button
+                onClick={() => setShowLogoutModal(false)}
+                className="flex-1 px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={handleLogout}
+                className="flex-1 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
+              >
+                Sim, Sair
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Espaçamento para o conteúdo principal */}
+      <div className={`hidden lg:block transition-all duration-300 ${collapsed ? 'ml-20' : 'ml-64'}`} />
+    </>
   );
 }
