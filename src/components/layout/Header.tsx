@@ -209,10 +209,10 @@ export default function Header() {
                     <p className="font-medium text-gray-700 text-sm">{user?.nome || 'Usuário'}</p>
                     <p className="text-xs text-gray-500 capitalize">{user?.perfil || 'Usuário'}</p>
                   </div>
-                  <ChevronDown size={16} className="hidden sm:block text-gray-400" />
+                  {/* <ChevronDown size={16} className="hidden sm:block text-gray-400" /> */}
                 </button>
 
-                {showDropdown && (
+                {/* {showDropdown && (
                   <div className="absolute right-0 mt-2 w-56 bg-white rounded-xl shadow-lg py-1 border border-gray-100 z-50 overflow-hidden">
                     <div className="sm:hidden px-4 py-3 border-b border-gray-100">
                       <p className="font-medium text-gray-800">{user?.nome || 'Usuário'}</p>
@@ -248,7 +248,7 @@ export default function Header() {
                       <span>Sair</span>
                     </button>
                   </div>
-                )}
+                )} */}
               </div>
             </div>
           </div>

@@ -6,6 +6,51 @@ import { useRouter } from 'next/navigation';
 import { Eye, EyeOff, Mail, Lock, LogIn, AlertCircle, CheckCircle, ArrowRight, Shield, Globe, Clock, X, Phone, Mail as MailIcon, MessageCircle, Copy, Glasses } from 'lucide-react';
 import { getApiUrl, getAuthHeaders } from '@/config/api';
 
+// Componente para as bolhas animadas
+const FloatingBubbles = () => {
+  const [bubbles, setBubbles] = useState<Array<{
+    id: number;
+    width: string;
+    height: string;
+    top: string;
+    left: string;
+    animationDelay: string;
+    animationDuration: string;
+  }>>([]);
+
+  useEffect(() => {
+    const newBubbles = Array.from({ length: 15 }, (_, i) => ({
+      id: i,
+      width: Math.random() * 200 + 50 + 'px',
+      height: Math.random() * 200 + 50 + 'px',
+      top: Math.random() * 100 + '%',
+      left: Math.random() * 100 + '%',
+      animationDelay: Math.random() * 5 + 's',
+      animationDuration: Math.random() * 10 + 10 + 's',
+    }));
+    setBubbles(newBubbles);
+  }, []);
+
+  return (
+    <>
+      {bubbles.map((bubble) => (
+        <div
+          key={bubble.id}
+          className="absolute rounded-full bg-white/5 animate-float"
+          style={{
+            width: bubble.width,
+            height: bubble.height,
+            top: bubble.top,
+            left: bubble.left,
+            animationDelay: bubble.animationDelay,
+            animationDuration: bubble.animationDuration,
+          }}
+        />
+      ))}
+    </>
+  );
+};
+
 export default function LoginPage() {
   const { login } = useAuth();
   const router = useRouter();
@@ -21,22 +66,36 @@ export default function LoginPage() {
   const [config, setConfig] = useState<any>(null);
   const [imageVersion, setImageVersion] = useState<number>(Date.now());
   const [copySuccess, setCopySuccess] = useState<string | null>(null);
+  const [mounted, setMounted] = useState(false);
 
-  // Carregar configurações do sistema (para a logo)
+  // Função para buscar configurações (mesma lógica do sidebar)
+  const fetchConfig = async () => {
+    try {
+      const res = await fetch(getApiUrl('/configuracoes-sistema'), {
+        headers: getAuthHeaders(),
+      });
+      const data = await res.json();
+      setConfig(data);
+      setImageVersion(Date.now());
+    } catch (err) {
+      console.error('Erro ao carregar config:', err);
+    }
+  };
+
+  // Carregar configurações do sistema (mesma lógica do sidebar)
   useEffect(() => {
-    const fetchConfig = async () => {
-      try {
-        const res = await fetch(getApiUrl('/configuracoes-sistema'), {
-          headers: getAuthHeaders(),
-        });
-        const data = await res.json();
-        setConfig(data);
-        setImageVersion(Date.now());
-      } catch (err) {
-        console.error('Erro ao carregar config:', err);
-      }
-    };
     fetchConfig();
+  }, []);
+
+  // Escutar atualizações de configuração (mesma lógica do sidebar)
+  useEffect(() => {
+    const handleConfigUpdate = () => {
+      fetchConfig();
+    };
+    window.addEventListener('configUpdated', handleConfigUpdate);
+    return () => {
+      window.removeEventListener('configUpdated', handleConfigUpdate);
+    };
   }, []);
 
   // Carregar credenciais salvas
@@ -46,6 +105,7 @@ export default function LoginPage() {
       setEmail(savedEmail);
       setRememberMe(true);
     }
+    setMounted(true);
   }, []);
 
   const handleLogin = async (e: React.FormEvent) => {
@@ -95,11 +155,6 @@ export default function LoginPage() {
     }
   };
 
-  const fillTestCredentials = () => {
-    setEmail('admin@optica.com');
-    setPassword('admin123');
-  };
-
   const clearError = () => {
     setError('');
   };
@@ -114,6 +169,7 @@ export default function LoginPage() {
     }
   };
 
+  // Mesma lógica do sidebar para a logo
   const logoUrl = config?.logo ? `${getApiUrl(config.logo)}?v=${imageVersion}` : null;
   const empresaNome = config?.empresa_nome || config?.nome_sistema || 'Prestígio Óptica';
 
@@ -124,25 +180,17 @@ export default function LoginPage() {
     whatsapp: '+244 923 456 789'
   };
 
+  // Evitar hydration mismatch
+  if (!mounted) {
+    return null;
+  }
+
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 relative overflow-hidden">
       {/* Fundo com partículas animadas */}
       <div className="absolute inset-0 overflow-hidden">
         <div className="absolute top-0 left-0 w-full h-full">
-          {[...Array(15)].map((_, i) => (
-            <div
-              key={i}
-              className="absolute rounded-full bg-white/5 animate-float"
-              style={{
-                width: Math.random() * 200 + 50 + 'px',
-                height: Math.random() * 200 + 50 + 'px',
-                top: Math.random() * 100 + '%',
-                left: Math.random() * 100 + '%',
-                animationDelay: Math.random() * 5 + 's',
-                animationDuration: Math.random() * 10 + 10 + 's',
-              }}
-            />
-          ))}
+          <FloatingBubbles />
         </div>
         <div className="absolute -top-40 -right-40 w-96 h-96 bg-blue-500/20 rounded-full blur-3xl animate-pulse"></div>
         <div className="absolute -bottom-40 -left-40 w-96 h-96 bg-purple-500/20 rounded-full blur-3xl animate-pulse delay-1000"></div>
@@ -154,13 +202,13 @@ export default function LoginPage() {
           {/* Lado Esquerdo - Informações da Empresa */}
           <div className="hidden lg:block text-white space-y-8">
             <div className="animate-fadeInLeft">
-              {/* Logo da Empresa */}
+              {/* Logo da Empresa - Mesmo estilo do sidebar */}
               <div className="mb-6">
                 {logoUrl ? (
                   <div className="flex justify-start">
                     <img
                       src={logoUrl}
-                      alt="Logo"
+                      alt={`Logo ${empresaNome}`}
                       className="h-24 w-auto object-contain"
                     />
                   </div>
@@ -170,9 +218,6 @@ export default function LoginPage() {
                   </div>
                 )}
               </div>
-              <h1 className="text-5xl font-bold mb-4 bg-gradient-to-r from-white to-blue-200 bg-clip-text text-transparent">
-                {empresaNome}
-              </h1>
               <p className="text-xl text-blue-200 mb-8">
                 Sistema de Gestão Integrada
               </p>
@@ -192,7 +237,7 @@ export default function LoginPage() {
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-4 mt-12">
+            {/* <div className="grid grid-cols-2 gap-4 mt-12">
               <div className="bg-white/10 backdrop-blur-sm rounded-xl p-4 text-center border border-white/20 animate-fadeInUp">
                 <p className="text-3xl font-bold">500+</p>
                 <p className="text-sm text-blue-200">Clientes Ativos</p>
@@ -201,7 +246,7 @@ export default function LoginPage() {
                 <p className="text-3xl font-bold">10k+</p>
                 <p className="text-sm text-blue-200">Consultas Realizadas</p>
               </div>
-            </div>
+            </div> */}
           </div>
 
           {/* Lado Direito - Formulário de Login */}
@@ -209,8 +254,13 @@ export default function LoginPage() {
             <div className="bg-white/10 backdrop-blur-xl rounded-2xl shadow-2xl p-8 border border-white/20 transform transition-all duration-500 hover:shadow-3xl">
               <div className="text-center mb-8">
                 <div className="lg:hidden flex flex-col items-center mb-4">
+                  {/* Logo para mobile - mesmo estilo do sidebar */}
                   {logoUrl ? (
-                    <img src={logoUrl} alt="Logo" className="h-16 w-auto object-contain mb-3" />
+                    <img 
+                      src={logoUrl} 
+                      alt={`Logo ${empresaNome}`}
+                      className="h-16 w-auto object-contain mb-3"
+                    />
                   ) : (
                     <div className="w-16 h-16 bg-gradient-to-r from-blue-500 to-purple-600 rounded-2xl flex items-center justify-center mb-3 shadow-lg">
                       <Glasses size={32} className="text-white" />

@@ -28,13 +28,34 @@ import {
   Briefcase,
   FlaskConical,
   AlertCircle,
-  ChevronDown
+  ChevronDown,
+  Receipt,
+  Truck,
+  FileCheck,
+  FileWarning,
+  Wallet,      // Ícone para Parcelas
+  Calendar,    // Ícone adicional
+  DollarSign   // Ícone adicional
 } from 'lucide-react';
 
 import { useAuth } from '@/contexts/AuthContext';
 import { getApiUrl, getAuthHeaders } from '@/config/api';
 
 type Perfil = 'admin' | 'recepcao' | 'caixa' | 'optometrista';
+
+interface SubMenuItem {
+  label: string;
+  href: string;
+  icon: React.ReactNode;
+  roles: Perfil[];
+}
+
+interface MenuGroup {
+  label: string;
+  icon: React.ReactNode;
+  roles: Perfil[];
+  subItems: SubMenuItem[];
+}
 
 interface MenuItem {
   label: string;
@@ -54,6 +75,7 @@ export default function Sidebar() {
   const [imageVersion, setImageVersion] = useState<number>(Date.now());
   const [showLogoutModal, setShowLogoutModal] = useState(false);
   const [showUserDropdown, setShowUserDropdown] = useState(false);
+  const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({});
 
   // Foto do usuário
   const fotoUrl = user?.foto 
@@ -116,6 +138,20 @@ export default function Sidebar() {
     router.push('/login');
   };
 
+  const toggleGroup = (groupLabel: string) => {
+    setOpenGroups(prev => ({
+      ...prev,
+      [groupLabel]: !prev[groupLabel]
+    }));
+  };
+
+  // Função para verificar se o usuário tem permissão para um item
+  const hasPermission = (roles: Perfil[]) => {
+    if (!perfil) return false;
+    return roles.includes(perfil);
+  };
+
+  // Menu items normais (sem submenu)
   const menuItems: MenuItem[] = [
     { 
       label: 'Dashboard', 
@@ -130,10 +166,10 @@ export default function Sidebar() {
       roles: ['admin', 'optometrista', 'caixa', 'recepcao'] 
     },
     { 
-      label: 'Faturas', 
-      href: '/dashboard/faturas', 
-      icon: <FileText size={20} />, 
-      roles: ['admin', 'caixa'] 
+      label: 'Parcelas',  // NOVO MENU DE PARCELAS
+      href: '/dashboard/parcelas', 
+      icon: <Wallet size={20} />, 
+      roles: ['admin', 'caixa']  // Apenas admin e caixa podem ver parcelas
     },
     { 
       label: 'Relatórios', 
@@ -149,15 +185,67 @@ export default function Sidebar() {
     },
   ];
 
+  // Menu groups (com submenus)
+  const menuGroups: MenuGroup[] = [
+    {
+      label: 'Documentos',
+      icon: <FileText size={20} />,
+      roles: ['admin', 'optometrista', 'caixa'],
+      subItems: [
+        {
+          label: 'Faturas',
+          href: '/dashboard/faturas',
+          icon: <Receipt size={18} />,
+          roles: ['admin', 'caixa']
+        },
+        {
+          label: 'Nota de Entrega',
+          href: '/dashboard/nota-entrega',
+          icon: <Truck size={18} />,
+          roles: ['admin', 'caixa']
+        },
+        {
+          label: 'Recibo',
+          href: '/dashboard/recibo',
+          icon: <FileCheck size={18} />,
+          roles: ['admin', 'caixa']
+        },
+        {
+          label: 'Justificativos',
+          href: '/dashboard/justificativos',
+          icon: <FileWarning size={18} />,
+          roles: ['admin', 'optometrista']
+        }
+      ]
+    }
+  ];
+
+  // Filtrar menu items normais baseado no perfil
   const allowedMenu = menuItems.filter(
     (item) => perfil && item.roles.includes(perfil)
   );
+
+  // Filtrar grupos baseado no perfil (se o grupo tem alguma role que o usuário tem)
+  const allowedGroups = menuGroups.filter(
+    (group) => perfil && group.roles.includes(perfil)
+  );
+
+  // Para cada grupo, filtrar os subItems baseado no perfil do usuário
+  const filteredGroups = allowedGroups.map(group => ({
+    ...group,
+    subItems: group.subItems.filter(subItem => hasPermission(subItem.roles))
+  })).filter(group => group.subItems.length > 0); // Remove grupos que ficaram sem subitens
 
   const isActive = (href: string) => {
     if (href === '/dashboard') {
       return pathname === href;
     }
     return pathname.startsWith(href);
+  };
+
+  // Verificar se algum subitem do grupo está ativo
+  const isGroupActive = (group: MenuGroup) => {
+    return group.subItems.some(subItem => pathname.startsWith(subItem.href));
   };
 
   const logoUrl = config?.logo ? `${getApiUrl(config.logo)}?v=${imageVersion}` : null;
@@ -265,6 +353,7 @@ export default function Sidebar() {
 
       {/* Menu de Navegação */}
       <nav className="flex-1 space-y-1 overflow-y-auto">
+        {/* Menu items normais */}
         {allowedMenu.map((item) => {
           const active = isActive(item.href);
           return (
@@ -284,6 +373,66 @@ export default function Sidebar() {
               </span>
               {!collapsed && <span className="font-medium text-sm">{item.label}</span>}
             </Link>
+          );
+        })}
+
+        {/* Menu groups com submenus - já filtrados por perfil */}
+        {filteredGroups.map((group) => {
+          const groupActive = isGroupActive(group);
+          const isOpen = openGroups[group.label] || groupActive;
+          
+          return (
+            <div key={group.label} className="space-y-1">
+              {/* Botão do grupo */}
+              <button
+                onClick={() => !collapsed && toggleGroup(group.label)}
+                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all duration-200 group ${
+                  groupActive
+                    ? 'bg-gradient-to-r from-indigo-600 to-purple-600 text-white shadow-md'
+                    : 'text-gray-600 hover:bg-gray-100 hover:text-indigo-600'
+                } ${collapsed ? 'justify-center' : ''}`}
+                title={collapsed ? group.label : ''}
+              >
+                <span className={groupActive ? 'text-white' : 'text-gray-500 group-hover:text-indigo-600'}>
+                  {group.icon}
+                </span>
+                {!collapsed && (
+                  <>
+                    <span className="flex-1 text-left font-medium text-sm">{group.label}</span>
+                    <ChevronDown 
+                      size={16} 
+                      className={`transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`}
+                    />
+                  </>
+                )}
+              </button>
+
+              {/* Submenus - apenas os que o usuário tem permissão */}
+              {!collapsed && isOpen && (
+                <div className="ml-6 space-y-1 border-l-2 border-gray-100 pl-2">
+                  {group.subItems.map((subItem) => {
+                    const active = pathname === subItem.href;
+                    return (
+                      <Link
+                        key={subItem.href}
+                        href={subItem.href}
+                        onClick={() => setMobileOpen(false)}
+                        className={`flex items-center gap-3 px-3 py-2 rounded-lg transition-all duration-200 ${
+                          active
+                            ? 'bg-indigo-50 text-indigo-700 font-medium'
+                            : 'text-gray-500 hover:bg-gray-50 hover:text-indigo-600'
+                        }`}
+                      >
+                        <span className={active ? 'text-indigo-600' : 'text-gray-400'}>
+                          {subItem.icon}
+                        </span>
+                        <span className="text-sm">{subItem.label}</span>
+                      </Link>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
           );
         })}
       </nav>

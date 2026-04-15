@@ -9,7 +9,8 @@ import {
   ShoppingCart, DollarSign, X,
   CheckCircle, AlertCircle, UserPlus,
   Calendar, Phone, MapPin, Hash, User,
-  Trash2, Edit, Eye, Stethoscope, FlaskConical
+  Trash2, Edit, Eye, Stethoscope, FlaskConical,
+  ChevronLeft, ChevronRight, Mail
 } from 'lucide-react';
 import { io, Socket } from 'socket.io-client';
 
@@ -68,6 +69,7 @@ interface Paciente {
   data_nascimento?: string;
   endereco?: string;
   sexo?: string;
+  email?: string;
   created_at?: string;
 }
 
@@ -87,6 +89,7 @@ interface PacienteFormData {
   data_nascimento: string;
   endereco: string;
   sexo: string;
+  email: string;
 }
 
 interface AtendimentoPaciente {
@@ -125,6 +128,7 @@ interface Consulta {
     nome: string;
     nif?: string;
     telefone?: string;
+    email?: string;
   };
   optometrista?: {
     id: number;
@@ -153,6 +157,7 @@ interface EncomendaOculos {
     nome: string;
     nif?: string;
     telefone?: string;
+    email?: string;
   };
   usuario?: {
     id: number;
@@ -245,7 +250,23 @@ export default function GestaoComercialPage() {
   const [itensVenda, setItensVenda] = useState<VendaItemCarrinho[]>([]);
   const [descontoVenda, setDescontoVenda] = useState<number>(0);
   const [formaPagamentoVenda, setFormaPagamentoVenda] = useState('dinheiro');
-  const [pacienteSelecionado, setPacienteSelecionado] = useState<string>('');
+  const [pacienteSelecionadoId, setPacienteSelecionadoId] = useState<string>('');
+  const [pacienteSelecionadoNome, setPacienteSelecionadoNome] = useState<string>('');
+  const [buscaClienteVenda, setBuscaClienteVenda] = useState('');
+  const [clientesPesquisaVenda, setClientesPesquisaVenda] = useState<Paciente[]>([]);
+  const [mostrarResultadosPesquisa, setMostrarResultadosPesquisa] = useState(false);
+  const [modalClienteVendaOpen, setModalClienteVendaOpen] = useState(false);
+  const [submittingClienteVenda, setSubmittingClienteVenda] = useState(false);
+  const [novoClienteVenda, setNovoClienteVenda] = useState<PacienteFormData>({
+    nome: '',
+    telefone: '',
+    nif: '',
+    data_nascimento: '',
+    endereco: '',
+    sexo: '',
+    email: '',
+  });
+  const [buscaClienteTimeout, setBuscaClienteTimeout] = useState<NodeJS.Timeout | null>(null);
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
   const [vendas, setVendas] = useState<VendaRegistro[]>([]);
@@ -271,7 +292,8 @@ export default function GestaoComercialPage() {
     nif: '',
     data_nascimento: '',
     endereco: '',
-    sexo: ''
+    sexo: '',
+    email: '',
   });
   const [submittingPaciente, setSubmittingPaciente] = useState(false);
 
@@ -285,6 +307,14 @@ export default function GestaoComercialPage() {
     title: '',
     message: '',
     onConfirm: () => { }
+  });
+
+  const [accessDeniedModal, setAccessDeniedModal] = useState<{
+    isOpen: boolean;
+    message: string;
+  }>({
+    isOpen: false,
+    message: ''
   });
 
   /* ======= ESTADOS PARA ATENDIMENTOS ======= */
@@ -333,6 +363,10 @@ export default function GestaoComercialPage() {
   const [filtroEncomendas, setFiltroEncomendas] = useState('');
   const [paginaEncomenda, setPaginaEncomenda] = useState<Record<string, number>>({});
 
+  /* ======= SOCKETS ======= */
+  const [atendimentoSocket, setAtendimentoSocket] = useState<Socket | null>(null);
+  const [laboratorioSocket, setLaboratorioSocket] = useState<Socket | null>(null);
+
   /* ================== FUNÇÕES DE PERFIL ================== */
   const userPerfil = authUser?.perfil?.toLowerCase() || '';
   const isAdmin = userPerfil === 'admin';
@@ -348,6 +382,104 @@ export default function GestaoComercialPage() {
   const setPaginaEncomendaFn = (status: string, page: number) =>
     setPaginaEncomenda(prev => ({ ...prev, [status]: page }));
 
+  /* ================== SOCKETS EM TEMPO REAL ================== */
+
+  // Socket para Atendimentos
+  useEffect(() => {
+    const token = localStorage.getItem('token');
+    if (!token) return;
+
+    const socketAtendimento = io(getApiUrl(''), {
+      path: '/socket.io',
+      transports: ['websocket', 'polling'],
+      auth: { token },
+      reconnection: true
+    });
+
+    socketAtendimento.on('connect', () => {
+      console.log('Socket de Atendimentos conectado');
+    });
+
+    socketAtendimento.on('novo-atendimento', (novoAtendimento: Atendimento) => {
+      console.log('Novo atendimento recebido:', novoAtendimento);
+      setAtendimentos(prev => {
+        if (prev.some(a => a.id === novoAtendimento.id)) return prev;
+        return [novoAtendimento, ...prev];
+      });
+    });
+
+    socketAtendimento.on('atendimento-atualizado', (atendimentoAtualizado: Atendimento) => {
+      console.log('Atendimento atualizado:', atendimentoAtualizado);
+      setAtendimentos(prev =>
+        prev.map(a => a.id === atendimentoAtualizado.id ? atendimentoAtualizado : a)
+      );
+      setAtendimentosEmConsulta(prev =>
+        prev.map(a => a.id === atendimentoAtualizado.id ? atendimentoAtualizado : a)
+      );
+    });
+
+    socketAtendimento.on('atendimento-removido', ({ id }: { id: number }) => {
+      console.log('Atendimento removido:', id);
+      setAtendimentos(prev => prev.filter(a => a.id !== id));
+      setAtendimentosEmConsulta(prev => prev.filter(a => a.id !== id));
+    });
+
+    setAtendimentoSocket(socketAtendimento);
+
+    return () => {
+      socketAtendimento.disconnect();
+    };
+  }, []);
+
+  // Socket para Laboratório/Encomendas
+  useEffect(() => {
+    const token = localStorage.getItem('token');
+    if (!token) return;
+
+    const socketLaboratorio = io(getApiUrl(''), {
+      path: '/socket.io',
+      transports: ['websocket', 'polling'],
+      auth: { token },
+      reconnection: true
+    });
+
+    socketLaboratorio.on('connect', () => {
+      console.log('Socket de Laboratório conectado');
+    });
+
+    socketLaboratorio.on('nova-encomenda-oculos', (novaEncomenda: EncomendaOculos) => {
+      console.log('Nova encomenda recebida:', novaEncomenda);
+      setEncomendas(prev => {
+        if (prev.some(e => e.id === novaEncomenda.id)) return prev;
+        return [novaEncomenda, ...prev];
+      });
+    });
+
+    socketLaboratorio.on('encomenda-atualizada', (encomendaAtualizada: EncomendaOculos) => {
+      console.log('Encomenda atualizada:', encomendaAtualizada);
+      setEncomendas(prev =>
+        prev.map(e => e.id === encomendaAtualizada.id ? encomendaAtualizada : e)
+      );
+    });
+
+    socketLaboratorio.on('encomenda-removida', ({ id }: { id: number }) => {
+      console.log('Encomenda removida:', id);
+      setEncomendas(prev => prev.filter(e => e.id !== id));
+    });
+
+    setLaboratorioSocket(socketLaboratorio);
+
+    return () => {
+      socketLaboratorio.disconnect();
+    };
+  }, []);
+
+
+  useEffect(() => {
+    const emConsulta = atendimentos.filter(a => a.status === 'em_consulta');
+    setAtendimentosEmConsulta(emConsulta);
+  }, [atendimentos]);
+
   /* ================== FETCH ================== */
   useEffect(() => {
     carregarDadosIniciais();
@@ -362,7 +494,8 @@ export default function GestaoComercialPage() {
         const filtrados = pacientes.filter(p =>
           p.nome.toLowerCase().includes(termo) ||
           (p.telefone && p.telefone.includes(termo)) ||
-          (p.nif && p.nif.includes(termo))
+          (p.nif && p.nif.includes(termo)) ||
+          (p.email && p.email.toLowerCase().includes(termo))
         );
         setPacientesFiltrados(filtrados);
       }
@@ -395,8 +528,6 @@ export default function GestaoComercialPage() {
 
   const fetchProdutosServicos = async () => {
     try {
-      // Verifica se o usuário tem permissão para acessar produtos/serviços
-      // Apenas caixa e admin precisam desses dados para a aba de vendas
       if (!isCaixa && !isAdmin) {
         console.log('Usuário sem permissão para produtos/serviços, ignorando...');
         return;
@@ -407,7 +538,6 @@ export default function GestaoComercialPage() {
         fetch(getApiUrl('/servicos'), { headers: getAuthHeaders() })
       ]);
 
-      // Se não tiver permissão (403), apenas retorna sem erro
       if (prodRes.status === 403 || servRes.status === 403) {
         console.log('Acesso negado a produtos/serviços');
         return;
@@ -437,8 +567,6 @@ export default function GestaoComercialPage() {
       setProdutosVenda([...listaProdutos, ...listaServicos]);
     } catch (err) {
       console.error('Erro ao carregar produtos/serviços:', err);
-      // Não mostra mensagem de erro para o usuário, apenas log
-      // mostrarMensagem('error', 'Erro ao carregar produtos e serviços');
     }
   };
 
@@ -556,6 +684,129 @@ export default function GestaoComercialPage() {
     setTimeout(() => setMessage(null), 5000);
   };
 
+  const mostrarAcessoNegado = (mensagem: string) => {
+    setAccessDeniedModal({
+      isOpen: true,
+      message: mensagem || 'Você não tem permissão para realizar esta ação.'
+    });
+  };
+
+  /* ================== PESQUISA DE CLIENTES PARA VENDA ================== */
+  const pesquisarClientesVenda = async (termo: string) => {
+    if (!termo || termo.length < 2) {
+      setClientesPesquisaVenda([]);
+      return;
+    }
+
+    try {
+      const res = await fetch(getApiUrl(`/pacientes/search?search=${encodeURIComponent(termo)}`), {
+        headers: getAuthHeaders()
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        setClientesPesquisaVenda(data);
+        setMostrarResultadosPesquisa(true);
+      }
+    } catch (err) {
+      console.error('Erro ao pesquisar clientes:', err);
+    }
+  };
+
+  const handleBuscaClienteChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const valor = e.target.value;
+    setBuscaClienteVenda(valor);
+
+    if (buscaClienteTimeout) clearTimeout(buscaClienteTimeout);
+
+    const timeout = setTimeout(() => {
+      pesquisarClientesVenda(valor);
+    }, 300);
+
+    setBuscaClienteTimeout(timeout);
+  };
+
+  const selecionarClienteVenda = (cliente: Paciente) => {
+    setPacienteSelecionadoId(String(cliente.id));
+    setPacienteSelecionadoNome(cliente.nome);
+    setBuscaClienteVenda(cliente.nome);
+    setMostrarResultadosPesquisa(false);
+  };
+
+  const limparClienteVenda = () => {
+    setPacienteSelecionadoId('');
+    setPacienteSelecionadoNome('');
+    setBuscaClienteVenda('');
+    setClientesPesquisaVenda([]);
+  };
+
+  /* ================== CRIAR CLIENTE RÁPIDO NA VENDA ================== */
+  const handleNovoClienteVendaChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
+    const { name, value } = e.target;
+    setNovoClienteVenda(prev => ({ ...prev, [name]: value }));
+  };
+
+  const resetarNovoClienteVenda = () => {
+    setNovoClienteVenda({
+      nome: '',
+      telefone: '',
+      nif: '',
+      data_nascimento: '',
+      endereco: '',
+      sexo: '',
+      email: '',
+    });
+  };
+
+  const salvarClienteVenda = async (e: React.FormEvent) => {
+    e.preventDefault();
+
+    if (!novoClienteVenda.nome.trim()) {
+      mostrarMensagem('error', 'O nome do cliente é obrigatório');
+      return;
+    }
+
+    setSubmittingClienteVenda(true);
+
+    try {
+      const res = await fetch(getApiUrl('/pacientes'), {
+        method: 'POST',
+        headers: { ...getAuthHeaders(), 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          nome: novoClienteVenda.nome,
+          telefone: novoClienteVenda.telefone || null,
+          nif: novoClienteVenda.nif || null,
+          data_nascimento: novoClienteVenda.data_nascimento || null,
+          endereco: novoClienteVenda.endereco || null,
+          sexo: novoClienteVenda.sexo || null,
+          email: novoClienteVenda.email || null
+        })
+      });
+
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Erro ao criar cliente');
+
+      const novoCliente = data.data;
+      mostrarMensagem('success', `Cliente ${novoCliente.nome} cadastrado com sucesso!`);
+      
+      // Selecionar o cliente recém-criado
+      selecionarClienteVenda(novoCliente);
+      
+      // Fechar modal e limpar formulário
+      setModalClienteVendaOpen(false);
+      resetarNovoClienteVenda();
+      
+      // Atualizar lista de pacientes
+      await fetchPacientes();
+
+    } catch (err) {
+      console.error(err);
+      mostrarMensagem('error', err instanceof Error ? err.message : 'Erro ao criar cliente');
+    } finally {
+      setSubmittingClienteVenda(false);
+    }
+  };
+
   /* ================== CARRINHO ================== */
   const addItemVenda = (p: ProdutoVenda) => {
     if (itensVenda.find(i => i.nome === p.nome)) {
@@ -585,7 +836,7 @@ export default function GestaoComercialPage() {
   const limparCarrinho = () => {
     setItensVenda([]);
     setDescontoVenda(0);
-    setPacienteSelecionado('');
+    limparClienteVenda();
   };
 
   const totalVenda = itensVenda.reduce((s, i) => s + i.subtotal, 0) - descontoVenda;
@@ -598,7 +849,7 @@ export default function GestaoComercialPage() {
     }
 
     const body = {
-      paciente_id: pacienteSelecionado ? Number(pacienteSelecionado) : null,
+      paciente_id: pacienteSelecionadoId ? Number(pacienteSelecionadoId) : null,
       forma_pagamento: formaPagamentoVenda,
       desconto: descontoVenda,
       itens: itensVenda.map(i => ({
@@ -696,7 +947,7 @@ export default function GestaoComercialPage() {
   };
 
   /* ================== CRUD PACIENTE ================== */
-  const handlePacienteFormChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
+  const handlePacienteFormChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
     setPacienteForm(prev => ({ ...prev, [name]: value }));
   };
@@ -709,7 +960,8 @@ export default function GestaoComercialPage() {
       nif: paciente.nif || '',
       data_nascimento: paciente.data_nascimento || '',
       endereco: paciente.endereco || '',
-      sexo: paciente.sexo || ''
+      sexo: paciente.sexo || '',
+      email: paciente.email || '',
     });
   };
 
@@ -721,7 +973,8 @@ export default function GestaoComercialPage() {
       nif: '',
       data_nascimento: '',
       endereco: '',
-      sexo: ''
+      sexo: '',
+      email: '',
     });
   };
 
@@ -747,7 +1000,8 @@ export default function GestaoComercialPage() {
           nif: pacienteForm.nif || null,
           data_nascimento: pacienteForm.data_nascimento || null,
           endereco: pacienteForm.endereco || null,
-          sexo: pacienteForm.sexo || null
+          sexo: pacienteForm.sexo || null,
+          email: pacienteForm.email || null
         })
       });
 
@@ -786,7 +1040,8 @@ export default function GestaoComercialPage() {
           nif: pacienteForm.nif || null,
           data_nascimento: pacienteForm.data_nascimento || null,
           endereco: pacienteForm.endereco || null,
-          sexo: pacienteForm.sexo || null
+          sexo: pacienteForm.sexo || null,
+          email: pacienteForm.email || null
         })
       });
 
@@ -801,7 +1056,8 @@ export default function GestaoComercialPage() {
         nif: '',
         data_nascimento: '',
         endereco: '',
-        sexo: ''
+        sexo: '',
+        email: '',
       });
 
       await fetchPacientes();
@@ -863,6 +1119,10 @@ export default function GestaoComercialPage() {
 
       if (!res.ok) {
         const data = await res.json();
+        if (res.status === 403) {
+          mostrarAcessoNegado(data.error || 'Acesso negado. Você não tem permissão para abrir atendimentos.');
+          return;
+        }
         throw new Error(data.error || 'Erro ao abrir atendimento');
       }
 
@@ -870,7 +1130,7 @@ export default function GestaoComercialPage() {
       setModalAtendimentoOpen(false);
       setPacienteIdAtendimento('');
       setSearchPacienteAtendimento('');
-      await fetchAtendimentos();
+      // O socket vai atualizar a lista automaticamente
 
     } catch (err) {
       console.error(err);
@@ -892,12 +1152,15 @@ export default function GestaoComercialPage() {
 
       if (!res.ok) {
         const data = await res.json();
+        if (res.status === 403) {
+          mostrarAcessoNegado(data.error || 'Acesso negado. Você não tem permissão para alterar o status deste atendimento.');
+          return;
+        }
         throw new Error(data.error || 'Erro ao alterar status');
       }
 
       mostrarMensagem('success', `Status alterado para ${next}`);
-      await fetchAtendimentos();
-      await fetchAtendimentosEmConsulta();
+      // O socket vai atualizar a lista automaticamente
 
     } catch (err) {
       console.error(err);
@@ -926,11 +1189,15 @@ export default function GestaoComercialPage() {
 
       if (!res.ok) {
         const data = await res.json();
+        if (res.status === 403) {
+          mostrarAcessoNegado(data.error || 'Acesso negado. Você não tem permissão para remover atendimentos.');
+          return;
+        }
         throw new Error(data.error || 'Erro ao remover atendimento');
       }
 
       mostrarMensagem('success', 'Atendimento removido com sucesso!');
-      await fetchAtendimentos();
+      // O socket vai atualizar a lista automaticamente
 
     } catch (err) {
       console.error(err);
@@ -1056,6 +1323,10 @@ export default function GestaoComercialPage() {
 
       if (!res.ok) {
         const data = await res.json();
+        if (res.status === 403) {
+          mostrarAcessoNegado(data.error || 'Acesso negado. Você não tem permissão para registrar consultas.');
+          return;
+        }
         throw new Error(data.error || 'Erro ao registrar consulta');
       }
 
@@ -1093,6 +1364,10 @@ export default function GestaoComercialPage() {
 
       if (!res.ok) {
         const data = await res.json();
+        if (res.status === 403) {
+          mostrarAcessoNegado(data.error || 'Acesso negado. Você não tem permissão para excluir consultas.');
+          return;
+        }
         throw new Error(data.error || 'Erro ao excluir consulta');
       }
 
@@ -1106,9 +1381,6 @@ export default function GestaoComercialPage() {
   };
 
   const imprimirReceita = (consulta: Consulta) => {
-    const win = window.open('', '_blank');
-    if (!win) return;
-
     const empresaNome = config?.nome_empresa || 'Óptica';
     const empresaNif = config?.nif_empresa || '';
     const empresaTelefone = config?.telefone_empresa || '';
@@ -1149,6 +1421,7 @@ export default function GestaoComercialPage() {
               <p><strong>Paciente:</strong> ${consulta.paciente?.nome || '-'}</p>
               ${consulta.paciente?.nif ? `<p><strong>NIF:</strong> ${consulta.paciente.nif}</p>` : ''}
               ${consulta.paciente?.telefone ? `<p><strong>Telefone:</strong> ${consulta.paciente.telefone}</p>` : ''}
+              ${consulta.paciente?.email ? `<p><strong>Email:</strong> ${consulta.paciente.email}</p>` : ''}
               <p><strong>Data:</strong> ${new Date().toLocaleDateString('pt-AO')}</p>
             </div>
             <table>
@@ -1170,15 +1443,19 @@ export default function GestaoComercialPage() {
       </html>
     `;
 
-    win.document.write(html);
-    win.document.close();
+    const win = window.open('', '_blank');
+    if (win) {
+      win.document.write(html);
+      win.document.close();
+    }
   };
 
   const consultasFiltradas = consultas.filter(c => {
     const nome = c.paciente?.nome?.toLowerCase() || '';
     const nif = c.paciente?.nif?.toLowerCase() || '';
+    const email = c.paciente?.email?.toLowerCase() || '';
     const busca = filtroConsultas.toLowerCase();
-    const matchTexto = nome.includes(busca) || nif.includes(busca);
+    const matchTexto = nome.includes(busca) || nif.includes(busca) || email.includes(busca);
 
     if (filtroConsultasData) {
       const dataConsulta = new Date(c.created_at).toLocaleDateString('pt-AO');
@@ -1208,6 +1485,10 @@ export default function GestaoComercialPage() {
 
       if (!res.ok) {
         const data = await res.json();
+        if (res.status === 403) {
+          mostrarAcessoNegado(data.error || 'Acesso negado. Você não tem permissão para criar encomendas.');
+          return;
+        }
         throw new Error(data.error || 'Erro ao criar encomenda');
       }
 
@@ -1217,7 +1498,7 @@ export default function GestaoComercialPage() {
       setTipoServico('oculos_novo');
       setDataPrevista('');
       setObservacaoEncomenda('');
-      await fetchEncomendas();
+      // O socket vai atualizar a lista automaticamente
 
     } catch (err) {
       console.error(err);
@@ -1239,11 +1520,15 @@ export default function GestaoComercialPage() {
 
       if (!res.ok) {
         const data = await res.json();
+        if (res.status === 403) {
+          mostrarAcessoNegado(data.error || 'Acesso negado. Você não tem permissão para alterar o status desta encomenda.');
+          return;
+        }
         throw new Error(data.error || 'Erro ao alterar status');
       }
 
       mostrarMensagem('success', `Status alterado para ${next}`);
-      await fetchEncomendas();
+      // O socket vai atualizar a lista automaticamente
 
     } catch (err) {
       console.error(err);
@@ -1271,11 +1556,15 @@ export default function GestaoComercialPage() {
 
       if (!res.ok) {
         const data = await res.json();
+        if (res.status === 403) {
+          mostrarAcessoNegado(data.error || 'Acesso negado. Você não tem permissão para remover encomendas.');
+          return;
+        }
         throw new Error(data.error || 'Erro ao remover encomenda');
       }
 
       mostrarMensagem('success', 'Encomenda removida com sucesso!');
-      await fetchEncomendas();
+      // O socket vai atualizar a lista automaticamente
 
     } catch (err) {
       console.error(err);
@@ -1324,6 +1613,7 @@ export default function GestaoComercialPage() {
       const pacienteNome = venda.atendimento?.paciente?.nome || venda.paciente?.nome || 'Cliente Avulso';
       const pacienteNif = venda.atendimento?.paciente?.nif || venda.paciente?.nif || '';
       const pacienteTelefone = venda.atendimento?.paciente?.telefone || venda.paciente?.telefone || '';
+      const pacienteEmail = venda.atendimento?.paciente?.email || venda.paciente?.email || '';
 
       const dataVenda = venda.created_at ? new Date(venda.created_at).toLocaleString('pt-AO') : new Date().toLocaleString('pt-AO');
       const numeroFatura = venda.fatura?.numero || `FAT-${String(venda.id).padStart(5, '0')}`;
@@ -1377,16 +1667,12 @@ export default function GestaoComercialPage() {
                 <p><strong>Cliente:</strong> ${pacienteNome}</p>
                 ${pacienteNif ? `<p><strong>NIF:</strong> ${pacienteNif}</p>` : ''}
                 ${pacienteTelefone ? `<p><strong>Telefone:</strong> ${pacienteTelefone}</p>` : ''}
+                ${pacienteEmail ? `<p><strong>Email:</strong> ${pacienteEmail}</p>` : ''}
                 <p><strong>Data:</strong> ${dataVenda}</p>
               </div>
               <table>
                 <thead>
-                  <tr>
-                    <th>Descrição</th>
-                    <th style="width:60px;">Qtd</th>
-                    <th style="width:100px;">Preço Unit.</th>
-                    <th style="width:100px;">Subtotal</th>
-                  </tr>
+                  <tr><th>Descrição</th><th style="width:60px;">Qtd</th><th style="width:100px;">Preço Unit.</th><th style="width:100px;">Subtotal</th></tr>
                 </thead>
                 <tbody>
                   ${linhasProdutos}
@@ -1583,8 +1869,67 @@ export default function GestaoComercialPage() {
                         ))}
                       </div>
                       <div className="mt-4 bg-white border rounded-lg p-4">
+                        {/* Campo de pesquisa de cliente */}
+                        <div className="mb-4">
+                          <label className="block text-sm font-medium text-gray-700 mb-1">Cliente</label>
+                          <div className="relative">
+                            <div className="flex gap-2">
+                              <div className="relative flex-1">
+                                <Search className="absolute left-3 top-2.5 text-gray-400" size={18} />
+                                <input
+                                  type="text"
+                                  placeholder="Pesquisar cliente por nome, telefone, NIF ou email..."
+                                  value={buscaClienteVenda}
+                                  onChange={handleBuscaClienteChange}
+                                  onFocus={() => buscaClienteVenda.length >= 2 && setMostrarResultadosPesquisa(true)}
+                                  className="w-full border rounded-lg pl-10 pr-4 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                                />
+                                {mostrarResultadosPesquisa && clientesPesquisaVenda.length > 0 && (
+                                  <div className="absolute z-10 w-full mt-1 bg-white border rounded-lg shadow-lg max-h-60 overflow-y-auto">
+                                    {clientesPesquisaVenda.map(cliente => (
+                                      <div
+                                        key={cliente.id}
+                                        onClick={() => selecionarClienteVenda(cliente)}
+                                        className="p-3 hover:bg-indigo-50 cursor-pointer border-b last:border-b-0 transition-colors"
+                                      >
+                                        <p className="font-medium text-gray-800">{cliente.nome}</p>
+                                        <div className="flex flex-wrap gap-2 mt-1 text-xs text-gray-500">
+                                          {cliente.telefone && <span>📞 {cliente.telefone}</span>}
+                                          {cliente.email && <span>✉️ {cliente.email}</span>}
+                                          {cliente.nif && <span>🆔 {cliente.nif}</span>}
+                                        </div>
+                                      </div>
+                                    ))}
+                                  </div>
+                                )}
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => setModalClienteVendaOpen(true)}
+                                className="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 transition-colors flex items-center gap-2 whitespace-nowrap"
+                              >
+                                <UserPlus size={18} /> Novo
+                              </button>
+                            </div>
+                          </div>
+                          {/* Cliente selecionado */}
+                          {pacienteSelecionadoId && (
+                            <div className="mt-2 p-2 bg-indigo-50 rounded-lg flex justify-between items-center">
+                              <div>
+                                <span className="text-sm font-medium text-indigo-700">Cliente selecionado:</span>
+                                <span className="text-sm text-indigo-600 ml-2">{pacienteSelecionadoNome}</span>
+                              </div>
+                              <button
+                                type="button"
+                                onClick={limparClienteVenda}
+                                className="text-red-500 hover:text-red-700 text-sm"
+                              >
+                                <X size={16} />
+                              </button>
+                            </div>
+                          )}
+                        </div>
                         <div className="grid grid-cols-2 gap-4 mb-4">
-                          <div><label className="block text-sm font-medium text-gray-700 mb-1">Cliente</label><select value={pacienteSelecionado} onChange={e => setPacienteSelecionado(e.target.value)} className="w-full border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500"><option value="">Cliente Avulso</option>{pacientes.map(p => (<option key={p.id} value={p.id}>{p.nome}</option>))}</select></div>
                           <div><label className="block text-sm font-medium text-gray-700 mb-1">Forma de Pagamento</label><select value={formaPagamentoVenda} onChange={e => setFormaPagamentoVenda(e.target.value)} className="w-full border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500"><option value="dinheiro">Dinheiro</option><option value="multicaixa">Multicaixa</option><option value="transferencia">Transferência</option><option value="seguro">Seguro</option></select></div>
                         </div>
                         <div className="flex justify-between items-center mb-3"><label className="text-sm font-medium text-gray-700">Desconto:</label><input type="number" value={descontoVenda} onChange={e => setDescontoVenda(Number(e.target.value))} className="w-32 border rounded-lg px-3 py-1 text-right focus:outline-none focus:ring-2 focus:ring-indigo-500" min="0" step="100" /></div>
@@ -1655,6 +2000,7 @@ export default function GestaoComercialPage() {
                     <form onSubmit={editandoPaciente ? atualizarPaciente : criarPaciente} className="space-y-4">
                       <div><label className="block text-sm font-medium text-gray-700 mb-1">Nome Completo *</label><div className="relative"><Users className="absolute left-3 top-2.5 text-gray-400" size={18} /><input type="text" name="nome" value={pacienteForm.nome} onChange={handlePacienteFormChange} className="w-full border rounded-lg pl-10 pr-4 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500" placeholder="Digite o nome completo" required /></div></div>
                       <div><label className="block text-sm font-medium text-gray-700 mb-1">Telefone</label><div className="relative"><Phone className="absolute left-3 top-2.5 text-gray-400" size={18} /><input type="tel" name="telefone" value={pacienteForm.telefone} onChange={handlePacienteFormChange} className="w-full border rounded-lg pl-10 pr-4 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500" placeholder="+244 900-000-000" /></div></div>
+                      <div><label className="block text-sm font-medium text-gray-700 mb-1">Email</label><div className="relative"><Mail className="absolute left-3 top-2.5 text-gray-400" size={18} /><input type="email" name="email" value={pacienteForm.email} onChange={handlePacienteFormChange} className="w-full border rounded-lg pl-10 pr-4 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500" placeholder="exemplo@email.com" /></div></div>
                       <div><label className="block text-sm font-medium text-gray-700 mb-1">NIF</label><div className="relative"><Hash className="absolute left-3 top-2.5 text-gray-400" size={18} /><input type="text" name="nif" value={pacienteForm.nif} onChange={handlePacienteFormChange} className="w-full border rounded-lg pl-10 pr-4 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500" placeholder="Número de identificação fiscal" /></div></div>
                       <div><label className="block text-sm font-medium text-gray-700 mb-1">Sexo</label><div className="relative"><User className="absolute left-3 top-2.5 text-gray-400" size={18} /><select name="sexo" value={pacienteForm.sexo} onChange={handlePacienteFormChange} className="w-full border rounded-lg pl-10 pr-4 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500"><option value="">Selecione</option><option value="M">Masculino</option><option value="F">Feminino</option></select></div></div>
                       <div><label className="block text-sm font-medium text-gray-700 mb-1">Data de Nascimento</label><div className="relative"><Calendar className="absolute left-3 top-2.5 text-gray-400" size={18} /><input type="date" name="data_nascimento" value={pacienteForm.data_nascimento} onChange={handlePacienteFormChange} className="w-full border rounded-lg pl-10 pr-4 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500" /></div></div>
@@ -1669,7 +2015,7 @@ export default function GestaoComercialPage() {
                   </div>
                   <div className="bg-gray-50 rounded-lg p-6">
                     <h3 className="font-semibold text-lg mb-4 flex items-center gap-2"><Users size={20} /> Pacientes Cadastrados</h3>
-                    <div className="relative mb-4"><Search className="absolute left-3 top-2.5 text-gray-400" size={18} /><input type="text" placeholder="Buscar por nome, telefone ou NIF..." value={buscaPaciente} onChange={e => setBuscaPaciente(e.target.value)} className="w-full border rounded-lg pl-10 pr-4 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500" /></div>
+                    <div className="relative mb-4"><Search className="absolute left-3 top-2.5 text-gray-400" size={18} /><input type="text" placeholder="Buscar por nome, telefone, NIF ou email..." value={buscaPaciente} onChange={e => setBuscaPaciente(e.target.value)} className="w-full border rounded-lg pl-10 pr-4 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500" /></div>
                     <div className="max-h-96 overflow-y-auto space-y-2">
                       {pacientesFiltrados.length === 0 ? (<p className="text-center text-gray-400 py-8">{buscaPaciente ? 'Nenhum paciente encontrado com essa busca' : 'Nenhum paciente cadastrado'}</p>) : (pacientesFiltrados.map(p => (
                         <div key={p.id} className="bg-white rounded-lg p-3 border hover:shadow-md transition-shadow">
@@ -1678,6 +2024,7 @@ export default function GestaoComercialPage() {
                               <p className="font-medium text-gray-800">{p.nome}</p>
                               <div className="flex flex-wrap gap-3 mt-1 text-xs text-gray-500">
                                 {p.telefone && (<span className="flex items-center gap-1"><Phone size={12} /> {p.telefone}</span>)}
+                                {p.email && (<span className="flex items-center gap-1"><Mail size={12} /> {p.email}</span>)}
                                 {p.nif && (<span className="flex items-center gap-1"><Hash size={12} /> {p.nif}</span>)}
                               </div>
                             </div>
@@ -1759,7 +2106,7 @@ export default function GestaoComercialPage() {
                     <form onSubmit={abrirAtendimento} className="bg-white rounded-xl shadow-lg w-full max-w-md p-6">
                       <div className="flex justify-between items-center mb-4"><h2 className="text-xl font-bold flex items-center gap-2"><UserPlus size={20} /> Novo Atendimento</h2><button type="button" onClick={() => setModalAtendimentoOpen(false)} className="text-gray-400 hover:text-gray-600"><X size={24} /></button></div>
                       <div className="mb-4"><label className="block text-sm font-medium text-gray-700 mb-1">Buscar Paciente</label><input type="text" placeholder="Digite o nome do paciente..." value={searchPacienteAtendimento} onChange={e => setSearchPacienteAtendimento(e.target.value)} className="w-full border rounded-lg p-2 focus:outline-none focus:ring-2 focus:ring-indigo-500" autoFocus /></div>
-                      <div className="mb-4"><label className="block text-sm font-medium text-gray-700 mb-1">Selecione o Paciente</label><select required value={pacienteIdAtendimento} onChange={e => setPacienteIdAtendimento(Number(e.target.value))} className="w-full border rounded-lg p-2 focus:outline-none focus:ring-2 focus:ring-indigo-500" size={5}><option value="">-- Selecione um paciente --</option>{pacientesDisponiveis.map(p => (<option key={p.id} value={p.id}>{p.nome} {p.telefone && `- 📞 ${p.telefone}`} {p.nif && `- 🆔 ${p.nif}`}</option>))}</select></div>
+                      <div className="mb-4"><label className="block text-sm font-medium text-gray-700 mb-1">Selecione o Paciente</label><select required value={pacienteIdAtendimento} onChange={e => setPacienteIdAtendimento(Number(e.target.value))} className="w-full border rounded-lg p-2 focus:outline-none focus:ring-2 focus:ring-indigo-500" size={5}><option value="">-- Selecione um paciente --</option>{pacientesDisponiveis.map(p => (<option key={p.id} value={p.id}>{p.nome} {p.telefone && `- 📞 ${p.telefone}`} {p.email && `- ✉️ ${p.email}`} {p.nif && `- 🆔 ${p.nif}`}</option>))}</select></div>
                       <div className="flex gap-3"><button type="button" onClick={() => setModalAtendimentoOpen(false)} className="flex-1 px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors">Cancelar</button><button type="submit" disabled={!pacienteIdAtendimento} className="flex-1 bg-green-600 text-white py-2 rounded-lg hover:bg-green-700 transition-colors disabled:bg-gray-400 disabled:cursor-not-allowed flex items-center justify-center gap-2"><UserPlus size={18} /> Abrir Atendimento</button></div>
                     </form>
                   </div>
@@ -1773,7 +2120,7 @@ export default function GestaoComercialPage() {
                 <div className="flex flex-col md:flex-row justify-between items-center mb-6 gap-4">
                   <h2 className="text-xl font-bold flex items-center gap-2"><FileText size={24} /> Gestão de Consultas</h2>
                   <div className="flex flex-col md:flex-row gap-2 w-full md:w-auto">
-                    <input type="text" placeholder="Pesquisar paciente ou NIF..." value={filtroConsultas} onChange={e => setFiltroConsultas(e.target.value)} className="flex-1 border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm w-64" />
+                    <input type="text" placeholder="Pesquisar paciente, NIF ou email..." value={filtroConsultas} onChange={e => setFiltroConsultas(e.target.value)} className="flex-1 border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm w-64" />
                     <input type="date" value={filtroConsultasData} onChange={e => setFiltroConsultasData(e.target.value)} className="border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm" />
                     {(isOptometrista || isAdmin) && (<button onClick={() => setModalConsultaOpen(true)} className="flex items-center gap-2 bg-indigo-600 text-white px-5 py-2 rounded-lg hover:bg-indigo-700 transition-colors shadow-md"><Plus size={18} /> Nova Consulta</button>)}
                   </div>
@@ -1783,7 +2130,7 @@ export default function GestaoComercialPage() {
                     <div key={consulta.id} className="bg-white rounded-xl shadow-md overflow-hidden hover:shadow-lg transition-shadow">
                       <div className="bg-gradient-to-r from-teal-500 to-indigo-600 px-4 py-3 text-white"><div className="flex justify-between items-center"><span className="font-bold">Consulta #{consulta.id}</span><span className="text-xs bg-white/20 px-2 py-1 rounded">{new Date(consulta.created_at).toLocaleDateString('pt-AO')}</span></div></div>
                       <div className="p-4">
-                        <div className="flex justify-between items-start mb-3"><div><h3 className="font-semibold text-gray-800">{consulta.paciente?.nome || 'Paciente não encontrado'}</h3>{consulta.paciente?.nif && <p className="text-xs text-gray-500">NIF: {consulta.paciente.nif}</p>}{consulta.paciente?.telefone && <p className="text-xs text-gray-500">📞 {consulta.paciente.telefone}</p>}</div><div className="text-right"><span className={`text-xs px-2 py-1 rounded ${consulta.atendimento?.status === 'consulta_concluida' ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'}`}>{consulta.atendimento?.status === 'consulta_concluida' ? 'Concluída' : 'Pendente'}</span></div></div>
+                        <div className="flex justify-between items-start mb-3"><div><h3 className="font-semibold text-gray-800">{consulta.paciente?.nome || 'Paciente não encontrado'}</h3>{consulta.paciente?.nif && <p className="text-xs text-gray-500">NIF: {consulta.paciente.nif}</p>}{consulta.paciente?.telefone && <p className="text-xs text-gray-500">📞 {consulta.paciente.telefone}</p>}{consulta.paciente?.email && <p className="text-xs text-gray-500">✉️ {consulta.paciente.email}</p>}</div><div className="text-right"><span className={`text-xs px-2 py-1 rounded ${consulta.atendimento?.status === 'consulta_concluida' ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'}`}>{consulta.atendimento?.status === 'consulta_concluida' ? 'Concluída' : 'Pendente'}</span></div></div>
                         <div className="bg-gray-50 rounded-lg p-3 mb-3"><div className="grid grid-cols-2 gap-2 text-sm"><div><p className="text-gray-500 text-xs">Olho Direito</p><p className="font-medium">{consulta.od_esferico || '-'} {consulta.od_cilindrico ? `${consulta.od_cilindrico}` : ''} {consulta.od_eixo ? `x${consulta.od_eixo}` : ''}</p></div><div><p className="text-gray-500 text-xs">Olho Esquerdo</p><p className="font-medium">{consulta.oe_esferico || '-'} {consulta.oe_cilindrico ? `${consulta.oe_cilindrico}` : ''} {consulta.oe_eixo ? `x${consulta.oe_eixo}` : ''}</p></div>{consulta.adicao && (<div><p className="text-gray-500 text-xs">Adição</p><p className="font-medium">{consulta.adicao}</p></div>)}{consulta.dnp && (<div><p className="text-gray-500 text-xs">DNP</p><p className="font-medium">{consulta.dnp}</p></div>)}</div></div>
                         {consulta.diagnostico && (<div className="mb-2"><p className="text-gray-500 text-xs">Diagnóstico</p><p className="text-sm text-gray-700 line-clamp-2">{consulta.diagnostico}</p></div>)}
                         <div className="flex justify-between items-center mt-3 pt-3 border-t"><div><p className="text-xs text-gray-400">Optometrista: {consulta.optometrista?.nome || '-'}</p></div><div className="flex gap-2"><button onClick={() => imprimirReceita(consulta)} className="flex items-center gap-1 bg-blue-600 text-white px-3 py-1.5 rounded-lg hover:bg-blue-700 transition-colors text-sm"><Printer size={14} /> Receita</button>{(isOptometrista || isAdmin) && (<button onClick={() => abrirModalEditarConsulta(consulta)} className="flex items-center gap-1 bg-yellow-600 text-white px-3 py-1.5 rounded-lg hover:bg-yellow-700 transition-colors text-sm"><Edit size={14} /> Editar</button>)}{isAdmin && (<button onClick={() => confirmarExcluirConsulta(consulta.id, consulta.paciente?.nome || '')} className="flex items-center gap-1 bg-red-600 text-white px-3 py-1.5 rounded-lg hover:bg-red-700 transition-colors text-sm"><Trash2 size={14} /> Excluir</button>)}</div></div>
@@ -1856,7 +2203,7 @@ export default function GestaoComercialPage() {
                   <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
                     <form onSubmit={criarEncomenda} className="bg-white rounded-xl shadow-lg w-full max-w-md p-6">
                       <div className="flex justify-between items-center mb-4"><h2 className="text-xl font-bold flex items-center gap-2"><FlaskConical size={20} /> Nova Encomenda</h2><button type="button" onClick={() => setModalEncomendaOpen(false)} className="text-gray-400 hover:text-gray-600"><X size={24} /></button></div>
-                      <div className="mb-4"><label className="block text-sm font-medium text-gray-700 mb-1">Paciente *</label><select required value={pacienteIdEncomenda} onChange={e => setPacienteIdEncomenda(Number(e.target.value))} className="w-full border rounded-lg p-2 focus:outline-none focus:ring-2 focus:ring-indigo-500"><option value="">-- Selecione um paciente --</option>{pacientes.map(p => (<option key={p.id} value={p.id}>{p.nome} {p.telefone && `- 📞 ${p.telefone}`} {p.nif && `- 🆔 ${p.nif}`}</option>))}</select></div>
+                      <div className="mb-4"><label className="block text-sm font-medium text-gray-700 mb-1">Paciente *</label><select required value={pacienteIdEncomenda} onChange={e => setPacienteIdEncomenda(Number(e.target.value))} className="w-full border rounded-lg p-2 focus:outline-none focus:ring-2 focus:ring-indigo-500"><option value="">-- Selecione um paciente --</option>{pacientes.map(p => (<option key={p.id} value={p.id}>{p.nome} {p.telefone && `- 📞 ${p.telefone}`} {p.email && `- ✉️ ${p.email}`} {p.nif && `- 🆔 ${p.nif}`}</option>))}</select></div>
                       <div className="mb-4"><label className="block text-sm font-medium text-gray-700 mb-1">Tipo de Serviço</label><select value={tipoServico} onChange={e => setTipoServico(e.target.value)} className="w-full border rounded-lg p-2 focus:outline-none focus:ring-2 focus:ring-indigo-500"><option value="oculos_novo">Óculos novo</option><option value="troca_lente">Troca de lente</option><option value="reparacao">Reparação</option><option value="ajuste">Ajuste</option><option value="garantia">Garantia</option></select></div>
                       <div className="mb-4"><label className="block text-sm font-medium text-gray-700 mb-1">Data Prevista</label><input type="date" value={dataPrevista} onChange={e => setDataPrevista(e.target.value)} className="w-full border rounded-lg p-2 focus:outline-none focus:ring-2 focus:ring-indigo-500" /></div>
                       <div className="mb-4"><label className="block text-sm font-medium text-gray-700 mb-1">Observação</label><textarea value={observacaoEncomenda} onChange={e => setObservacaoEncomenda(e.target.value)} className="w-full border rounded-lg p-2 focus:outline-none focus:ring-2 focus:ring-indigo-500" rows={3} placeholder="Observações sobre a encomenda..."></textarea></div>
@@ -1932,8 +2279,8 @@ export default function GestaoComercialPage() {
                     key={i}
                     onClick={() => setPaginaAtual(i + 1)}
                     className={`px-3 py-1 rounded-lg transition-colors ${paginaAtual === i + 1
-                        ? 'bg-indigo-600 text-white'
-                        : 'bg-white text-gray-600 hover:bg-gray-100'
+                      ? 'bg-indigo-600 text-white'
+                      : 'bg-white text-gray-600 hover:bg-gray-100'
                       }`}
                   >
                     {i + 1}
@@ -1960,6 +2307,180 @@ export default function GestaoComercialPage() {
               <button onClick={() => setConfirmModal(prev => ({ ...prev, isOpen: false }))} className="flex-1 px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors">Cancelar</button>
               <button onClick={confirmModal.onConfirm} className="flex-1 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors">Confirmar</button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de Acesso Negado */}
+      {accessDeniedModal.isOpen && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl shadow-lg w-full max-w-md p-6">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-12 h-12 rounded-full bg-red-100 flex items-center justify-center">
+                <AlertCircle className="text-red-600" size={24} />
+              </div>
+              <div>
+                <h2 className="text-xl font-bold text-gray-800">Acesso Negado</h2>
+                <p className="text-sm text-gray-500">Permissão insuficiente</p>
+              </div>
+            </div>
+            <p className="text-gray-600 mb-6">{accessDeniedModal.message}</p>
+            <div className="flex gap-3">
+              <button
+                onClick={() => setAccessDeniedModal({ isOpen: false, message: '' })}
+                className="flex-1 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors"
+              >
+                Entendi
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de Cadastro Rápido de Cliente na Venda */}
+      {modalClienteVendaOpen && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50 overflow-y-auto">
+          <div className="bg-white rounded-xl shadow-lg w-full max-w-md p-6">
+            <div className="flex justify-between items-center mb-4">
+              <h2 className="text-xl font-bold flex items-center gap-2">
+                <UserPlus size={20} /> Novo Cliente
+              </h2>
+              <button
+                type="button"
+                onClick={() => {
+                  setModalClienteVendaOpen(false);
+                  resetarNovoClienteVenda();
+                }}
+                className="text-gray-400 hover:text-gray-600"
+              >
+                <X size={24} />
+              </button>
+            </div>
+            <form onSubmit={salvarClienteVenda} className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Nome Completo *</label>
+                <div className="relative">
+                  <Users className="absolute left-3 top-2.5 text-gray-400" size={18} />
+                  <input
+                    type="text"
+                    name="nome"
+                    value={novoClienteVenda.nome}
+                    onChange={handleNovoClienteVendaChange}
+                    className="w-full border rounded-lg pl-10 pr-4 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    placeholder="Digite o nome completo"
+                    required
+                  />
+                </div>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Telefone</label>
+                <div className="relative">
+                  <Phone className="absolute left-3 top-2.5 text-gray-400" size={18} />
+                  <input
+                    type="tel"
+                    name="telefone"
+                    value={novoClienteVenda.telefone}
+                    onChange={handleNovoClienteVendaChange}
+                    className="w-full border rounded-lg pl-10 pr-4 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    placeholder="+244 900-000-000"
+                  />
+                </div>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
+                <div className="relative">
+                  <Mail className="absolute left-3 top-2.5 text-gray-400" size={18} />
+                  <input
+                    type="email"
+                    name="email"
+                    value={novoClienteVenda.email}
+                    onChange={handleNovoClienteVendaChange}
+                    className="w-full border rounded-lg pl-10 pr-4 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    placeholder="exemplo@email.com"
+                  />
+                </div>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">NIF</label>
+                <div className="relative">
+                  <Hash className="absolute left-3 top-2.5 text-gray-400" size={18} />
+                  <input
+                    type="text"
+                    name="nif"
+                    value={novoClienteVenda.nif}
+                    onChange={handleNovoClienteVendaChange}
+                    className="w-full border rounded-lg pl-10 pr-4 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    placeholder="Número de identificação fiscal"
+                  />
+                </div>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Sexo</label>
+                <div className="relative">
+                  <User className="absolute left-3 top-2.5 text-gray-400" size={18} />
+                  <select
+                    name="sexo"
+                    value={novoClienteVenda.sexo}
+                    onChange={handleNovoClienteVendaChange}
+                    className="w-full border rounded-lg pl-10 pr-4 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  >
+                    <option value="">Selecione</option>
+                    <option value="M">Masculino</option>
+                    <option value="F">Feminino</option>
+                  </select>
+                </div>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Data de Nascimento</label>
+                <div className="relative">
+                  <Calendar className="absolute left-3 top-2.5 text-gray-400" size={18} />
+                  <input
+                    type="date"
+                    name="data_nascimento"
+                    value={novoClienteVenda.data_nascimento}
+                    onChange={handleNovoClienteVendaChange}
+                    className="w-full border rounded-lg pl-10 pr-4 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  />
+                </div>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Endereço</label>
+                <div className="relative">
+                  <MapPin className="absolute left-3 top-2.5 text-gray-400" size={18} />
+                  <input
+                    type="text"
+                    name="endereco"
+                    value={novoClienteVenda.endereco}
+                    onChange={handleNovoClienteVendaChange}
+                    className="w-full border rounded-lg pl-10 pr-4 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    placeholder="Endereço completo"
+                  />
+                </div>
+              </div>
+              <div className="flex gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setModalClienteVendaOpen(false);
+                    resetarNovoClienteVenda();
+                  }}
+                  className="flex-1 px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={submittingClienteVenda}
+                  className="flex-1 bg-green-600 text-white py-2 rounded-lg hover:bg-green-700 transition-colors disabled:bg-gray-400 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                >
+                  {submittingClienteVenda ? (
+                    <><div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div> Salvando...</>
+                  ) : (
+                    <><UserPlus size={18} /> Cadastrar Cliente</>
+                  )}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

@@ -30,6 +30,26 @@ export const API_ENDPOINTS = {
   ENCOMENDAS_OCULOS: "/encomendas-oculos",
   ENCOMENDAS_STATUS: "/encomendas-oculos/status", // usado para PUT /:id/status
 
+  // NOTAS DE ENTREGA
+  NOTAS_ENTREGA: "/notas-entrega",
+  NOTA_ENTREGA_ID: (id: number | string) => `/notas-entrega/${id}`,
+  NOTA_ENTREGA_ENTREGAR: (id: number | string) => `/notas-entrega/${id}/entregar`,
+  NOTA_ENTREGA_CANCELAR: (id: number | string) => `/notas-entrega/${id}/cancelar`,
+  NOTAS_ENTREGA_POR_PACIENTE: (pacienteId: number | string) => `/notas-entrega/paciente/${pacienteId}`,
+
+  // RECIBOS
+  RECIBOS: "/recibos",
+  RECIBO_ID: (id: number | string) => `/recibos/${id}`,
+  RECIBO_CANCELAR: (id: number | string) => `/recibos/${id}/cancelar`,
+  RECIBOS_POR_PACIENTE: (pacienteId: number | string) => `/recibos/paciente/${pacienteId}`,
+
+  // JUSTIFICATIVOS MÉDICOS
+  JUSTIFICATIVOS_MEDICOS: "/justificativos-medicos",
+  JUSTIFICATIVO_MEDICO_ID: (id: number | string) => `/justificativos-medicos/${id}`,
+  JUSTIFICATIVO_MEDICO_CANCELAR: (id: number | string) => `/justificativos-medicos/${id}/cancelar`,
+  JUSTIFICATIVOS_POR_PACIENTE: (pacienteId: number | string) => `/justificativos-medicos/paciente/${pacienteId}`,
+  JUSTIFICATIVOS_POR_PERIODO: "/justificativos-medicos/periodo/buscar",
+
   SEGURADORAS: "/seguradoras",
   SEGURADORAS_ATIVAS: "/seguradoras/ativas",
 
@@ -46,6 +66,33 @@ export const API_ENDPOINTS = {
 
   // src/config/api.ts - adicione
   RELATORIOS: "/relatorios",
+  
+  // PARCELAMENTO - CORRIGIDO
+  PARCELAMENTO: {
+    // Configurações
+    CONFIGURACOES: "/parcelamentos/configuracoes",
+    CONFIGURACAO_ID: (id: number | string) => `/parcelamentos/configuracoes/${id}`,
+    
+    // Simulação
+    SIMULAR: "/parcelamentos/simular",
+    
+    // Parcelamentos
+    LISTAR: "/parcelamentos",
+    BUSCAR: (id: number | string) => `/parcelamentos/${id}`,
+    CRIAR: "/parcelamentos",
+    CANCELAR: (id: number | string) => `/parcelamentos/${id}/cancelar`,
+    
+    // Dashboard e Relatórios
+    DASHBOARD: "/parcelamentos/dashboard",
+    RELATORIO: "/parcelamentos/relatorio",
+    
+    // Parcelas
+    PAGAR_PARCELA: (parcelaId: number | string) => `/parcelamentos/parcelas/${parcelaId}/pagar`,
+    
+    // Filtros
+    POR_CLIENTE: (clienteId: number | string) => `/parcelamentos?cliente_id=${clienteId}`,
+    POR_STATUS: (status: string) => `/parcelamentos?status=${status}`,
+  },
 };
 
 // Monta URL completa
