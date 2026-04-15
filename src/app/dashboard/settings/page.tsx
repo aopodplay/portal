@@ -2,9 +2,9 @@
 
 import { useEffect, useState } from 'react';
 import { getApiUrl, getAuthHeaders } from '@/config/api';
-import { 
-  Settings, Users, Package, Wrench, Shield, 
-  FolderTree, Heart, CreditCard, FileText, Plus, 
+import {
+  Settings, Users, Package, Wrench, Shield,
+  FolderTree, Heart, CreditCard, FileText, Plus,
   Edit, Trash2, X, CheckCircle, AlertCircle, Eye,
   Save, Upload, Printer, DollarSign, Hash, Phone, Mail, MapPin,
   Building, Search
@@ -181,9 +181,8 @@ export default function ConfiguracoesPage() {
     setLoading(true);
 
     try {
-      const body = { ...config };
-      delete body.id;
-      delete body.logo;
+      // Remove id e logo do objeto antes de enviar
+      const { id, logo, ...body } = config;
 
       const res = await fetch(getApiUrl(`/configuracoes-sistema/${config.id}`), {
         method: 'PUT',
@@ -218,15 +217,15 @@ export default function ConfiguracoesPage() {
 
       if (!res.ok) throw new Error('Erro ao enviar logo');
       const data = await res.json();
-      
+
       // Atualiza o estado imediatamente
       const newLogoUrl = getApiUrl(data.logo);
       setLogoPreview(newLogoUrl);
       setConfig({ ...config, logo: data.logo });
-      
+
       mostrarMensagem('success', 'Logo atualizada com sucesso');
       setLogoFile(null);
-      
+
       // Dispara evento para atualizar sidebar
       window.dispatchEvent(new Event('configUpdated'));
     } catch (err: any) {
@@ -261,7 +260,7 @@ export default function ConfiguracoesPage() {
       if (usuarioForm.senha) formData.append('senha', usuarioForm.senha);
       formData.append('perfil', usuarioForm.perfil);
       formData.append('ativo', usuarioForm.ativo ? '1' : '0');
-      if (usuarioForm.foto instanceof File) formData.append('foto', usuarioForm.foto);
+      if (usuarioForm.foto && (usuarioForm.foto as any) instanceof File) formData.append('foto', usuarioForm.foto);
 
       const headers = getAuthHeaders() as Record<string, string>;
       const res = await fetch(getApiUrl(url), {
@@ -308,7 +307,7 @@ export default function ConfiguracoesPage() {
     }
   };
 
-  const usuariosFiltrados = usuarios.filter(u => 
+  const usuariosFiltrados = usuarios.filter(u =>
     u.nome.toLowerCase().includes(filtroUsuarios.toLowerCase()) ||
     u.email.toLowerCase().includes(filtroUsuarios.toLowerCase())
   );
@@ -524,7 +523,13 @@ export default function ConfiguracoesPage() {
   };
 
   const editarSeguradora = (seguradora: Seguradora) => {
-    setSeguradoraForm(seguradora);
+    setSeguradoraForm({
+      nome: seguradora.nome,
+      nif: seguradora.nif || '',
+      telefone: seguradora.telefone || '',
+      email: seguradora.email || '',
+      ativo: seguradora.ativo
+    });
     setEditSeguradoraId(seguradora.id);
     setShowSeguradoraForm(true);
   };
@@ -791,14 +796,38 @@ export default function ConfiguracoesPage() {
                   <h2 className="text-xl font-bold flex items-center gap-2"><Users size={24} /> Usuários do Sistema</h2>
                   <button onClick={() => setShowUsuarioForm(true)} className="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 flex items-center gap-2"><Plus size={18} /> Novo Usuário</button>
                 </div>
-                
+
                 {/* Filtro de Usuários */}
                 <div className="relative mb-6">
                   <Search className="absolute left-3 top-2.5 text-gray-400" size={18} />
                   <input type="text" placeholder="Pesquisar usuário por nome ou email..." value={filtroUsuarios} onChange={e => setFiltroUsuarios(e.target.value)} className="w-full border rounded-lg pl-10 pr-4 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500" />
                 </div>
 
-                {showUsuarioForm && (<form onSubmit={salvarUsuario} className="bg-gray-50 rounded-lg p-6 mb-6"><h3 className="font-semibold mb-4">{editUsuarioId ? 'Editar Usuário' : 'Novo Usuário'}</h3><div className="grid grid-cols-1 md:grid-cols-2 gap-4"><input name="nome" placeholder="Nome" value={usuarioForm.nome} onChange={e => setUsuarioForm({ ...usuarioForm, nome: e.target.value })} className="border rounded-lg px-3 py-2" required /><input name="email" type="email" placeholder="Email" value={usuarioForm.email} onChange={e => setUsuarioForm({ ...usuarioForm, email: e.target.value })} className="border rounded-lg px-3 py-2" required /><input name="senha" type="password" placeholder={editUsuarioId ? "Nova senha (opcional)" : "Senha"} value={usuarioForm.senha} onChange={e => setUsuarioForm({ ...usuarioForm, senha: e.target.value })} className="border rounded-lg px-3 py-2" {...(!editUsuarioId && { required: true })} /><select name="perfil" value={usuarioForm.perfil} onChange={e => setUsuarioForm({ ...usuarioForm, perfil: e.target.value as any })} className="border rounded-lg px-3 py-2"><option value="admin">Administrador</option><option value="recepcao">Recepção</option><option value="optometrista">Optometrista</option><option value="caixa">Caixa</option></select><select name="ativo" value={usuarioForm.ativo ? '1' : '0'} onChange={e => setUsuarioForm({ ...usuarioForm, ativo: e.target.value === '1' })} className="border rounded-lg px-3 py-2"><option value="1">Ativo</option><option value="0">Inativo</option></select><input type="file" accept="image/*" onChange={e => setUsuarioForm({ ...usuarioForm, foto: e.target.files?.[0] || null })} className="border rounded-lg px-3 py-2" /></div><div className="flex justify-end gap-3 mt-4"><button type="button" onClick={resetUsuarioForm} className="px-4 py-2 border rounded-lg">Cancelar</button><button type="submit" disabled={loading} className="px-4 py-2 bg-blue-600 text-white rounded-lg">{loading ? 'Salvando...' : 'Salvar'}</button></div></form>)}
+                {showUsuarioForm && (
+                  <form onSubmit={salvarUsuario} className="bg-gray-50 rounded-lg p-6 mb-6">
+                    <h3 className="font-semibold mb-4">{editUsuarioId ? 'Editar Usuário' : 'Novo Usuário'}</h3>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <input name="nome" placeholder="Nome" value={usuarioForm.nome} onChange={e => setUsuarioForm({ ...usuarioForm, nome: e.target.value })} className="border rounded-lg px-3 py-2" required />
+                      <input name="email" type="email" placeholder="Email" value={usuarioForm.email} onChange={e => setUsuarioForm({ ...usuarioForm, email: e.target.value })} className="border rounded-lg px-3 py-2" required />
+                      <input name="senha" type="password" placeholder={editUsuarioId ? "Nova senha (opcional)" : "Senha"} value={usuarioForm.senha} onChange={e => setUsuarioForm({ ...usuarioForm, senha: e.target.value })} className="border rounded-lg px-3 py-2" {...(!editUsuarioId && { required: true })} />
+                      <select name="perfil" value={usuarioForm.perfil} onChange={e => setUsuarioForm({ ...usuarioForm, perfil: e.target.value as any })} className="border rounded-lg px-3 py-2">
+                        <option value="admin">Administrador</option>
+                        <option value="recepcao">Recepção</option>
+                        <option value="optometrista">Optometrista</option>
+                        <option value="caixa">Caixa</option>
+                      </select>
+                      <select name="ativo" value={usuarioForm.ativo ? '1' : '0'} onChange={e => setUsuarioForm({ ...usuarioForm, ativo: e.target.value === '1' })} className="border rounded-lg px-3 py-2">
+                        <option value="1">Ativo</option>
+                        <option value="0">Inativo</option>
+                      </select>
+                      
+                    </div>
+                    <div className="flex justify-end gap-3 mt-4">
+                      <button type="button" onClick={resetUsuarioForm} className="px-4 py-2 border rounded-lg">Cancelar</button>
+                      <button type="submit" disabled={loading} className="px-4 py-2 bg-blue-600 text-white rounded-lg">{loading ? 'Salvando...' : 'Salvar'}</button>
+                    </div>
+                  </form>
+                )}
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">{usuariosFiltrados.map(u => (<div key={u.id} className="bg-white rounded-lg shadow p-4"><div className="flex items-center gap-3 mb-3"><div className="w-12 h-12 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-600 font-bold text-lg">{u.nome[0]?.toUpperCase()}</div><div><h3 className="font-semibold">{u.nome}</h3><p className="text-sm text-gray-500">{u.email}</p><span className={`text-xs px-2 py-0.5 rounded ${u.ativo ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>{u.ativo ? 'Ativo' : 'Inativo'}</span></div></div><div className="flex justify-between items-center"><span className="text-sm text-gray-500">{u.perfil === 'admin' ? 'Administrador' : u.perfil === 'recepcao' ? 'Recepção' : u.perfil === 'optometrista' ? 'Optometrista' : 'Caixa'}</span><div className="flex gap-2"><button onClick={() => editarUsuario(u)} className="text-blue-600 hover:text-blue-800"><Edit size={18} /></button><button onClick={() => ativarDesativarUsuario(u.id, u.ativo)} className={`${u.ativo ? 'text-gray-500' : 'text-green-600'} hover:opacity-80`}>{u.ativo ? 'Desativar' : 'Ativar'}</button><button onClick={() => setDeleteModal({ isOpen: true, id: u.id, tipo: 'usuario', nome: u.nome })} className="text-red-600 hover:text-red-800"><Trash2 size={18} /></button></div></div></div>))}</div>
               </div>
             )}

@@ -53,18 +53,18 @@ export default function RelatoriosPage() {
     try {
       setLoading(true);
       setError(null);
-      
+
       const params = new URLSearchParams();
       if (dataInicio) params.append('data_inicio', dataInicio);
       if (dataFim) params.append('data_fim', dataFim);
-      
+
       const url = `/relatorios${params.toString() ? `?${params.toString()}` : ''}`;
       const res = await fetch(getApiUrl(url), { headers: getAuthHeaders() });
-      
+
       if (!res.ok) {
         throw new Error('Erro ao carregar relatórios');
       }
-      
+
       const json = await res.json();
       setData(json);
       setLastUpdate(new Date());
@@ -104,11 +104,11 @@ export default function RelatoriosPage() {
   const exportToExcel = () => {
     if (!data) return;
     setExporting(true);
-    
+
     try {
       const workbookData = [
-        { 
-          sheet: 'Resumo', 
+        {
+          sheet: 'Resumo',
           data: [
             ['Métrica', 'Valor'],
             ['Total Faturado', formatarValor(data.resumo?.totalFaturado || 0)],
@@ -118,42 +118,42 @@ export default function RelatoriosPage() {
             ['Total Produtos', formatarNumero(data.resumo?.totalProdutos || 0)]
           ]
         },
-        { 
-          sheet: 'Vendas Mensais', 
-          data: (data.vendasMensais || []).map((v: any) => ({ 
-            Mês: v.mes, 
-            'Valor Total (Kz)': v.total, 
-            Quantidade: v.quantidade 
-          })) 
+        {
+          sheet: 'Vendas Mensais',
+          data: (data.vendasMensais || []).map((v: any) => ({
+            Mês: v.mes,
+            'Valor Total (Kz)': v.total,
+            Quantidade: v.quantidade
+          }))
         },
-        { 
-          sheet: 'Produtos Mais Vendidos', 
-          data: (data.produtosMaisVendidos || []).map((p: any) => ({ 
-            Produto: p.nome, 
-            Quantidade: p.quantidade, 
-            'Total (Kz)': p.total 
-          })) 
+        {
+          sheet: 'Produtos Mais Vendidos',
+          data: (data.produtosMaisVendidos || []).map((p: any) => ({
+            Produto: p.nome,
+            Quantidade: p.quantidade,
+            'Total (Kz)': p.total
+          }))
         },
-        { 
-          sheet: 'Top Clientes', 
-          data: (data.clientesTop || []).map((c: any) => ({ 
-            Cliente: c.nome, 
-            'Nº Compras': c.totalCompras, 
-            'Valor Total (Kz)': c.valorTotal 
-          })) 
+        {
+          sheet: 'Top Clientes',
+          data: (data.clientesTop || []).map((c: any) => ({
+            Cliente: c.nome,
+            'Nº Compras': c.totalCompras,
+            'Valor Total (Kz)': c.valorTotal
+          }))
         },
-        { 
-          sheet: 'Formas de Pagamento', 
-          data: (data.pagamentosPorForma || []).map((p: any) => ({ 
-            'Forma de Pagamento': p.forma, 
-            'Total (Kz)': p.total, 
-            Percentual: p.percentual?.toFixed(1) + '%' 
-          })) 
+        {
+          sheet: 'Formas de Pagamento',
+          data: (data.pagamentosPorForma || []).map((p: any) => ({
+            'Forma de Pagamento': p.forma,
+            'Total (Kz)': p.total,
+            Percentual: p.percentual?.toFixed(1) + '%'
+          }))
         }
       ];
 
       const wb = XLSX.utils.book_new();
-      
+
       workbookData.forEach(({ sheet, data }) => {
         const ws = XLSX.utils.json_to_sheet(data);
         // Ajustar largura das colunas
@@ -164,7 +164,7 @@ export default function RelatoriosPage() {
         ws['!cols'] = colWidths;
         XLSX.utils.book_append_sheet(wb, ws, sheet);
       });
-      
+
       XLSX.writeFile(wb, `relatorio_${new Date().toISOString().split('T')[0]}.xlsx`);
     } catch (err) {
       console.error('Erro ao exportar Excel:', err);
@@ -322,8 +322,8 @@ export default function RelatoriosPage() {
                 <XAxis dataKey="mes" />
                 <YAxis yAxisId="left" orientation="left" stroke="#3b82f6" />
                 <YAxis yAxisId="right" orientation="right" stroke="#10b981" />
-                <Tooltip formatter={(value: any, name: string) => {
-                  if (name === 'total') return formatarValor(value);
+                <Tooltip formatter={(value: any, name?: string) => {
+                  if (name && name === 'total') return formatarValor(value);
                   return formatarNumero(value);
                 }} />
                 <Legend />

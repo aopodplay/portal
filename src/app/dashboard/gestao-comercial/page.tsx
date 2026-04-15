@@ -43,6 +43,7 @@ interface VendaRegistro {
   fatura?: { numero: string; id: number };
   atendimento?: { paciente?: { nome: string } };
   usuario?: { nome: string };
+  paciente?: { nome: string };
 }
 
 interface Fatura {
@@ -788,14 +789,14 @@ export default function GestaoComercialPage() {
 
       const novoCliente = data.data;
       mostrarMensagem('success', `Cliente ${novoCliente.nome} cadastrado com sucesso!`);
-      
+
       // Selecionar o cliente recém-criado
       selecionarClienteVenda(novoCliente);
-      
+
       // Fechar modal e limpar formulário
       setModalClienteVendaOpen(false);
       resetarNovoClienteVenda();
-      
+
       // Atualizar lista de pacientes
       await fetchPacientes();
 
@@ -2187,8 +2188,11 @@ export default function GestaoComercialPage() {
                                 {e.data_entrega && <p className="text-xs text-green-600">Entregue: {new Date(e.data_entrega).toLocaleDateString()}</p>}
                                 {e.observacao && <p className="text-xs text-gray-400 mt-1">Obs: {e.observacao}</p>}
                                 <div className="flex flex-wrap gap-2 mt-3">
-                                  {e.status !== 'entregue' && e.status !== 'cancelado' && status.next && (isCaixa || isRecepcao || isAdmin || (isOptometrista && e.status !== 'entregue')) && (<button onClick={() => mudarStatusEncomenda(e)} className={`flex-1 py-1.5 rounded-lg text-white font-medium text-sm ${status.color} hover:opacity-80`}>{status.label}</button>)}
-                                  {e.status === 'pedido_criado' && (isCaixa || isAdmin) && (<button onClick={() => confirmarRemoverEncomenda(e)} className="px-3 py-1.5 rounded-lg bg-red-600 text-white font-medium text-sm hover:bg-red-700 transition-colors flex items-center gap-1"><Trash2 size={14} /> Remover</button>)}
+                                  {(e.status as string) !== 'entregue' && (e.status as string) !== 'cancelado' && status.next && (isCaixa || isRecepcao || isAdmin || (isOptometrista && (e.status as string) !== 'entregue')) && (
+                                    <button onClick={() => mudarStatusEncomenda(e)} className={`flex-1 py-1.5 rounded-lg text-white font-medium text-sm ${status.color} hover:opacity-80`}>
+                                      {status.label}
+                                    </button>
+                                  )}
                                 </div>
                               </div>
                             );
