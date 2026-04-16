@@ -79,7 +79,7 @@ export default function Sidebar() {
 
   // Foto do usuário
   const fotoUrl = user?.foto 
-    ? `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000'}/uploads/${user.foto}`
+    ? `${process.env.NEXT_PUBLIC_API_URL || 'https://api.apisemsaida.co.ao'}/uploads/${user.foto}`
     : null;
 
   const fetchConfig = useCallback(async () => {
