@@ -383,49 +383,64 @@ export default function ParcelamentosPage() {
 
   const criarParcelamento = async () => {
     if (!selectedCliente) {
-      mostrarMensagem('error', 'Selecione um cliente');
-      return;
+        mostrarMensagem('error', 'Selecione um cliente');
+        return;
     }
     if (!simulacao) {
-      mostrarMensagem('error', 'Realize a simulação primeiro');
-      return;
+        mostrarMensagem('error', 'Realize a simulação primeiro');
+        return;
     }
     if (itensParcelados.length === 0) {
-      mostrarMensagem('error', 'Adicione pelo menos um produto ou serviço');
-      return;
+        mostrarMensagem('error', 'Adicione pelo menos um produto ou serviço');
+        return;
     }
 
     setSubmitting(true);
     try {
-      const res = await fetch(getApiUrl('/parcelamentos'), {
-        method: 'POST',
-        headers: { ...getAuthHeaders(), 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          cliente_id: selectedCliente.id,
-          venda_id: null,
-          consulta_id: null,
-          config_id: parseInt(formData.config_id),
-          valor_total: formData.valor_total,
-          entrada: formData.entrada,
-          quantidade_parcelas: formData.quantidade_parcelas,
-          data_primeira_parcela: formData.data_primeira_parcela,
-          observacoes: `Parcelamento criado via sistema - Itens: ${itensParcelados.map(i => `${i.nome} (${i.quantidade}x)`).join(', ')}`
-        })
-      });
+        // Preparar os itens para enviar ao backend
+        const itensParaEnviar = itensParcelados.map(item => ({
+            id: item.id,
+            nome: item.nome,
+            tipo: item.tipo,
+            quantidade: item.quantidade,
+            valor: item.valor,
+            preco_unitario: item.valor,
+            descricao: item.nome,
+            produto_id: item.tipo === 'produto' ? item.id : null,
+            servico_id: item.tipo === 'servico' ? item.id : null
+        }));
 
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error);
+        const res = await fetch(getApiUrl('/parcelamentos'), {
+            method: 'POST',
+            headers: { ...getAuthHeaders(), 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                cliente_id: selectedCliente.id,
+                venda_id: null,
+                consulta_id: null,
+                config_id: parseInt(formData.config_id),
+                valor_total: formData.valor_total,
+                entrada: formData.entrada,
+                quantidade_parcelas: formData.quantidade_parcelas,
+                data_primeira_parcela: formData.data_primeira_parcela,
+                forma_pagamento: 'dinheiro', // Pode ser alterado conforme necessidade
+                itens: itensParaEnviar, // ENVIAR OS ITENS
+                observacoes: `Parcelamento criado via sistema - Itens: ${itensParcelados.map(i => `${i.nome} (${i.quantidade}x)`).join(', ')}`
+            })
+        });
 
-      mostrarMensagem('success', 'Parcelamento criado com sucesso!');
-      setSimulacaoModalOpen(false);
-      resetForm();
-      carregarParcelamentos();
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error);
+
+        mostrarMensagem('success', 'Parcelamento criado com sucesso!');
+        setSimulacaoModalOpen(false);
+        resetForm();
+        carregarParcelamentos();
     } catch (error: any) {
-      mostrarMensagem('error', error.message);
+        mostrarMensagem('error', error.message);
     } finally {
-      setSubmitting(false);
+        setSubmitting(false);
     }
-  };
+};
 
   const registrarPagamento = async (parcelaId: number) => {
     setSubmitting(true);

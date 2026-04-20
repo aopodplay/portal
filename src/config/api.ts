@@ -2,7 +2,7 @@
 import Cookies from "js-cookie";
 
 // URL da API (apenas ambiente local)
-export const API_BASE_URL = "https://api.apisemsaida.co.ao";
+export const API_BASE_URL = "http://localhost:3000";
 
 // Endpoints da API da Óptica
 export const API_ENDPOINTS = {
@@ -92,6 +92,41 @@ export const API_ENDPOINTS = {
     // Filtros
     POR_CLIENTE: (clienteId: number | string) => `/parcelamentos?cliente_id=${clienteId}`,
     POR_STATUS: (status: string) => `/parcelamentos?status=${status}`,
+  },
+
+  // FATURAS PRÓ-FORMA
+  FATURAS_PROFORMA: {
+    // Listar todas (com filtros)
+    LISTAR: "/faturas-proforma",
+    
+    // Dashboard/Estatísticas
+    DASHBOARD: "/faturas-proforma/dashboard",
+    
+    // Buscar por ID
+    BUSCAR: (id: number | string) => `/faturas-proforma/${id}`,
+    
+    // Criar nova
+    CRIAR: "/faturas-proforma",
+    
+    // Atualizar
+    ATUALIZAR: (id: number | string) => `/faturas-proforma/${id}`,
+    
+    // Excluir (soft delete)
+    EXCLUIR: (id: number | string) => `/faturas-proforma/${id}`,
+    
+    // Converter para fatura final
+    CONVERTER: (id: number | string) => `/faturas-proforma/${id}/converter`,
+    
+    // Cancelar
+    CANCELAR: (id: number | string) => `/faturas-proforma/${id}/cancelar`,
+    
+    // Enviar por e-mail
+    ENVIAR_EMAIL: (id: number | string) => `/faturas-proforma/${id}/enviar-email`,
+    
+    // Filtros específicos
+    POR_CLIENTE: (clienteId: number | string) => `/faturas-proforma?cliente_id=${clienteId}`,
+    POR_STATUS: (status: string) => `/faturas-proforma?status=${status}`,
+    POR_PERIODO: (dataInicio: string, dataFim: string) => `/faturas-proforma?data_inicio=${dataInicio}&data_fim=${dataFim}`,
   },
 };
 

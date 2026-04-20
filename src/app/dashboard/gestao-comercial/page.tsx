@@ -35,11 +35,20 @@ interface ProdutoVenda {
 
 interface VendaRegistro {
   id: number;
-  itens: VendaItemCarrinho[];
+  itens: Array<{
+    id?: number;
+    nome: string;
+    quantidade: number;
+    preco_unitario: number;
+    subtotal: number;
+    produto?: { nome: string };
+    servico?: { nome: string };
+  }>;
   total: number;
   desconto: number;
   forma_pagamento: string;
   created_at: string;
+  data_venda?: string;
   fatura?: { numero: string; id: number };
   atendimento?: { paciente?: { nome: string } };
   usuario?: { nome: string };
@@ -576,7 +585,24 @@ export default function GestaoComercialPage() {
       const res = await fetch(getApiUrl('/vendas'), { headers: getAuthHeaders() });
       if (!res.ok) return;
       const data = await res.json();
-      setVendas(data.data || data);
+      const vendasData = data.data || data;
+
+      // Mapear vendas para incluir os itens com nome correto
+      const vendasComItens = vendasData.map((venda: any) => ({
+        ...venda,
+        itens: (venda.itens || []).map((item: any) => ({
+          ...item,
+          nome: item.produto?.nome || item.servico?.nome || item.descricao || 'Item',
+          preco_unitario: item.preco_unitario,
+          quantidade: item.quantidade,
+          subtotal: item.subtotal
+        })),
+        // Garantir que a data está correta
+        created_at: venda.data_venda || venda.created_at,
+        data_venda: venda.data_venda || venda.created_at
+      }));
+
+      setVendas(vendasComItens);
     } catch (err) {
       console.error('Erro ao carregar vendas:', err);
     }
@@ -589,7 +615,30 @@ export default function GestaoComercialPage() {
       const data = await res.json();
       const arr = Array.isArray(data) ? data : (data.data || []);
 
+      // FILTRAR: Excluir faturas que são de:
+      // 1. Parcelamentos (parcelamento_id != null)
+      // 2. Faturas de parcelamento (número começa com "FAT-PAR-")
+      // 3. Faturas convertidas de pró-forma (número começa com "FAT-PROF-")
+      // 4. Faturas que têm descrição indicando origem de pró-forma
       const pendentes = arr
+        .filter((f: any) => {
+          const hasParcelamentoId = f.parcelamento_id !== null && f.parcelamento_id !== undefined;
+          const isParcelamentoNumero = f.numero && f.numero.startsWith('FAT-PAR-');
+          const isProformaConvertida = f.numero && f.numero.startsWith('FAT-PROF-');
+
+          // Verificar se a descrição indica que veio de uma pró-forma
+          const descricao = (f.descricao || '').toLowerCase();
+          const isFromProforma = descricao.includes('gerada a partir da pró-forma') ||
+            descricao.includes('gerada a partir da proforma') ||
+            descricao.includes('convertida de pró-forma') ||
+            descricao.includes('convertida de proforma') ||
+            descricao.includes('gerada da pró-forma') ||
+            (descricao.includes('pró-forma') && descricao.includes('gerada')) ||
+            (descricao.includes('proforma') && descricao.includes('gerada'));
+
+          // Só incluir se NÃO for nenhum desses tipos
+          return !hasParcelamentoId && !isParcelamentoNumero && !isProformaConvertida && !isFromProforma;
+        })
         .filter((f: any) => ['pendente', 'parcial'].includes(f.status?.toLowerCase()))
         .map((f: any) => {
           const totalPago = f.pagamentos?.reduce((sum: number, p: any) => sum + Number(p.valor_total ?? p.valor ?? 0), 0) || 0;
@@ -1598,7 +1647,6 @@ export default function GestaoComercialPage() {
   const totalPaginasEncomendas = (lista: EncomendaOculos[]) =>
     Math.max(1, Math.ceil(lista.length / ITEMS_PER_PAGE));
 
-  /* ================== IMPRESSÃO DE FATURA ================== */
   const imprimirFatura = async (vendaId: number) => {
     try {
       const res = await fetch(getApiUrl(`/vendas/${vendaId}`), { headers: getAuthHeaders() });
@@ -1616,86 +1664,123 @@ export default function GestaoComercialPage() {
       const pacienteTelefone = venda.atendimento?.paciente?.telefone || venda.paciente?.telefone || '';
       const pacienteEmail = venda.atendimento?.paciente?.email || venda.paciente?.email || '';
 
-      const dataVenda = venda.created_at ? new Date(venda.created_at).toLocaleString('pt-AO') : new Date().toLocaleString('pt-AO');
+      const dataVenda = venda.data_venda || venda.created_at;
+      const dataFormatada = dataVenda ? new Date(dataVenda).toLocaleString('pt-AO') : new Date().toLocaleString('pt-AO');
       const numeroFatura = venda.fatura?.numero || `FAT-${String(venda.id).padStart(5, '0')}`;
 
-      const linhasProdutos = venda.itens?.map((item: any) => `
-        <tr>
-          <td style="padding: 8px; border-bottom: 1px solid #ddd;">${item.nome || '-'}</td>
-          <td style="padding: 8px; border-bottom: 1px solid #ddd; text-align: center;">${item.quantidade}</td>
-          <td style="padding: 8px; border-bottom: 1px solid #ddd; text-align: right;">${Number(item.preco_unitario).toLocaleString('pt-AO')} Kz</td>
-          <td style="padding: 8px; border-bottom: 1px solid #ddd; text-align: right;">${Number(item.subtotal).toLocaleString('pt-AO')} Kz</td>
-        </tr>
-      `).join('') || '<tr><td colspan="4" style="padding: 8px; text-align: center;">Sem itens</td></tr>';
+      // Buscar os itens da venda corretamente
+      const itensVenda = venda.itens || [];
+
+      let linhasProdutos = '';
+
+      if (itensVenda.length > 0) {
+        linhasProdutos = itensVenda.map((item: any) => {
+          // Pegar o nome do produto/serviço de onde estiver disponível
+          let nomeItem = '';
+
+          if (item.produto && item.produto.nome) {
+            nomeItem = item.produto.nome;
+          } else if (item.servico && item.servico.nome) {
+            nomeItem = item.servico.nome;
+          } else if (item.nome) {
+            nomeItem = item.nome;
+          } else if (item.descricao) {
+            nomeItem = item.descricao;
+          } else {
+            nomeItem = 'Item';
+          }
+
+          const quantidade = item.quantidade || 1;
+          const precoUnitario = Number(item.preco_unitario || 0);
+          const subtotal = Number(item.subtotal || (precoUnitario * quantidade));
+
+          return `
+          <tr>
+            <td style="padding: 8px; border-bottom: 1px solid #ddd;">${nomeItem}</td>
+            <td style="padding: 8px; border-bottom: 1px solid #ddd; text-align: center;">${quantidade}</td>
+            <td style="padding: 8px; border-bottom: 1px solid #ddd; text-align: right;">${precoUnitario.toLocaleString('pt-AO')} Kz</td>
+            <td style="padding: 8px; border-bottom: 1px solid #ddd; text-align: right;">${subtotal.toLocaleString('pt-AO')} Kz</td>
+          </tr>
+        `;
+        }).join('');
+      } else {
+        linhasProdutos = '<tr><td colspan="4" style="padding: 8px; text-align: center;">Sem itens</td></tr>';
+      }
 
       const win = window.open('', '_blank');
       if (!win) return;
 
       const html = `
-        <!DOCTYPE html>
-        <html>
-          <head>
-            <title>Fatura ${numeroFatura}</title>
-            <meta charset="UTF-8">
-            <style>
-              * { margin: 0; padding: 0; box-sizing: border-box; }
-              body { font-family: 'Courier New', Courier, monospace; font-size: 12px; padding: 20px; background: #fff; }
-              .fatura-container { max-width: 800px; margin: 0 auto; border: 1px solid #ddd; padding: 20px; }
-              .header { text-align: center; margin-bottom: 20px; padding-bottom: 10px; border-bottom: 2px solid #333; }
-              .header h1 { font-size: 24px; margin-bottom: 5px; }
-              .empresa-info { font-size: 11px; color: #555; margin-bottom: 10px; }
-              .titulo-fatura { text-align: center; font-size: 18px; font-weight: bold; margin: 15px 0; }
-              .info-cliente { margin: 15px 0; padding: 10px; background: #f5f5f5; font-size: 11px; }
-              table { width: 100%; border-collapse: collapse; margin: 15px 0; }
-              th { background: #f0f0f0; padding: 8px; text-align: center; border-bottom: 2px solid #ddd; }
-              .totais { margin-top: 15px; text-align: right; border-top: 1px solid #ddd; padding-top: 10px; }
-              .rodape { margin-top: 30px; text-align: center; font-size: 10px; color: #777; border-top: 1px solid #ddd; padding-top: 15px; }
-              @media print { body { padding: 0; } }
-            </style>
-          </head>
-          <body>
-            <div class="fatura-container">
-              <div class="header">
-                <h1>${empresaNome}</h1>
-                <div class="empresa-info">
-                  ${empresaNif ? `NIF: ${empresaNif} | ` : ''}
-                  ${empresaTelefone ? `Tel: ${empresaTelefone}` : ''}
-                  ${empresaEndereco ? `<br>${empresaEndereco}` : ''}
-                </div>
-              </div>
-              <div class="titulo-fatura">FATURA Nº ${numeroFatura}</div>
-              <div class="info-cliente">
-                <p><strong>Cliente:</strong> ${pacienteNome}</p>
-                ${pacienteNif ? `<p><strong>NIF:</strong> ${pacienteNif}</p>` : ''}
-                ${pacienteTelefone ? `<p><strong>Telefone:</strong> ${pacienteTelefone}</p>` : ''}
-                ${pacienteEmail ? `<p><strong>Email:</strong> ${pacienteEmail}</p>` : ''}
-                <p><strong>Data:</strong> ${dataVenda}</p>
-              </div>
-              <table>
-                <thead>
-                  <tr><th>Descrição</th><th style="width:60px;">Qtd</th><th style="width:100px;">Preço Unit.</th><th style="width:100px;">Subtotal</th></tr>
-                </thead>
-                <tbody>
-                  ${linhasProdutos}
-                </tbody>
-              </table>
-              <div class="totais">
-                ${venda.desconto > 0 ? `<p><strong>Subtotal:</strong> ${(Number(venda.total) + Number(venda.desconto)).toLocaleString('pt-AO')} Kz</p>` : ''}
-                ${venda.desconto > 0 ? `<p><strong>Desconto:</strong> ${Number(venda.desconto).toLocaleString('pt-AO')} Kz</p>` : ''}
-                <p><strong>TOTAL:</strong> ${Number(venda.total).toLocaleString('pt-AO')} Kz</p>
-                <p><strong>Forma de Pagamento:</strong> ${venda.forma_pagamento || formaPagamentoVenda}</p>
-              </div>
-              <div class="rodape">
-                <p>Obrigado pela preferência!</p>
-                <p>Este documento é comprovativo de venda.</p>
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <title>Fatura ${numeroFatura}</title>
+          <meta charset="UTF-8">
+          <style>
+            * { margin: 0; padding: 0; box-sizing: border-box; }
+            body { font-family: 'Courier New', Courier, monospace; font-size: 12px; padding: 20px; background: #fff; }
+            .fatura-container { max-width: 800px; margin: 0 auto; border: 1px solid #ddd; padding: 20px; border-radius: 8px; }
+            .header { text-align: center; margin-bottom: 20px; padding-bottom: 10px; border-bottom: 2px solid #333; }
+            .header h1 { font-size: 24px; margin-bottom: 5px; }
+            .empresa-info { font-size: 11px; color: #555; margin-bottom: 10px; }
+            .titulo-fatura { text-align: center; font-size: 18px; font-weight: bold; margin: 15px 0; }
+            .info-cliente { margin: 15px 0; padding: 10px; background: #f5f5f5; font-size: 11px; border-radius: 4px; }
+            table { width: 100%; border-collapse: collapse; margin: 15px 0; }
+            th { background: #f0f0f0; padding: 8px; text-align: center; border-bottom: 2px solid #ddd; }
+            .totais { margin-top: 15px; text-align: right; border-top: 1px solid #ddd; padding-top: 10px; }
+            .rodape { margin-top: 30px; text-align: center; font-size: 10px; color: #777; border-top: 1px solid #ddd; padding-top: 15px; }
+            @media print { body { padding: 0; } }
+          </style>
+        </head>
+        <body>
+          <div class="fatura-container">
+            <div class="header">
+              <h1>${empresaNome}</h1>
+              <div class="empresa-info">
+                ${empresaNif ? `NIF: ${empresaNif} | ` : ''}
+                ${empresaTelefone ? `Tel: ${empresaTelefone}` : ''}
+                ${empresaEndereco ? `<br>${empresaEndereco}` : ''}
               </div>
             </div>
-            <script>
-              window.onload = function() { window.print(); setTimeout(function() { window.close(); }, 500); };
-            </script>
-          </body>
-        </html>
-      `;
+            <div class="titulo-fatura">FATURA Nº ${numeroFatura}</div>
+            <div class="info-cliente">
+              <p><strong>Cliente:</strong> ${pacienteNome}</p>
+              ${pacienteNif ? `<p><strong>NIF:</strong> ${pacienteNif}</p>` : ''}
+              ${pacienteTelefone ? `<p><strong>Telefone:</strong> ${pacienteTelefone}</p>` : ''}
+              ${pacienteEmail ? `<p><strong>Email:</strong> ${pacienteEmail}</p>` : ''}
+              <p><strong>Data:</strong> ${dataFormatada}</p>
+              <p><strong>Forma de Pagamento:</strong> ${venda.forma_pagamento || 'dinheiro'}</p>
+            </div>
+            <table>
+              <thead>
+                <tr>
+                  <th style="text-align: left;">Descrição</th>
+                  <th style="width: 60px;">Qtd</th>
+                  <th style="width: 100px;">Preço Unit.</th>
+                  <th style="width: 100px;">Subtotal</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${linhasProdutos}
+              </tbody>
+            </table>
+            <div class="totais">
+              ${venda.desconto > 0 ? `<p><strong>Subtotal:</strong> ${(Number(venda.total) + Number(venda.desconto)).toLocaleString('pt-AO')} Kz</p>` : ''}
+              ${venda.desconto > 0 ? `<p><strong>Desconto:</strong> ${Number(venda.desconto).toLocaleString('pt-AO')} Kz</p>` : ''}
+              <p><strong>TOTAL:</strong> ${Number(venda.total).toLocaleString('pt-AO')} Kz</p>
+            </div>
+            <div class="rodape">
+              <p>Obrigado pela preferência!</p>
+              <p>Este documento é comprovativo de venda.</p>
+              <p>Emitido em ${new Date().toLocaleString('pt-AO')}</p>
+            </div>
+          </div>
+          <script>
+            window.onload = function() { window.print(); setTimeout(function() { window.close(); }, 500); };
+          </script>
+        </body>
+      </html>
+    `;
 
       win.document.write(html);
       win.document.close();
@@ -2235,6 +2320,7 @@ export default function GestaoComercialPage() {
                     <th className="px-4 py-3 text-left text-sm font-semibold text-gray-600">ID</th>
                     <th className="px-4 py-3 text-left text-sm font-semibold text-gray-600">Fatura</th>
                     <th className="px-4 py-3 text-left text-sm font-semibold text-gray-600">Cliente</th>
+                    <th className="px-4 py-3 text-left text-sm font-semibold text-gray-600">Itens</th>
                     <th className="px-4 py-3 text-right text-sm font-semibold text-gray-600">Total</th>
                     <th className="px-4 py-3 text-left text-sm font-semibold text-gray-600">Data</th>
                     <th className="px-4 py-3 text-center text-sm font-semibold text-gray-600">Ações</th>
@@ -2243,24 +2329,37 @@ export default function GestaoComercialPage() {
                 <tbody className="divide-y divide-gray-200">
                   {vendasPaginadas.length === 0 ? (
                     <tr>
-                      <td colSpan={6} className="px-4 py-8 text-center text-gray-400">
+                      <td colSpan={7} className="px-4 py-8 text-center text-gray-400">
                         Nenhuma venda registrada
                       </td>
                     </tr>
                   ) : (
                     vendasPaginadas.map(v => {
-                      const dataVenda = v.created_at ? new Date(v.created_at) : null;
-                      const dataFormatada = dataVenda ? dataVenda.toLocaleString('pt-AO', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '-';
+                      const dataVenda = v.data_venda || v.created_at;
+                      const dataFormatada = dataVenda ? new Date(dataVenda).toLocaleString('pt-AO', {
+                        day: '2-digit',
+                        month: '2-digit',
+                        year: 'numeric',
+                        hour: '2-digit',
+                        minute: '2-digit'
+                      }) : '-';
                       const clienteNome = v.atendimento?.paciente?.nome || v.paciente?.nome || 'Cliente Avulso';
+
+                      // Lista de itens para exibir
+                      const itensLista = v.itens?.map(item => `${item.nome} (${item.quantidade}x)`).join(', ') || '-';
+
                       return (
                         <tr key={v.id} className="hover:bg-gray-50 transition-colors">
                           <td className="px-4 py-3 text-sm">#{v.id}</td>
                           <td className="px-4 py-3 text-sm font-mono">{v.fatura?.numero || '-'}</td>
                           <td className="px-4 py-3 text-sm">{clienteNome}</td>
+                          <td className="px-4 py-3 text-sm max-w-xs truncate" title={itensLista}>
+                            {itensLista.length > 50 ? itensLista.substring(0, 50) + '...' : itensLista}
+                          </td>
                           <td className="px-4 py-3 text-sm text-right font-medium text-green-600">
                             {v.total.toLocaleString('pt-AO')} Kz
                           </td>
-                          <td className="px-4 py-3 text-sm text-gray-500">{dataFormatada}</td>
+                          <td className="px-4 py-3 text-sm text-gray-500 whitespace-nowrap">{dataFormatada}</td>
                           <td className="px-4 py-3 text-center">
                             <button
                               onClick={() => imprimirFatura(v.id)}

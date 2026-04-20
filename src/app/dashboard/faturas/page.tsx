@@ -2,70 +2,71 @@
 
 import { useEffect, useState, useMemo } from 'react';
 import { getApiUrl, getAuthHeaders } from '@/config/api';
-import { 
-  FileText, Search, Filter, X, Printer, Edit, Trash2, 
-  CheckCircle, AlertCircle, Clock, DollarSign, Calendar, 
+import {
+  FileText, Search, Filter, X, Printer, Edit, Trash2,
+  CheckCircle, AlertCircle, Clock, DollarSign, Calendar,
   User, CreditCard, Eye, RefreshCw, ArrowLeft, ArrowRight,
   Download, TrendingUp, TrendingDown, Package, Wrench, Plus
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 
 /* Tipagens */
-interface Paciente { 
-  id: number; 
-  nome: string; 
+interface Paciente {
+  id: number;
+  nome: string;
   nif?: string;
   telefone?: string;
 }
-interface Produto { 
-  id: number; 
-  nome: string; 
+interface Produto {
+  id: number;
+  nome: string;
   preco: number;
   tipo?: string;
 }
-interface Servico { 
-  id: number; 
-  nome: string; 
+interface Servico {
+  id: number;
+  nome: string;
   valor: number;
 }
-interface VendaItem { 
-  id?: number; 
-  quantidade: number; 
-  preco_unitario: number; 
-  subtotal: number; 
-  produto?: Produto; 
-  servico?: Servico; 
-  produto_id?: number; 
-  servico_id?: number 
+interface VendaItem {
+  id?: number;
+  descricao?: string; 
+  quantidade: number;
+  preco_unitario: number;
+  subtotal: number;
+  produto?: Produto;
+  servico?: Servico;
+  produto_id?: number;
+  servico_id?: number
 }
-interface Atendimento { 
-  id: number; 
-  status: string; 
-  paciente: Paciente 
+interface Atendimento {
+  id: number;
+  status: string;
+  paciente: Paciente
 }
-interface Venda { 
-  id: number; 
-  atendimento?: Atendimento; 
+interface Venda {
+  id: number;
+  atendimento?: Atendimento;
   itens: VendaItem[];
   usuario?: { id: number; nome: string };
 }
-interface Pagamento { 
-  id: number; 
+interface Pagamento {
+  id: number;
   valor_total: number;
-  forma_pagamento: string; 
+  forma_pagamento: string;
   paciente?: Paciente;
   data_pagamento?: string;
 }
 type StatusFatura = 'pendente' | 'pago' | 'cancelada' | 'parcial';
 
-interface Fatura { 
-  id: number; 
-  numero: string; 
-  total: number; 
-  status: StatusFatura; 
-  data_emissao: string; 
-  venda?: Venda; 
-  pagamentos: Pagamento[]; 
+interface Fatura {
+  id: number;
+  numero: string;
+  total: number;
+  status: StatusFatura;
+  data_emissao: string;
+  venda?: Venda;
+  pagamentos: Pagamento[];
   forma_pagamento?: string;
   usuario?: { id: number; nome: string };
   created_at?: string;
@@ -276,8 +277,8 @@ export default function FaturasPage() {
       if (!res.ok) throw new Error(`Erro ${res.status}`);
       const data = await res.json();
       const arr = Array.isArray(data) ? data : (data.data || []);
-      const normalizadas = arr.map((f: any) => ({ 
-        ...f, 
+      const normalizadas = arr.map((f: any) => ({
+        ...f,
         total: Number(f.total) || 0,
         status: String(f.status).toLowerCase() as StatusFatura,
         pagamentos: (f.pagamentos || []).map((p: any) => ({ ...p, valor_total: p.valor_total || p.valor || 0 }))
@@ -285,7 +286,7 @@ export default function FaturasPage() {
       setFaturas(normalizadas);
     } catch (err: any) {
       setError(err.message || 'Erro desconhecido');
-    } finally { 
+    } finally {
       setLoading(false);
     }
   }
@@ -302,7 +303,7 @@ export default function FaturasPage() {
         setConfig(cfg);
         setProdutos(prods.data || prods);
         setServicos(servs.data || servs);
-      } catch (err) { 
+      } catch (err) {
         console.error('Erro ao carregar extras:', err);
       }
     };
@@ -329,26 +330,26 @@ export default function FaturasPage() {
   const salvarEdicao = async () => {
     if (!editingFatura) return;
     try {
-      const res = await fetch(getApiUrl(`/faturas/${editingFatura.id}`), { 
-        method: 'PUT', 
-        headers: { ...getAuthHeaders(), 'Content-Type': 'application/json' }, 
+      const res = await fetch(getApiUrl(`/faturas/${editingFatura.id}`), {
+        method: 'PUT',
+        headers: { ...getAuthHeaders(), 'Content-Type': 'application/json' },
         body: JSON.stringify({
           forma_pagamento: editingFatura.forma_pagamento,
           status: editingFatura.status,
-          itens: editingFatura.venda?.itens.map(i => ({ 
-            id: i.id, 
-            produto_id: i.produto?.id || i.produto_id || null, 
-            servico_id: i.servico?.id || i.servico_id || null, 
-            quantidade: i.quantidade, 
-            preco_unitario: i.preco_unitario 
+          itens: editingFatura.venda?.itens.map(i => ({
+            id: i.id,
+            produto_id: i.produto?.id || i.produto_id || null,
+            servico_id: i.servico?.id || i.servico_id || null,
+            quantidade: i.quantidade,
+            preco_unitario: i.preco_unitario
           }))
-        }) 
+        })
       });
       if (!res.ok) throw new Error((await res.json()).error);
       await fetchFaturas();
       setEditingFatura(null);
-    } catch (err: any) { 
-      alert(err.message); 
+    } catch (err: any) {
+      alert(err.message);
     }
   };
 
@@ -646,10 +647,10 @@ export default function FaturasPage() {
                     <tbody>
                       {viewingFatura.venda?.itens.map((item, idx) => (
                         <tr key={idx} className="border-t">
-                          <td className="p-2">{item.produto?.nome || item.servico?.nome || '-'}</td>
+                          <td className="p-2">{item.descricao || item.produto?.nome || item.servico?.nome || '-'}</td>
                           <td className="p-2 text-center">{item.quantidade}</td>
                           <td className="p-2 text-right">{(item.preco_unitario || 0).toLocaleString('pt-AO')} Kz</td>
-                          <td className="p-2 text-right">{(item.subtotal || item.quantidade * (item.preco_unitario || 0)).toLocaleString('pt-AO')} Kz</td>
+                          <td className="p-2 text-right">{(item.subtotal || 0).toLocaleString('pt-AO')} Kz</td>
                         </tr>
                       ))}
                     </tbody>
@@ -717,10 +718,10 @@ export default function FaturasPage() {
                       </optgroup>
                     </select>
 
-                    <input 
-                      type="number" 
-                      className="border rounded-lg p-2 w-20 text-center" 
-                      min={1} 
+                    <input
+                      type="number"
+                      className="border rounded-lg p-2 w-20 text-center"
+                      min={1}
                       value={item.quantidade}
                       onChange={(e) => {
                         const novaLista = [...(editingFatura.venda?.itens || [])];
@@ -731,10 +732,10 @@ export default function FaturasPage() {
                       }}
                     />
 
-                    <input 
-                      type="number" 
-                      className="border rounded-lg p-2 w-28 text-right" 
-                      min={0} 
+                    <input
+                      type="number"
+                      className="border rounded-lg p-2 w-28 text-right"
+                      min={0}
                       step={100}
                       value={item.preco_unitario}
                       onChange={(e) => {
@@ -750,7 +751,7 @@ export default function FaturasPage() {
                       {(item.subtotal || item.quantidade * item.preco_unitario || 0).toLocaleString('pt-AO')} Kz
                     </span>
 
-                    <button 
+                    <button
                       className="bg-red-500 text-white px-2 py-2 rounded-lg hover:bg-red-600"
                       onClick={() => {
                         const novaLista = (editingFatura.venda?.itens || []).filter((_, i) => i !== index);
@@ -763,7 +764,7 @@ export default function FaturasPage() {
                   </div>
                 ))}
 
-                <button 
+                <button
                   className="mt-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 flex items-center gap-2"
                   onClick={() => {
                     const novaLista = [...(editingFatura.venda?.itens || []), { quantidade: 1, preco_unitario: 0, subtotal: 0 } as VendaItem];
@@ -776,9 +777,9 @@ export default function FaturasPage() {
                 <div className="grid grid-cols-2 gap-4 mt-6 pt-4 border-t">
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">Forma de Pagamento</label>
-                    <select 
-                      value={editingFatura.forma_pagamento} 
-                      onChange={e => setEditingFatura({ ...editingFatura, forma_pagamento: e.target.value })} 
+                    <select
+                      value={editingFatura.forma_pagamento}
+                      onChange={e => setEditingFatura({ ...editingFatura, forma_pagamento: e.target.value })}
                       className="w-full border rounded-lg p-2"
                     >
                       <option value="dinheiro">Dinheiro</option>
@@ -789,9 +790,9 @@ export default function FaturasPage() {
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">Status</label>
-                    <select 
-                      value={editingFatura.status} 
-                      onChange={e => setEditingFatura({ ...editingFatura, status: e.target.value as StatusFatura })} 
+                    <select
+                      value={editingFatura.status}
+                      onChange={e => setEditingFatura({ ...editingFatura, status: e.target.value as StatusFatura })}
                       className="w-full border rounded-lg p-2"
                     >
                       <option value="pendente">Pendente</option>
@@ -829,13 +830,13 @@ export default function FaturasPage() {
                   <p className="text-sm text-gray-500">Esta ação não pode ser desfeita</p>
                 </div>
               </div>
-              
+
               <p className="text-gray-600 mb-6">
                 Tem certeza que deseja cancelar a fatura <strong className="text-red-600">{cancelModal.fatura.numero}</strong>?
                 <br />
                 <span className="text-sm text-gray-400">O valor total é de {formatarValor(cancelModal.fatura.total)}.</span>
               </p>
-              
+
               <div className="flex gap-3">
                 <button onClick={() => setCancelModal({ isOpen: false, fatura: null })} className="flex-1 px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors">
                   Cancelar

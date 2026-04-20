@@ -33,9 +33,11 @@ import {
   Truck,
   FileCheck,
   FileWarning,
-  Wallet,      // Ícone para Parcelas
-  Calendar,    // Ícone adicional
-  DollarSign   // Ícone adicional
+  Wallet,
+  Calendar,
+  DollarSign,
+  FilePlus,        // Ícone para Fatura Pró-Forma
+  FileSignature    // Ícone alternativo (opcional)
 } from 'lucide-react';
 
 import { useAuth } from '@/contexts/AuthContext';
@@ -79,7 +81,7 @@ export default function Sidebar() {
 
   // Foto do usuário
   const fotoUrl = user?.foto 
-    ? `${process.env.NEXT_PUBLIC_API_URL || 'https://api.apisemsaida.co.ao'}/uploads/${user.foto}`
+    ? `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000'}/uploads/${user.foto}`
     : null;
 
   const fetchConfig = useCallback(async () => {
@@ -166,10 +168,10 @@ export default function Sidebar() {
       roles: ['admin', 'optometrista', 'caixa', 'recepcao'] 
     },
     { 
-      label: 'Parcelas',  // NOVO MENU DE PARCELAS
+      label: 'Parcelas',
       href: '/dashboard/parcelas', 
       icon: <Wallet size={20} />, 
-      roles: ['admin', 'caixa']  // Apenas admin e caixa podem ver parcelas
+      roles: ['admin', 'caixa']
     },
     { 
       label: 'Relatórios', 
@@ -197,6 +199,12 @@ export default function Sidebar() {
           href: '/dashboard/faturas',
           icon: <Receipt size={18} />,
           roles: ['admin', 'caixa']
+        },
+        {
+          label: 'Fatura Pró-Forma', 
+          href: '/dashboard/fatura-proforma',
+          icon: <FilePlus size={18} />, 
+          roles: ['admin', 'caixa']  
         },
         {
           label: 'Nota de Entrega',
