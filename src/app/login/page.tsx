@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useRouter } from 'next/navigation';
-import { Eye, EyeOff, Mail, Lock, LogIn, AlertCircle, CheckCircle, ArrowRight, Shield, Globe, Clock, X, Phone, Mail as MailIcon, MessageCircle, Copy, Glasses } from 'lucide-react';
+import { Eye, EyeOff, Mail, Lock, LogIn, AlertCircle, CheckCircle, ArrowRight, Shield, Globe, Clock, X, KeyRound } from 'lucide-react';
 import { getApiUrl, getAuthHeaders } from '@/config/api';
 
 // Componente para as bolhas animadas
@@ -57,46 +57,19 @@ export default function LoginPage() {
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [twoFactorCode, setTwoFactorCode] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [rememberMe, setRememberMe] = useState(false);
   const [focusedField, setFocusedField] = useState<string | null>(null);
   const [showForgotModal, setShowForgotModal] = useState(false);
-  const [config, setConfig] = useState<any>(null);
-  const [imageVersion, setImageVersion] = useState<number>(Date.now());
-  const [copySuccess, setCopySuccess] = useState<string | null>(null);
+  const [requires2FA, setRequires2FA] = useState(false);
+  const [tempUserId, setTempUserId] = useState<number | null>(null);
+  const [forgotEmail, setForgotEmail] = useState('');
+  const [isForgotLoading, setIsForgotLoading] = useState(false);
+  const [forgotModalMessage, setForgotModalMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [mounted, setMounted] = useState(false);
-
-  // Função para buscar configurações (mesma lógica do sidebar)
-  const fetchConfig = async () => {
-    try {
-      const res = await fetch(getApiUrl('/configuracoes-sistema'), {
-        headers: getAuthHeaders(),
-      });
-      const data = await res.json();
-      setConfig(data);
-      setImageVersion(Date.now());
-    } catch (err) {
-      console.error('Erro ao carregar config:', err);
-    }
-  };
-
-  // Carregar configurações do sistema (mesma lógica do sidebar)
-  useEffect(() => {
-    fetchConfig();
-  }, []);
-
-  // Escutar atualizações de configuração (mesma lógica do sidebar)
-  useEffect(() => {
-    const handleConfigUpdate = () => {
-      fetchConfig();
-    };
-    window.addEventListener('configUpdated', handleConfigUpdate);
-    return () => {
-      window.removeEventListener('configUpdated', handleConfigUpdate);
-    };
-  }, []);
 
   // Carregar credenciais salvas
   useEffect(() => {
@@ -135,6 +108,40 @@ export default function LoginPage() {
     }
 
     try {
+      // Se estiver no modo 2FA, faz a requisição diretamente
+      if (requires2FA) {
+        const response = await fetch(getApiUrl('/auth/login'), {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            email: email.trim(),
+            senha: password,
+            twoFactorCode: twoFactorCode
+          })
+        });
+
+        const data = await response.json();
+
+        if (!response.ok) {
+          throw new Error(data.error || 'Erro no login');
+        }
+
+        const { token, usuario } = data;
+        
+        localStorage.setItem('token', token);
+        localStorage.setItem('user', JSON.stringify(usuario));
+        
+        if (rememberMe) {
+          localStorage.setItem('rememberedEmail', email);
+        } else {
+          localStorage.removeItem('rememberedEmail');
+        }
+        
+        router.push('/dashboard/gestao-comercial');
+        return;
+      }
+
+      // Login normal usando o context
       await login(email, password);
       
       if (rememberMe) {
@@ -144,50 +151,132 @@ export default function LoginPage() {
       }
       
       router.push('/dashboard/gestao-comercial');
-    } catch (err) {
-      const errorObj = err as Error;
-      setError(
-        errorObj.message || 
-        'Credenciais inválidas. Por favor, tente novamente.'
-      );
-    } finally {
+    } catch (err: any) {
+      // Verificar se é erro de 2FA (precisa de código)
+      if (err.message?.includes('twoFactor') || err.message?.includes('2FA')) {
+        setRequires2FA(true);
+        setError('');
+      } else {
+        setError(err.message || 'Credenciais inválidas. Por favor, tente novamente.');
+      }
       setIsLoading(false);
     }
+  };
+
+  // Verificar 2FA separadamente
+  const handle2FALogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError('');
+    setIsLoading(true);
+
+    try {
+      const response = await fetch(getApiUrl('/auth/login'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: email.trim(),
+          senha: password,
+          twoFactorCode: twoFactorCode
+        })
+      });
+
+      const data = await response.json();
+
+      if (response.status === 202 && data.requiresTwoFactor) {
+        setError('Código inválido. Tente novamente.');
+        setIsLoading(false);
+        return;
+      }
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Erro no login');
+      }
+
+      const { token, usuario } = data;
+      
+      localStorage.setItem('token', token);
+      localStorage.setItem('user', JSON.stringify(usuario));
+      
+      if (rememberMe) {
+        localStorage.setItem('rememberedEmail', email);
+      } else {
+        localStorage.removeItem('rememberedEmail');
+      }
+      
+      router.push('/dashboard/gestao-comercial');
+      
+    } catch (err: any) {
+      setError(err.message || 'Erro ao verificar código');
+      setIsLoading(false);
+    }
+  };
+
+  const handleForgotPassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsForgotLoading(true);
+    setForgotModalMessage(null);
+
+    if (!forgotEmail.trim()) {
+      setForgotModalMessage({ type: 'error', text: 'Por favor, insira seu email' });
+      setIsForgotLoading(false);
+      return;
+    }
+
+    try {
+      const response = await fetch(getApiUrl('/auth/forgot-password'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: forgotEmail.trim() })
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Erro ao enviar email');
+      }
+
+      setForgotModalMessage({ 
+        type: 'success', 
+        text: '✅ Email de recuperação enviado! Verifique sua caixa de entrada.' 
+      });
+      
+      setForgotEmail('');
+      
+      setTimeout(() => {
+        setShowForgotModal(false);
+        setForgotModalMessage(null);
+      }, 3000);
+      
+    } catch (err: any) {
+      setForgotModalMessage({ type: 'error', text: err.message });
+    } finally {
+      setIsForgotLoading(false);
+    }
+  };
+
+  const resetLogin = () => {
+    setRequires2FA(false);
+    setTwoFactorCode('');
+    setTempUserId(null);
+    setError('');
   };
 
   const clearError = () => {
     setError('');
   };
 
-  const handleCopy = async (text: string, type: string) => {
-    try {
-      await navigator.clipboard.writeText(text);
-      setCopySuccess(type);
-      setTimeout(() => setCopySuccess(null), 2000);
-    } catch (err) {
-      console.error('Erro ao copiar:', err);
-    }
+  const closeForgotModal = () => {
+    setShowForgotModal(false);
+    setForgotModalMessage(null);
+    setForgotEmail('');
   };
 
-  // Mesma lógica do sidebar para a logo
-  const logoUrl = config?.logo ? `${getApiUrl(config.logo)}?v=${imageVersion}` : null;
-  const empresaNome = config?.empresa_nome || config?.nome_sistema || 'Prestígio Óptica';
-
-  const adminContact = {
-    name: 'Administrador do Sistema',
-    email: 'suporte@prestigioptica.ao',
-    phone: '+244 923 456 789',
-    whatsapp: '+244 923 456 789'
-  };
-
-  // Evitar hydration mismatch
   if (!mounted) {
     return null;
   }
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 relative overflow-hidden">
-      {/* Fundo com partículas animadas */}
       <div className="absolute inset-0 overflow-hidden">
         <div className="absolute top-0 left-0 w-full h-full">
           <FloatingBubbles />
@@ -199,28 +288,16 @@ export default function LoginPage() {
 
       <div className="relative w-full max-w-6xl px-4">
         <div className="grid lg:grid-cols-2 gap-8 items-center">
-          {/* Lado Esquerdo - Informações da Empresa */}
           <div className="hidden lg:block text-white space-y-8">
             <div className="animate-fadeInLeft">
-              {/* Logo da Empresa - Mesmo estilo do sidebar */}
-              <div className="mb-6">
-                {logoUrl ? (
-                  <div className="flex justify-start">
-                    <img
-                      src={logoUrl}
-                      alt={`Logo ${empresaNome}`}
-                      className="h-24 w-auto object-contain"
-                    />
-                  </div>
-                ) : (
-                  <div className="w-24 h-24 bg-gradient-to-r from-blue-500 to-purple-600 rounded-2xl flex items-center justify-center shadow-2xl">
-                    <Glasses size={48} className="text-white" />
-                  </div>
-                )}
+              <div className="mb-6 flex justify-start">
+                <img 
+                  src="/logo.png" 
+                  alt="Logo Sistema Óptica" 
+                  className="h-18 w-auto object-contain"
+                />
               </div>
-              <p className="text-xl text-blue-200 mb-8">
-                Sistema de Gestão Integrada
-              </p>
+              <p className="text-xl text-blue-200 mb-8">Sistema de Gestão Integrada</p>
               <div className="space-y-4">
                 <div className="flex items-center gap-3 text-blue-100">
                   <Shield size={20} />
@@ -236,42 +313,31 @@ export default function LoginPage() {
                 </div>
               </div>
             </div>
-
-            {/* <div className="grid grid-cols-2 gap-4 mt-12">
-              <div className="bg-white/10 backdrop-blur-sm rounded-xl p-4 text-center border border-white/20 animate-fadeInUp">
-                <p className="text-3xl font-bold">500+</p>
-                <p className="text-sm text-blue-200">Clientes Ativos</p>
-              </div>
-              <div className="bg-white/10 backdrop-blur-sm rounded-xl p-4 text-center border border-white/20 animate-fadeInUp delay-100">
-                <p className="text-3xl font-bold">10k+</p>
-                <p className="text-sm text-blue-200">Consultas Realizadas</p>
-              </div>
-            </div> */}
           </div>
 
-          {/* Lado Direito - Formulário de Login */}
           <div className="w-full max-w-md mx-auto lg:mx-0 lg:ml-auto">
             <div className="bg-white/10 backdrop-blur-xl rounded-2xl shadow-2xl p-8 border border-white/20 transform transition-all duration-500 hover:shadow-3xl">
               <div className="text-center mb-8">
                 <div className="lg:hidden flex flex-col items-center mb-4">
-                  {/* Logo para mobile - mesmo estilo do sidebar */}
-                  {logoUrl ? (
-                    <img 
-                      src={logoUrl} 
-                      alt={`Logo ${empresaNome}`}
-                      className="h-16 w-auto object-contain mb-3"
-                    />
-                  ) : (
-                    <div className="w-16 h-16 bg-gradient-to-r from-blue-500 to-purple-600 rounded-2xl flex items-center justify-center mb-3 shadow-lg">
-                      <Glasses size={32} className="text-white" />
-                    </div>
-                  )}
-                  <h2 className="text-2xl font-bold text-white">Bem-vindo de volta!</h2>
+                  <img 
+                    src="/logo.png" 
+                    alt="Logo Sistema Óptica" 
+                    className="h-16 w-auto object-contain mb-3"
+                  />
+                  <h2 className="text-2xl font-bold text-white">
+                    {requires2FA ? 'Código de Verificação' : 'Bem-vindo de volta!'}
+                  </h2>
                 </div>
                 <div className="hidden lg:block">
-                  <h2 className="text-2xl font-bold text-white mb-2">Bem-vindo de volta!</h2>
+                  <h2 className="text-2xl font-bold text-white mb-2">
+                    {requires2FA ? 'Código de Verificação' : 'Bem-vindo de volta!'}
+                  </h2>
                 </div>
-                <p className="text-blue-200">Acesse sua conta para continuar</p>
+                <p className="text-blue-200">
+                  {requires2FA 
+                    ? 'Digite o código gerado pelo seu aplicativo autenticador'
+                    : 'Acesse sua conta para continuar'}
+                </p>
               </div>
 
               {error && (
@@ -279,87 +345,118 @@ export default function LoginPage() {
                   <AlertCircle size={18} className="flex-shrink-0" />
                   <span>{error}</span>
                   <button onClick={clearError} className="ml-auto hover:text-red-200 transition-colors">
-                    <span className="text-xs">✕</span>
+                    <X size={16} />
                   </button>
                 </div>
               )}
 
-              {!error && email && password && !isLoading && (
-                <div className="mb-4 p-3 bg-green-500/20 backdrop-blur-sm border border-green-400/50 rounded-lg text-green-100 text-sm flex items-center gap-2 animate-pulse">
-                  <CheckCircle size={18} />
-                  <span>Preencha suas credenciais para continuar</span>
-                </div>
-              )}
+              <form onSubmit={requires2FA ? handle2FALogin : handleLogin} className="space-y-6">
+                {!requires2FA ? (
+                  <>
+                    <div className="group">
+                      <label className="block text-sm font-medium text-blue-100 mb-2 transition-all group-focus-within:text-white">
+                        Email
+                      </label>
+                      <div className={`relative transition-all duration-300 ${focusedField === 'email' ? 'transform scale-105' : ''}`}>
+                        <Mail className={`absolute left-3 top-1/2 -translate-y-1/2 transition-all duration-300 ${focusedField === 'email' ? 'text-white scale-110' : 'text-blue-300'}`} size={18} />
+                        <input
+                          type="email"
+                          value={email}
+                          onChange={(e) => setEmail(e.target.value)}
+                          onFocus={() => setFocusedField('email')}
+                          onBlur={() => setFocusedField(null)}
+                          className="w-full pl-10 pr-4 py-3 bg-white/10 backdrop-blur-sm border border-white/20 rounded-lg focus:ring-2 focus:ring-white/50 focus:border-transparent transition-all text-white placeholder:text-blue-200/50 outline-none"
+                          placeholder="seu@email.com"
+                          required
+                          disabled={isLoading}
+                        />
+                      </div>
+                    </div>
 
-              <form onSubmit={handleLogin} className="space-y-6">
-                <div className="group">
-                  <label className="block text-sm font-medium text-blue-100 mb-2 transition-all group-focus-within:text-white">
-                    Email
-                  </label>
-                  <div className={`relative transition-all duration-300 ${focusedField === 'email' ? 'transform scale-105' : ''}`}>
-                    <Mail className={`absolute left-3 top-1/2 -translate-y-1/2 transition-all duration-300 ${focusedField === 'email' ? 'text-white scale-110' : 'text-blue-300'}`} size={18} />
-                    <input
-                      type="email"
-                      value={email}
-                      onChange={(e) => setEmail(e.target.value)}
-                      onFocus={() => setFocusedField('email')}
-                      onBlur={() => setFocusedField(null)}
-                      className="w-full pl-10 pr-4 py-3 bg-white/10 backdrop-blur-sm border border-white/20 rounded-lg focus:ring-2 focus:ring-white/50 focus:border-transparent transition-all text-white placeholder:text-blue-200/50 outline-none"
-                      placeholder="seu@email.com"
-                      required
-                      disabled={isLoading}
-                    />
-                  </div>
-                </div>
+                    <div className="group">
+                      <label className="block text-sm font-medium text-blue-100 mb-2 transition-all group-focus-within:text-white">
+                        Senha
+                      </label>
+                      <div className={`relative transition-all duration-300 ${focusedField === 'password' ? 'transform scale-105' : ''}`}>
+                        <Lock className={`absolute left-3 top-1/2 -translate-y-1/2 transition-all duration-300 ${focusedField === 'password' ? 'text-white scale-110' : 'text-blue-300'}`} size={18} />
+                        <input
+                          type={showPassword ? "text" : "password"}
+                          value={password}
+                          onChange={(e) => setPassword(e.target.value)}
+                          onFocus={() => setFocusedField('password')}
+                          onBlur={() => setFocusedField(null)}
+                          className="w-full pl-10 pr-12 py-3 bg-white/10 backdrop-blur-sm border border-white/20 rounded-lg focus:ring-2 focus:ring-white/50 focus:border-transparent transition-all text-white placeholder:text-blue-200/50 outline-none"
+                          placeholder="Digite sua senha"
+                          required
+                          disabled={isLoading}
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setShowPassword(!showPassword)}
+                          className="absolute right-3 top-1/2 -translate-y-1/2 text-blue-300 hover:text-white transition-all hover:scale-110"
+                          disabled={isLoading}
+                        >
+                          {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                        </button>
+                      </div>
+                    </div>
 
-                <div className="group">
-                  <label className="block text-sm font-medium text-blue-100 mb-2 transition-all group-focus-within:text-white">
-                    Senha
-                  </label>
-                  <div className={`relative transition-all duration-300 ${focusedField === 'password' ? 'transform scale-105' : ''}`}>
-                    <Lock className={`absolute left-3 top-1/2 -translate-y-1/2 transition-all duration-300 ${focusedField === 'password' ? 'text-white scale-110' : 'text-blue-300'}`} size={18} />
-                    <input
-                      type={showPassword ? "text" : "password"}
-                      value={password}
-                      onChange={(e) => setPassword(e.target.value)}
-                      onFocus={() => setFocusedField('password')}
-                      onBlur={() => setFocusedField(null)}
-                      className="w-full pl-10 pr-12 py-3 bg-white/10 backdrop-blur-sm border border-white/20 rounded-lg focus:ring-2 focus:ring-white/50 focus:border-transparent transition-all text-white placeholder:text-blue-200/50 outline-none"
-                      placeholder="Digite sua senha"
-                      required
-                      disabled={isLoading}
-                    />
+                    <div className="flex items-center justify-between">
+                      <label className="flex items-center gap-2 cursor-pointer group">
+                        <input
+                          type="checkbox"
+                          checked={rememberMe}
+                          onChange={(e) => setRememberMe(e.target.checked)}
+                          className="w-4 h-4 rounded border-white/30 bg-white/10 text-blue-600 focus:ring-white/50 focus:ring-offset-0 cursor-pointer"
+                        />
+                        <span className="text-sm text-blue-100 group-hover:text-white transition-colors">
+                          Lembrar-me
+                        </span>
+                      </label>
+                      <button
+                        type="button"
+                        onClick={() => setShowForgotModal(true)}
+                        className="text-sm text-blue-100 hover:text-white transition-colors hover:underline"
+                      >
+                        Esqueceu a senha?
+                      </button>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <div className="group">
+                      <label className="block text-sm font-medium text-blue-100 mb-2 transition-all group-focus-within:text-white">
+                        Código de Autenticação
+                      </label>
+                      <div className={`relative transition-all duration-300 ${focusedField === '2fa' ? 'transform scale-105' : ''}`}>
+                        <KeyRound className={`absolute left-3 top-1/2 -translate-y-1/2 transition-all duration-300 ${focusedField === '2fa' ? 'text-white scale-110' : 'text-blue-300'}`} size={18} />
+                        <input
+                          type="text"
+                          value={twoFactorCode}
+                          onChange={(e) => setTwoFactorCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                          onFocus={() => setFocusedField('2fa')}
+                          onBlur={() => setFocusedField(null)}
+                          className="w-full pl-10 pr-4 py-3 bg-white/10 backdrop-blur-sm border border-white/20 rounded-lg focus:ring-2 focus:ring-white/50 focus:border-transparent transition-all text-white placeholder:text-blue-200/50 outline-none text-center text-2xl tracking-widest"
+                          placeholder="000000"
+                          maxLength={6}
+                          required
+                          autoFocus
+                        />
+                      </div>
+                      <p className="text-xs text-blue-200 mt-2 text-center">
+                        Abra o Google Authenticator e digite o código de 6 dígitos
+                      </p>
+                    </div>
+
                     <button
                       type="button"
-                      onClick={() => setShowPassword(!showPassword)}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 text-blue-300 hover:text-white transition-all hover:scale-110"
-                      disabled={isLoading}
+                      onClick={resetLogin}
+                      className="text-sm text-blue-100 hover:text-white transition-colors text-center w-full"
                     >
-                      {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                      ← Voltar ao login
                     </button>
-                  </div>
-                </div>
-
-                <div className="flex items-center justify-between">
-                  <label className="flex items-center gap-2 cursor-pointer group">
-                    <input
-                      type="checkbox"
-                      checked={rememberMe}
-                      onChange={(e) => setRememberMe(e.target.checked)}
-                      className="w-4 h-4 rounded border-white/30 bg-white/10 text-blue-600 focus:ring-white/50 focus:ring-offset-0 cursor-pointer"
-                    />
-                    <span className="text-sm text-blue-100 group-hover:text-white transition-colors">
-                      Lembrar-me
-                    </span>
-                  </label>
-                  <button
-                    type="button"
-                    onClick={() => setShowForgotModal(true)}
-                    className="text-sm text-blue-100 hover:text-white transition-colors hover:underline"
-                  >
-                    Esqueceu a senha?
-                  </button>
-                </div>
+                  </>
+                )}
 
                 <button
                   type="submit"
@@ -370,12 +467,12 @@ export default function LoginPage() {
                     {isLoading ? (
                       <>
                         <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                        Autenticando...
+                        {requires2FA ? 'Verificando...' : 'Autenticando...'}
                       </>
                     ) : (
                       <>
                         <LogIn size={18} />
-                        Entrar no Sistema
+                        {requires2FA ? 'Verificar Código' : 'Entrar no Sistema'}
                         <ArrowRight size={16} className="group-hover:translate-x-1 transition-transform" />
                       </>
                     )}
@@ -390,7 +487,7 @@ export default function LoginPage() {
                   Sistema seguro com criptografia de ponta a ponta
                 </p>
                 <p className="text-xs text-blue-200/70 mt-2">
-                  © {new Date().getFullYear()} {empresaNome} - Todos os direitos reservados
+                  © {new Date().getFullYear()} Sistema Óptica - Todos os direitos reservados
                 </p>
               </div>
             </div>
@@ -398,19 +495,19 @@ export default function LoginPage() {
         </div>
       </div>
 
-      {/* Modal de Esqueceu a Senha */}
+      {/* Modal de Recuperação de Senha */}
       {showForgotModal && (
         <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4 animate-fadeIn">
           <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full overflow-hidden transform transition-all animate-scaleIn">
             <div className="bg-gradient-to-r from-blue-600 to-purple-600 px-6 py-4 flex justify-between items-center">
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 bg-white/20 rounded-full flex items-center justify-center">
-                  <Lock className="text-white" size={20} />
+                  <Mail className="text-white" size={20} />
                 </div>
-                <h2 className="text-xl font-bold text-white">Recuperar Acesso</h2>
+                <h2 className="text-xl font-bold text-white">Recuperar Senha</h2>
               </div>
               <button
-                onClick={() => setShowForgotModal(false)}
+                onClick={closeForgotModal}
                 className="text-white/70 hover:text-white transition-colors"
               >
                 <X size={24} />
@@ -418,98 +515,59 @@ export default function LoginPage() {
             </div>
 
             <div className="p-6">
-              <div className="text-center mb-6">
-                <div className="w-20 h-20 bg-yellow-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                  <AlertCircle className="text-yellow-600" size={32} />
+              {forgotModalMessage ? (
+                <div className={`text-center p-4 rounded-lg ${
+                  forgotModalMessage.type === 'success' 
+                    ? 'bg-green-50 text-green-700' 
+                    : 'bg-red-50 text-red-700'
+                }`}>
+                  {forgotModalMessage.type === 'success' ? (
+                    <CheckCircle size={48} className="mx-auto mb-3 text-green-500" />
+                  ) : (
+                    <AlertCircle size={48} className="mx-auto mb-3 text-red-500" />
+                  )}
+                  <p>{forgotModalMessage.text}</p>
                 </div>
-                <p className="text-gray-600">
-                  Para recuperar sua senha, entre em contato com o administrador do sistema através dos canais abaixo:
-                </p>
-              </div>
+              ) : (
+                <form onSubmit={handleForgotPassword}>
+                  <div className="text-center mb-6">
+                    <div className="w-20 h-20 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                      <MailIcon className="text-blue-600" size={32} />
+                    </div>
+                    <p className="text-gray-600">
+                      Digite seu email para receber instruções de recuperação de senha.
+                    </p>
+                  </div>
 
-              <div className="space-y-4">
-                <div className="bg-gray-50 rounded-lg p-4 flex items-center gap-3">
-                  <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center">
-                    <MailIcon className="text-blue-600" size={20} />
+                  <div className="mb-6">
+                    <input
+                      type="email"
+                      value={forgotEmail}
+                      onChange={(e) => setForgotEmail(e.target.value)}
+                      className="w-full border border-gray-300 rounded-lg px-4 py-3 focus:ring-2 focus:ring-blue-500 outline-none"
+                      placeholder="seu@email.com"
+                      required
+                      autoFocus
+                    />
                   </div>
-                  <div className="flex-1">
-                    <p className="text-xs text-gray-500">Email do Administrador</p>
-                    <a href={`mailto:${adminContact.email}`} className="text-blue-600 font-medium hover:underline">
-                      {adminContact.email}
-                    </a>
-                  </div>
+
                   <button
-                    onClick={() => handleCopy(adminContact.email, 'email')}
-                    className="text-gray-400 hover:text-gray-600 transition-colors relative"
+                    type="submit"
+                    disabled={isForgotLoading}
+                    className="w-full bg-gradient-to-r from-blue-500 to-purple-600 text-white py-3 rounded-lg font-medium hover:shadow-lg transition-all disabled:opacity-50"
                   >
-                    <Copy size={18} />
-                    {copySuccess === 'email' && (
-                      <span className="absolute -top-8 left-1/2 -translate-x-1/2 bg-green-500 text-white text-xs px-2 py-1 rounded whitespace-nowrap">
-                        Copiado!
-                      </span>
-                    )}
+                    {isForgotLoading ? 'Enviando...' : 'Enviar Instruções'}
                   </button>
-                </div>
 
-                <div className="bg-gray-50 rounded-lg p-4 flex items-center gap-3">
-                  <div className="w-10 h-10 bg-green-100 rounded-full flex items-center justify-center">
-                    <Phone className="text-green-600" size={20} />
-                  </div>
-                  <div className="flex-1">
-                    <p className="text-xs text-gray-500">Telefone</p>
-                    <a href={`tel:${adminContact.phone}`} className="text-green-600 font-medium hover:underline">
-                      {adminContact.phone}
-                    </a>
-                  </div>
                   <button
-                    onClick={() => handleCopy(adminContact.phone, 'phone')}
-                    className="text-gray-400 hover:text-gray-600 transition-colors relative"
+                    type="button"
+                    onClick={closeForgotModal}
+                    className="mt-3 w-full text-gray-500 text-sm hover:text-gray-700 transition-colors"
                   >
-                    <Copy size={18} />
-                    {copySuccess === 'phone' && (
-                      <span className="absolute -top-8 left-1/2 -translate-x-1/2 bg-green-500 text-white text-xs px-2 py-1 rounded whitespace-nowrap">
-                        Copiado!
-                      </span>
-                    )}
+                    Cancelar
                   </button>
-                </div>
-
-                <div className="bg-gray-50 rounded-lg p-4 flex items-center gap-3">
-                  <div className="w-10 h-10 bg-green-100 rounded-full flex items-center justify-center">
-                    <MessageCircle className="text-green-600" size={20} />
-                  </div>
-                  <div className="flex-1">
-                    <p className="text-xs text-gray-500">WhatsApp</p>
-                    <a href={`https://wa.me/${adminContact.whatsapp.replace(/\D/g, '')}`} target="_blank" rel="noopener noreferrer" className="text-green-600 font-medium hover:underline">
-                      {adminContact.whatsapp}
-                    </a>
-                  </div>
-                  <button
-                    onClick={() => handleCopy(adminContact.whatsapp, 'whatsapp')}
-                    className="text-gray-400 hover:text-gray-600 transition-colors relative"
-                  >
-                    <Copy size={18} />
-                    {copySuccess === 'whatsapp' && (
-                      <span className="absolute -top-8 left-1/2 -translate-x-1/2 bg-green-500 text-white text-xs px-2 py-1 rounded whitespace-nowrap">
-                        Copiado!
-                      </span>
-                    )}
-                  </button>
-                </div>
-              </div>
-
-              <div className="mt-6 p-3 bg-blue-50 rounded-lg">
-                <p className="text-xs text-blue-700 text-center">
-                  ⚠️ O administrador é a única pessoa autorizada a redefinir senhas por questões de segurança.
-                </p>
-              </div>
-
-              <button
-                onClick={() => setShowForgotModal(false)}
-                className="mt-6 w-full py-3 bg-gray-100 text-gray-700 rounded-lg font-medium hover:bg-gray-200 transition-colors"
-              >
-                Fechar
-              </button>
+                </form>
+              )}
             </div>
           </div>
         </div>
@@ -541,16 +599,31 @@ export default function LoginPage() {
           from { opacity: 0; transform: scale(0.9); }
           to { opacity: 1; transform: scale(1); }
         }
+        @keyframes pulse {
+          0%, 100% { opacity: 0.5; }
+          50% { opacity: 0.8; }
+        }
         .animate-fadeInLeft { animation: fadeInLeft 0.8s ease-out; }
         .animate-fadeInUp { animation: fadeInUp 0.8s ease-out; animation-fill-mode: both; }
         .animate-float { animation: float infinite ease-in-out; }
         .animate-shake { animation: shake 0.5s ease-in-out; }
         .animate-fadeIn { animation: fadeIn 0.3s ease-out; }
         .animate-scaleIn { animation: scaleIn 0.3s ease-out; }
+        .animate-pulse { animation: pulse 3s ease-in-out infinite; }
         .delay-100 { animation-delay: 0.1s; }
         .delay-1000 { animation-delay: 1s; }
         .shadow-3xl { box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5); }
       `}</style>
     </div>
+  );
+}
+
+// Ícone de email para o modal
+function MailIcon({ size, className }: { size: number; className?: string }) {
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
+      <rect x="2" y="4" width="20" height="16" rx="2" />
+      <path d="m22 7-10 7L2 7" />
+    </svg>
   );
 }
