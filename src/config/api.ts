@@ -67,9 +67,36 @@ export const API_ENDPOINTS = {
   // src/config/api.ts - adicione
   RELATORIOS: "/relatorios",
   
+  // PARCELAMENTO CONFIGURAÇÕES - NOVO
+  PARCELAMENTO_CONFIG: {
+    // Listar todas as configurações
+    LISTAR: "/parcelamento-config",
+    
+    // Buscar por ID
+    BUSCAR: (id: number | string) => `/parcelamento-config/${id}`,
+    
+    // Criar nova configuração
+    CRIAR: "/parcelamento-config",
+    
+    // Atualizar configuração
+    ATUALIZAR: (id: number | string) => `/parcelamento-config/${id}`,
+    
+    // Ativar/Desativar configuração
+    TOGGLE: (id: number | string) => `/parcelamento-config/${id}/toggle`,
+    
+    // Deletar configuração
+    DELETAR: (id: number | string) => `/parcelamento-config/${id}`,
+    
+    // Clonar configuração
+    CLONAR: (id: number | string) => `/parcelamento-config/${id}/clone`,
+    
+    // Filtros
+    POR_STATUS: (ativo: boolean) => `/parcelamento-config?ativo=${ativo}`,
+  },
+
   // PARCELAMENTO - CORRIGIDO
   PARCELAMENTO: {
-    // Configurações
+    // Configurações (mantido para compatibilidade)
     CONFIGURACOES: "/parcelamentos/configuracoes",
     CONFIGURACAO_ID: (id: number | string) => `/parcelamentos/configuracoes/${id}`,
     
@@ -127,6 +154,30 @@ export const API_ENDPOINTS = {
     POR_CLIENTE: (clienteId: number | string) => `/faturas-proforma?cliente_id=${clienteId}`,
     POR_STATUS: (status: string) => `/faturas-proforma?status=${status}`,
     POR_PERIODO: (dataInicio: string, dataFim: string) => `/faturas-proforma?data_inicio=${dataInicio}&data_fim=${dataFim}`,
+  },
+
+  // SAF-T FISCAL
+  SAFT: {
+    // Gerar arquivo SAF-T
+    GERAR: "/saft/gerar",
+    
+    // Listar movimentos gerados
+    MOVIMENTOS: "/saft/movimentos",
+    
+    // Download do arquivo
+    DOWNLOAD: (nomeArquivo: string) => `/saft/download/${nomeArquivo}`,
+    
+    // Configurações fiscais da empresa
+    CONFIGURACOES_FISCAIS: "/saft/configuracoes-fiscais",
+    
+    // Atualizar configurações fiscais
+    ATUALIZAR_CONFIGURACOES: "/saft/configuracoes-fiscais",
+    
+    // Validar arquivo SAF-T
+    VALIDAR: "/saft/validar",
+    
+    // Enviar para AGT (futuro)
+    ENVIAR_AGT: "/saft/enviar-agt",
   },
 };
 

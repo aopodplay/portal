@@ -18,6 +18,22 @@ function parseJwt(token: string) {
   }
 }
 
+// Função para validar senha forte
+const validateStrongPassword = (password: string) => {
+  const regex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,}$/;
+  return regex.test(password);
+};
+
+// Componente Edit (ícone de edição)
+function Edit({ size, className }: { size: number; className?: string }) {
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
+      <path d="M17 3l4 4-7 7H10v-4l7-7z" />
+      <path d="M4 20h16" />
+    </svg>
+  );
+}
+
 export default function UserProfile() {
   const { user: authUser, updateUser, logout } = useAuth();
   const [user, setUser] = useState({ 
@@ -43,6 +59,15 @@ export default function UserProfile() {
   const [nomeTemp, setNomeTemp] = useState('');
   const [emailTemp, setEmailTemp] = useState('');
   const [showLogoutModal, setShowLogoutModal] = useState(false);
+  
+  // Password strength indicators
+  const [passwordStrength, setPasswordStrength] = useState({
+    hasMinLength: false,
+    hasUpperCase: false,
+    hasLowerCase: false,
+    hasNumber: false,
+    hasSpecialChar: false
+  });
   
   // 2FA States
   const [show2FAModal, setShow2FAModal] = useState(false);
@@ -124,6 +149,27 @@ export default function UserProfile() {
     }
   }, [token]);
 
+  // Validar força da senha em tempo real
+  useEffect(() => {
+    if (senha) {
+      setPasswordStrength({
+        hasMinLength: senha.length >= 8,
+        hasUpperCase: /[A-Z]/.test(senha),
+        hasLowerCase: /[a-z]/.test(senha),
+        hasNumber: /\d/.test(senha),
+        hasSpecialChar: /[@$!%*?&]/.test(senha)
+      });
+    } else {
+      setPasswordStrength({
+        hasMinLength: false,
+        hasUpperCase: false,
+        hasLowerCase: false,
+        hasNumber: false,
+        hasSpecialChar: false
+      });
+    }
+  }, [senha]);
+
   const handleFotoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -170,8 +216,9 @@ export default function UserProfile() {
       return;
     }
     
-    if (senha && senha.length < 6) {
-      setErro('A senha deve ter no mínimo 6 caracteres');
+    // Validação de senha forte
+    if (senha && !validateStrongPassword(senha)) {
+      setErro('Senha fraca. A senha deve ter no mínimo 8 caracteres, incluindo letras maiúsculas, minúsculas, números e caracteres especiais (@$!%*?&)');
       return;
     }
 
@@ -599,6 +646,46 @@ export default function UserProfile() {
                         {mostrarSenha ? <EyeOff size={18} /> : <Eye size={18} />}
                       </button>
                     </div>
+                    
+                    {/* Indicador de força da senha */}
+                    {senha && (
+                      <div className="mt-3 space-y-2">
+                        <div className="flex gap-2">
+                          <div className={`h-1 flex-1 rounded-full transition-all ${
+                            passwordStrength.hasMinLength ? 'bg-green-500' : 'bg-gray-300'
+                          }`} />
+                          <div className={`h-1 flex-1 rounded-full transition-all ${
+                            passwordStrength.hasUpperCase ? 'bg-green-500' : 'bg-gray-300'
+                          }`} />
+                          <div className={`h-1 flex-1 rounded-full transition-all ${
+                            passwordStrength.hasLowerCase ? 'bg-green-500' : 'bg-gray-300'
+                          }`} />
+                          <div className={`h-1 flex-1 rounded-full transition-all ${
+                            passwordStrength.hasNumber ? 'bg-green-500' : 'bg-gray-300'
+                          }`} />
+                          <div className={`h-1 flex-1 rounded-full transition-all ${
+                            passwordStrength.hasSpecialChar ? 'bg-green-500' : 'bg-gray-300'
+                          }`} />
+                        </div>
+                        <ul className="text-xs space-y-1">
+                          <li className={passwordStrength.hasMinLength ? 'text-green-600' : 'text-gray-400'}>
+                            • Mínimo 8 caracteres
+                          </li>
+                          <li className={passwordStrength.hasUpperCase ? 'text-green-600' : 'text-gray-400'}>
+                            • Pelo menos uma letra maiúscula
+                          </li>
+                          <li className={passwordStrength.hasLowerCase ? 'text-green-600' : 'text-gray-400'}>
+                            • Pelo menos uma letra minúscula
+                          </li>
+                          <li className={passwordStrength.hasNumber ? 'text-green-600' : 'text-gray-400'}>
+                            • Pelo menos um número
+                          </li>
+                          <li className={passwordStrength.hasSpecialChar ? 'text-green-600' : 'text-gray-400'}>
+                            • Pelo menos um caractere especial (@$!%*?&)
+                          </li>
+                        </ul>
+                      </div>
+                    )}
                   </div>
 
                   {senha && (
@@ -621,6 +708,9 @@ export default function UserProfile() {
                           {mostrarConfirmarSenha ? <EyeOff size={18} /> : <Eye size={18} />}
                         </button>
                       </div>
+                      {confirmarSenha && senha !== confirmarSenha && (
+                        <p className="text-red-500 text-xs mt-1">As senhas não coincidem</p>
+                      )}
                     </div>
                   )}
 
@@ -877,15 +967,5 @@ export default function UserProfile() {
         }
       `}</style>
     </div>
-  );
-}
-
-// Componente Edit (ícone de edição)
-function Edit({ size, className }: { size: number; className?: string }) {
-  return (
-    <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
-      <path d="M17 3l4 4-7 7H10v-4l7-7z" />
-      <path d="M4 20h16" />
-    </svg>
   );
 }

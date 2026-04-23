@@ -7,7 +7,7 @@ import {
   FolderTree, Heart, CreditCard, FileText, Plus,
   Edit, Trash2, X, CheckCircle, AlertCircle, Eye,
   Save, Upload, Printer, DollarSign, Hash, Phone, Mail, MapPin,
-  Building, Search
+  Building, Search, TrendingUp, Calendar, Percent
 } from 'lucide-react';
 
 // ==================== TIPOS ====================
@@ -91,10 +91,27 @@ interface Autorizacao {
   plano_seguro_id: number;
 }
 
+// ==================== TIPOS PARA PARCELAMENTO CONFIG ====================
+interface ParcelamentoConfig {
+  id: number;
+  nome: string;
+  descricao?: string;
+  minimo_parcelas: number;
+  maximo_parcelas: number;
+  taxa_juros_mensal: number;
+  desconto_avista: number;
+  valor_minimo_parcela: number;
+  exige_entrada: boolean;
+  percentual_entrada_minimo: number;
+  ativo: boolean;
+  created_at?: string;
+  updated_at?: string;
+}
+
 // ==================== COMPONENTE PRINCIPAL ====================
 
 export default function ConfiguracoesPage() {
-  const [abaAtiva, setAbaAtiva] = useState<'sistema' | 'usuarios' | 'produtos' | 'servicos' | 'categorias' | 'seguradoras' | 'planos' | 'coberturas' | 'autorizacoes'>('sistema');
+  const [abaAtiva, setAbaAtiva] = useState<'sistema' | 'usuarios' | 'produtos' | 'servicos' | 'categorias' | 'seguradoras' | 'planos' | 'coberturas' | 'autorizacoes' | 'parcelamento'>('sistema');
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
@@ -151,6 +168,25 @@ export default function ConfiguracoesPage() {
   const [showAutorizacaoForm, setShowAutorizacaoForm] = useState(false);
   const [autorizacaoForm, setAutorizacaoForm] = useState({ numero_autorizacao: '', valor_autorizado: '', plano_seguro_id: '', status: 'pendente' });
 
+  // ==================== ESTADOS DE PARCELAMENTO CONFIG ====================
+  const [parcelamentoConfigs, setParcelamentoConfigs] = useState<ParcelamentoConfig[]>([]);
+  const [showParcelamentoForm, setShowParcelamentoForm] = useState(false);
+  const [parcelamentoForm, setParcelamentoForm] = useState<ParcelamentoConfig>({
+    id: 0,
+    nome: '',
+    descricao: '',
+    minimo_parcelas: 1,
+    maximo_parcelas: 12,
+    taxa_juros_mensal: 0,
+    desconto_avista: 0,
+    valor_minimo_parcela: 0,
+    exige_entrada: false,
+    percentual_entrada_minimo: 0,
+    ativo: true
+  });
+  const [editParcelamentoId, setEditParcelamentoId] = useState<number | null>(null);
+  const [filtroParcelamento, setFiltroParcelamento] = useState('');
+
   // ==================== MODAL DELETE ====================
   const [deleteModal, setDeleteModal] = useState<{ isOpen: boolean; id: number | null; tipo: string; nome: string }>({
     isOpen: false, id: null, tipo: '', nome: ''
@@ -181,7 +217,6 @@ export default function ConfiguracoesPage() {
     setLoading(true);
 
     try {
-      // Remove id e logo do objeto antes de enviar
       const { id, logo, ...body } = config;
 
       const res = await fetch(getApiUrl(`/configuracoes-sistema/${config.id}`), {
@@ -218,15 +253,12 @@ export default function ConfiguracoesPage() {
       if (!res.ok) throw new Error('Erro ao enviar logo');
       const data = await res.json();
 
-      // Atualiza o estado imediatamente
       const newLogoUrl = getApiUrl(data.logo);
       setLogoPreview(newLogoUrl);
       setConfig({ ...config, logo: data.logo });
 
       mostrarMensagem('success', 'Logo atualizada com sucesso');
       setLogoFile(null);
-
-      // Dispara evento para atualizar sidebar
       window.dispatchEvent(new Event('configUpdated'));
     } catch (err: any) {
       mostrarMensagem('error', err.message);
@@ -679,6 +711,105 @@ export default function ConfiguracoesPage() {
     }
   };
 
+  // ==================== PARCELAMENTO CONFIG ====================
+  const fetchParcelamentoConfigs = async () => {
+    try {
+      const res = await fetch(getApiUrl('/parcelamento-config'), { headers: getAuthHeaders() });
+      const data = await res.json();
+      setParcelamentoConfigs(data);
+    } catch (err) {
+      console.error('Erro ao carregar configurações de parcelamento:', err);
+    }
+  };
+
+  const salvarParcelamentoConfig = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
+
+    try {
+      const url = editParcelamentoId ? `/parcelamento-config/${editParcelamentoId}` : '/parcelamento-config';
+      const method = editParcelamentoId ? 'PUT' : 'POST';
+
+      const res = await fetch(getApiUrl(url), {
+        method,
+        headers: { ...getAuthHeaders(), 'Content-Type': 'application/json' },
+        body: JSON.stringify(parcelamentoForm)
+      });
+
+      if (!res.ok) {
+        const error = await res.json();
+        throw new Error(error.error || 'Erro ao salvar configuração');
+      }
+      mostrarMensagem('success', editParcelamentoId ? 'Configuração atualizada' : 'Configuração criada');
+      resetParcelamentoForm();
+      fetchParcelamentoConfigs();
+    } catch (err: any) {
+      mostrarMensagem('error', err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const resetParcelamentoForm = () => {
+    setParcelamentoForm({
+      id: 0,
+      nome: '',
+      descricao: '',
+      minimo_parcelas: 1,
+      maximo_parcelas: 12,
+      taxa_juros_mensal: 0,
+      desconto_avista: 0,
+      valor_minimo_parcela: 0,
+      exige_entrada: false,
+      percentual_entrada_minimo: 0,
+      ativo: true
+    });
+    setEditParcelamentoId(null);
+    setShowParcelamentoForm(false);
+  };
+
+  const editarParcelamentoConfig = (config: ParcelamentoConfig) => {
+    setParcelamentoForm(config);
+    setEditParcelamentoId(config.id);
+    setShowParcelamentoForm(true);
+  };
+
+  const ativarDesativarParcelamentoConfig = async (id: number, ativo: boolean) => {
+    try {
+      const res = await fetch(getApiUrl(`/parcelamento-config/${id}/toggle`), {
+        method: 'PATCH',
+        headers: getAuthHeaders()
+      });
+      if (!res.ok) throw new Error('Erro ao alterar status');
+      fetchParcelamentoConfigs();
+      mostrarMensagem('success', ativo ? 'Configuração desativada' : 'Configuração ativada');
+    } catch (err) {
+      mostrarMensagem('error', 'Erro ao alterar status');
+    }
+  };
+
+  const clonarParcelamentoConfig = async (id: number, nome: string) => {
+    const novoNome = prompt('Digite o nome da nova configuração:', `${nome} (Clone)`);
+    if (!novoNome) return;
+
+    try {
+      const res = await fetch(getApiUrl(`/parcelamento-config/${id}/clone`), {
+        method: 'POST',
+        headers: { ...getAuthHeaders(), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ nome: novoNome })
+      });
+      if (!res.ok) throw new Error('Erro ao clonar configuração');
+      mostrarMensagem('success', 'Configuração clonada com sucesso');
+      fetchParcelamentoConfigs();
+    } catch (err: any) {
+      mostrarMensagem('error', err.message);
+    }
+  };
+
+  const parcelamentoConfigsFiltrados = parcelamentoConfigs.filter(c =>
+    c.nome.toLowerCase().includes(filtroParcelamento.toLowerCase())
+  );
+
   // ==================== DELETE ====================
   const confirmarDelete = async () => {
     if (!deleteModal.id) return;
@@ -693,13 +824,16 @@ export default function ConfiguracoesPage() {
         case 'seguradora': url = `/seguradoras/${deleteModal.id}`; break;
         case 'plano': url = `/planos/${deleteModal.id}`; break;
         case 'cobertura': url = `/coberturas/${deleteModal.id}`; break;
+        case 'parcelamento': url = `/parcelamento-config/${deleteModal.id}`; break;
       }
 
       const res = await fetch(getApiUrl(url), { method: 'DELETE', headers: getAuthHeaders() });
-      if (!res.ok) throw new Error('Erro ao deletar');
+      if (!res.ok) {
+        const error = await res.json();
+        throw new Error(error.error || 'Erro ao deletar');
+      }
       mostrarMensagem('success', `${deleteModal.nome} removido com sucesso`);
 
-      // Recarregar lista
       if (deleteModal.tipo === 'usuario') fetchUsuarios();
       if (deleteModal.tipo === 'produto') fetchProdutos();
       if (deleteModal.tipo === 'servico') fetchServicos();
@@ -707,6 +841,7 @@ export default function ConfiguracoesPage() {
       if (deleteModal.tipo === 'seguradora') fetchSeguradoras();
       if (deleteModal.tipo === 'plano') fetchPlanos();
       if (deleteModal.tipo === 'cobertura') fetchCoberturas();
+      if (deleteModal.tipo === 'parcelamento') fetchParcelamentoConfigs();
 
     } catch (err: any) {
       mostrarMensagem('error', err.message);
@@ -726,9 +861,18 @@ export default function ConfiguracoesPage() {
     fetchPlanos();
     fetchCoberturas();
     fetchAutorizacoes();
+    fetchParcelamentoConfigs();
   }, []);
 
   const logoUrl = logoPreview || (config?.logo ? getApiUrl(config.logo) : null);
+
+  // Componente Copy
+  const Copy = ({ size, className }: { size: number; className?: string }) => (
+    <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
+      <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+      <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+    </svg>
+  );
 
   // ==================== RENDER ====================
   return (
@@ -736,7 +880,7 @@ export default function ConfiguracoesPage() {
       <div className="bg-gradient-to-r from-indigo-700 to-purple-700 text-white shadow-lg">
         <div className="container mx-auto px-6 py-5">
           <h1 className="text-3xl font-bold flex items-center gap-2"><Settings size={28} /> Configurações do Sistema</h1>
-          <p className="text-indigo-100 mt-1">Gerencie usuários, produtos, serviços, seguradoras e muito mais</p>
+          <p className="text-indigo-100 mt-1">Gerencie usuários, produtos, serviços, parcelamentos e muito mais</p>
         </div>
       </div>
 
@@ -760,6 +904,7 @@ export default function ConfiguracoesPage() {
             <button onClick={() => setAbaAtiva('planos')} className={`px-5 py-3 font-medium transition-colors flex items-center gap-2 whitespace-nowrap ${abaAtiva === 'planos' ? 'bg-indigo-600 text-white' : 'text-gray-600 hover:bg-gray-100'}`}><Heart size={18} /> Planos</button>
             <button onClick={() => setAbaAtiva('coberturas')} className={`px-5 py-3 font-medium transition-colors flex items-center gap-2 whitespace-nowrap ${abaAtiva === 'coberturas' ? 'bg-indigo-600 text-white' : 'text-gray-600 hover:bg-gray-100'}`}><FileText size={18} /> Coberturas</button>
             <button onClick={() => setAbaAtiva('autorizacoes')} className={`px-5 py-3 font-medium transition-colors flex items-center gap-2 whitespace-nowrap ${abaAtiva === 'autorizacoes' ? 'bg-indigo-600 text-white' : 'text-gray-600 hover:bg-gray-100'}`}><CreditCard size={18} /> Autorizações</button>
+            <button onClick={() => setAbaAtiva('parcelamento')} className={`px-5 py-3 font-medium transition-colors flex items-center gap-2 whitespace-nowrap ${abaAtiva === 'parcelamento' ? 'bg-indigo-600 text-white' : 'text-gray-600 hover:bg-gray-100'}`}><TrendingUp size={18} /> Parcelamento</button>
           </div>
 
           <div className="p-6">
@@ -797,7 +942,6 @@ export default function ConfiguracoesPage() {
                   <button onClick={() => setShowUsuarioForm(true)} className="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 flex items-center gap-2"><Plus size={18} /> Novo Usuário</button>
                 </div>
 
-                {/* Filtro de Usuários */}
                 <div className="relative mb-6">
                   <Search className="absolute left-3 top-2.5 text-gray-400" size={18} />
                   <input type="text" placeholder="Pesquisar usuário por nome ou email..." value={filtroUsuarios} onChange={e => setFiltroUsuarios(e.target.value)} className="w-full border rounded-lg pl-10 pr-4 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500" />
@@ -809,7 +953,6 @@ export default function ConfiguracoesPage() {
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       <input name="nome" placeholder="Nome" value={usuarioForm.nome} onChange={e => setUsuarioForm({ ...usuarioForm, nome: e.target.value })} className="border rounded-lg px-3 py-2" required />
                       <input name="email" type="email" placeholder="Email" value={usuarioForm.email} onChange={e => setUsuarioForm({ ...usuarioForm, email: e.target.value })} className="border rounded-lg px-3 py-2" required />
-                      <input name="senha" type="password" placeholder={editUsuarioId ? "Nova senha (opcional)" : "Senha"} value={usuarioForm.senha} onChange={e => setUsuarioForm({ ...usuarioForm, senha: e.target.value })} className="border rounded-lg px-3 py-2" {...(!editUsuarioId && { required: true })} />
                       <select name="perfil" value={usuarioForm.perfil} onChange={e => setUsuarioForm({ ...usuarioForm, perfil: e.target.value as any })} className="border rounded-lg px-3 py-2">
                         <option value="admin">Administrador</option>
                         <option value="recepcao">Recepção</option>
@@ -820,7 +963,6 @@ export default function ConfiguracoesPage() {
                         <option value="1">Ativo</option>
                         <option value="0">Inativo</option>
                       </select>
-                      
                     </div>
                     <div className="flex justify-end gap-3 mt-4">
                       <button type="button" onClick={resetUsuarioForm} className="px-4 py-2 border rounded-lg">Cancelar</button>
@@ -837,7 +979,35 @@ export default function ConfiguracoesPage() {
               <div>
                 <div className="flex justify-between items-center mb-6"><h2 className="text-xl font-bold flex items-center gap-2"><Package size={24} /> Produtos</h2><button onClick={() => { resetProdutoForm(); setShowProdutoForm(true); }} className="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 flex items-center gap-2"><Plus size={18} /> Novo Produto</button></div>
                 {showProdutoForm && (<form onSubmit={salvarProduto} className="bg-gray-50 rounded-lg p-6 mb-6"><h3 className="font-semibold mb-4">{editProdutoId ? 'Editar Produto' : 'Novo Produto'}</h3><div className="grid grid-cols-1 md:grid-cols-2 gap-4"><input name="nome" placeholder="Nome" value={produtoForm.nome} onChange={e => setProdutoForm({ ...produtoForm, nome: e.target.value })} className="border rounded-lg px-3 py-2" required /><select name="tipo" value={produtoForm.tipo} onChange={e => setProdutoForm({ ...produtoForm, tipo: e.target.value as any })} className="border rounded-lg px-3 py-2"><option value="armacao">Armação</option><option value="lente">Lente</option></select><input name="preco" type="number" placeholder="Preço" value={produtoForm.preco} onChange={e => setProdutoForm({ ...produtoForm, preco: e.target.value })} className="border rounded-lg px-3 py-2" required /><input name="estoque" type="number" placeholder="Estoque" value={produtoForm.estoque} onChange={e => setProdutoForm({ ...produtoForm, estoque: e.target.value })} className="border rounded-lg px-3 py-2" /><select name="categoria_id" value={produtoForm.categoria_id} onChange={e => setProdutoForm({ ...produtoForm, categoria_id: e.target.value })} className="border rounded-lg px-3 py-2" required><option value="">Selecione a categoria</option>{categorias.map(c => (<option key={c.id} value={c.id}>{c.nome}</option>))}</select><textarea name="descricao" placeholder="Descrição" value={produtoForm.descricao} onChange={e => setProdutoForm({ ...produtoForm, descricao: e.target.value })} className="border rounded-lg px-3 py-2" rows={2} /></div><div className="flex justify-end gap-3 mt-4"><button type="button" onClick={resetProdutoForm} className="px-4 py-2 border rounded-lg">Cancelar</button><button type="submit" disabled={loading} className="px-4 py-2 bg-blue-600 text-white rounded-lg">{loading ? 'Salvando...' : 'Salvar'}</button></div></form>)}
-                <div className="overflow-x-auto"><table className="w-full"><thead className="bg-gray-100"><tr><th className="p-3 text-left">Nome</th><th>Tipo</th><th>Categoria</th><th>Preço</th><th>Estoque</th><th>Ações</th></tr></thead><tbody>{produtos.map(p => (<tr key={p.id} className="border-t"><td className="p-3">{p.nome}</td><td className="p-3">{p.tipo === 'armacao' ? 'Armação' : 'Lente'}</td><td className="p-3">{p.categoria?.nome || '-'}</td><td className="p-3">{Number(p.preco).toLocaleString('pt-AO')} Kz</td><td className="p-3">{p.estoque}</td><td className="p-3 flex gap-2"><button onClick={() => editarProduto(p)} className="text-blue-600 hover:text-blue-800"><Edit size={18} /></button><button onClick={() => setDeleteModal({ isOpen: true, id: p.id, tipo: 'produto', nome: p.nome })} className="text-red-600 hover:text-red-800"><Trash2 size={18} /></button></td></tr>))}</tbody></table></div>
+                <div className="overflow-x-auto">
+                  <table className="w-full">
+                    <thead className="bg-gray-100">
+                      <tr>
+                        <th className="p-3 text-left">Nome</th>
+                        <th className="p-3 text-left">Tipo</th>
+                        <th className="p-3 text-left">Categoria</th>
+                        <th className="p-3 text-left">Preço</th>
+                        <th className="p-3 text-left">Estoque</th>
+                        <th className="p-3 text-left">Ações</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {produtos.map(p => (
+                        <tr key={p.id} className="border-t">
+                          <td className="p-3">{p.nome}</td>
+                          <td className="p-3">{p.tipo === 'armacao' ? 'Armação' : 'Lente'}</td>
+                          <td className="p-3">{p.categoria?.nome || '-'}</td>
+                          <td className="p-3">{Number(p.preco).toLocaleString('pt-AO')} Kz</td>
+                          <td className="p-3">{p.estoque}</td>
+                          <td className="p-3 flex gap-2">
+                            <button onClick={() => editarProduto(p)} className="text-blue-600 hover:text-blue-800"><Edit size={18} /></button>
+                            <button onClick={() => setDeleteModal({ isOpen: true, id: p.id, tipo: 'produto', nome: p.nome })} className="text-red-600 hover:text-red-800"><Trash2 size={18} /></button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
               </div>
             )}
 
@@ -882,7 +1052,33 @@ export default function ConfiguracoesPage() {
               <div>
                 <div className="flex justify-between items-center mb-6"><h2 className="text-xl font-bold flex items-center gap-2"><FileText size={24} /> Coberturas</h2><button onClick={() => { setCoberturaForm({ tipo_servico: 'consulta', percentual_cobertura: '', limite_valor: '', plano_seguro_id: '' }); setEditCoberturaId(null); setShowCoberturaForm(true); }} className="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 flex items-center gap-2"><Plus size={18} /> Nova Cobertura</button></div>
                 {showCoberturaForm && (<form onSubmit={salvarCobertura} className="bg-gray-50 rounded-lg p-6 mb-6"><h3 className="font-semibold mb-4">{editCoberturaId ? 'Editar Cobertura' : 'Nova Cobertura'}</h3><div className="grid grid-cols-1 md:grid-cols-2 gap-4"><select name="plano_seguro_id" value={coberturaForm.plano_seguro_id} onChange={e => setCoberturaForm({ ...coberturaForm, plano_seguro_id: e.target.value })} className="border rounded-lg px-3 py-2" required><option value="">Selecione o Plano</option>{planos.filter(p => p.ativo).map(p => (<option key={p.id} value={p.id}>{p.nome}</option>))}</select><select name="tipo_servico" value={coberturaForm.tipo_servico} onChange={e => setCoberturaForm({ ...coberturaForm, tipo_servico: e.target.value })} className="border rounded-lg px-3 py-2" required><option value="consulta">Consulta</option><option value="lente">Lente</option><option value="armacao">Armação</option><option value="exame">Exame</option></select><input name="percentual_cobertura" type="number" placeholder="Percentual de Cobertura (%)" value={coberturaForm.percentual_cobertura} onChange={e => setCoberturaForm({ ...coberturaForm, percentual_cobertura: e.target.value })} className="border rounded-lg px-3 py-2" required /><input name="limite_valor" type="number" placeholder="Limite de Valor (opcional)" value={coberturaForm.limite_valor} onChange={e => setCoberturaForm({ ...coberturaForm, limite_valor: e.target.value })} className="border rounded-lg px-3 py-2" /></div><div className="flex justify-end gap-3 mt-4"><button type="button" onClick={() => { setCoberturaForm({ tipo_servico: 'consulta', percentual_cobertura: '', limite_valor: '', plano_seguro_id: '' }); setEditCoberturaId(null); setShowCoberturaForm(false); }} className="px-4 py-2 border rounded-lg">Cancelar</button><button type="submit" disabled={loading} className="px-4 py-2 bg-blue-600 text-white rounded-lg">{loading ? 'Salvando...' : 'Salvar'}</button></div></form>)}
-                <div className="overflow-x-auto"><table className="w-full"><thead className="bg-gray-100"><tr><th className="p-3 text-left">Plano</th><th>Tipo de Serviço</th><th>Percentual</th><th>Limite</th><th>Ações</th></tr></thead><tbody>{coberturas.map(c => (<tr key={c.id} className="border-t"><td className="p-3">{planos.find(p => p.id === c.plano_seguro_id)?.nome || '-'}</td><td className="p-3">{c.tipo_servico}</td><td className="p-3">{c.percentual_cobertura}%</td><td className="p-3">{c.limite_valor ? `${c.limite_valor.toLocaleString('pt-AO')} Kz` : '-'}</td><td className="p-3 flex gap-2"><button onClick={() => editarCobertura(c)} className="text-blue-600 hover:text-blue-800"><Edit size={18} /></button><button onClick={() => setDeleteModal({ isOpen: true, id: c.id, tipo: 'cobertura', nome: `Cobertura ${c.tipo_servico}` })} className="text-red-600 hover:text-red-800"><Trash2 size={18} /></button></td></tr>))}</tbody></table></div>
+                <div className="overflow-x-auto">
+                  <table className="w-full">
+                    <thead className="bg-gray-100">
+                      <tr>
+                        <th className="p-3 text-left">Plano</th>
+                        <th className="p-3 text-left">Tipo de Serviço</th>
+                        <th className="p-3 text-left">Percentual</th>
+                        <th className="p-3 text-left">Limite</th>
+                        <th className="p-3 text-left">Ações</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {coberturas.map(c => (
+                        <tr key={c.id} className="border-t">
+                          <td className="p-3">{planos.find(p => p.id === c.plano_seguro_id)?.nome || '-'}</td>
+                          <td className="p-3">{c.tipo_servico}</td>
+                          <td className="p-3">{c.percentual_cobertura}%</td>
+                          <td className="p-3">{c.limite_valor ? `${c.limite_valor.toLocaleString('pt-AO')} Kz` : '-'}</td>
+                          <td className="p-3 flex gap-2">
+                            <button onClick={() => editarCobertura(c)} className="text-blue-600 hover:text-blue-800"><Edit size={18} /></button>
+                            <button onClick={() => setDeleteModal({ isOpen: true, id: c.id, tipo: 'cobertura', nome: `Cobertura ${c.tipo_servico}` })} className="text-red-600 hover:text-red-800"><Trash2 size={18} /></button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
               </div>
             )}
 
@@ -891,7 +1087,157 @@ export default function ConfiguracoesPage() {
               <div>
                 <div className="flex justify-between items-center mb-6"><h2 className="text-xl font-bold flex items-center gap-2"><CreditCard size={24} /> Autorizações</h2><button onClick={() => setShowAutorizacaoForm(true)} className="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 flex items-center gap-2"><Plus size={18} /> Nova Autorização</button></div>
                 {showAutorizacaoForm && (<form onSubmit={salvarAutorizacao} className="bg-gray-50 rounded-lg p-6 mb-6"><h3 className="font-semibold mb-4">Nova Autorização</h3><div className="grid grid-cols-1 md:grid-cols-2 gap-4"><input name="numero_autorizacao" placeholder="Número da Autorização" value={autorizacaoForm.numero_autorizacao} onChange={e => setAutorizacaoForm({ ...autorizacaoForm, numero_autorizacao: e.target.value })} className="border rounded-lg px-3 py-2" required /><input name="valor_autorizado" type="number" placeholder="Valor Autorizado" value={autorizacaoForm.valor_autorizado} onChange={e => setAutorizacaoForm({ ...autorizacaoForm, valor_autorizado: e.target.value })} className="border rounded-lg px-3 py-2" required /><select name="plano_seguro_id" value={autorizacaoForm.plano_seguro_id} onChange={e => setAutorizacaoForm({ ...autorizacaoForm, plano_seguro_id: e.target.value })} className="border rounded-lg px-3 py-2" required><option value="">Selecione o Plano</option>{planos.filter(p => p.ativo).map(p => (<option key={p.id} value={p.id}>{p.nome}</option>))}</select><select name="status" value={autorizacaoForm.status} onChange={e => setAutorizacaoForm({ ...autorizacaoForm, status: e.target.value })} className="border rounded-lg px-3 py-2"><option value="pendente">Pendente</option><option value="aprovado">Aprovado</option><option value="rejeitado">Rejeitado</option></select></div><div className="flex justify-end gap-3 mt-4"><button type="button" onClick={() => setShowAutorizacaoForm(false)} className="px-4 py-2 border rounded-lg">Cancelar</button><button type="submit" disabled={loading} className="px-4 py-2 bg-blue-600 text-white rounded-lg">{loading ? 'Salvando...' : 'Criar Autorização'}</button></div></form>)}
-                <div className="overflow-x-auto"><table className="w-full"><thead className="bg-gray-100"><tr><th className="p-3 text-left">Número</th><th>Plano</th><th>Valor</th><th>Status</th></tr></thead><tbody>{autorizacoes.map(a => (<tr key={a.id} className="border-t"><td className="p-3">{a.numero_autorizacao}</td><td className="p-3">{planos.find(p => p.id === a.plano_seguro_id)?.nome || '-'}</td><td className="p-3">{Number(a.valor_autorizado).toLocaleString('pt-AO')} Kz</td><td className="p-3"><span className={`text-xs px-2 py-0.5 rounded ${a.status === 'aprovado' ? 'bg-green-100 text-green-700' : a.status === 'rejeitado' ? 'bg-red-100 text-red-700' : 'bg-yellow-100 text-yellow-700'}`}>{a.status}</span></td></tr>))}</tbody></table></div>
+                <div className="overflow-x-auto">
+                  <table className="w-full">
+                    <thead className="bg-gray-100">
+                      <tr>
+                        <th className="p-3 text-left">Número</th>
+                        <th className="p-3 text-left">Plano</th>
+                        <th className="p-3 text-left">Valor</th>
+                        <th className="p-3 text-left">Status</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {autorizacoes.map(a => (
+                        <tr key={a.id} className="border-t">
+                          <td className="p-3">{a.numero_autorizacao}</td>
+                          <td className="p-3">{planos.find(p => p.id === a.plano_seguro_id)?.nome || '-'}</td>
+                          <td className="p-3">{Number(a.valor_autorizado).toLocaleString('pt-AO')} Kz</td>
+                          <td className="p-3"><span className={`text-xs px-2 py-0.5 rounded ${a.status === 'aprovado' ? 'bg-green-100 text-green-700' : a.status === 'rejeitado' ? 'bg-red-100 text-red-700' : 'bg-yellow-100 text-yellow-700'}`}>{a.status}</span></td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+
+            {/* ==================== ABA PARCELAMENTO ==================== */}
+            {abaAtiva === 'parcelamento' && (
+              <div>
+                <div className="flex justify-between items-center mb-6">
+                  <h2 className="text-xl font-bold flex items-center gap-2"><TrendingUp size={24} /> Configurações de Parcelamento</h2>
+                  <button onClick={() => { resetParcelamentoForm(); setShowParcelamentoForm(true); }} className="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 flex items-center gap-2"><Plus size={18} /> Nova Configuração</button>
+                </div>
+
+                <div className="relative mb-6">
+                  <Search className="absolute left-3 top-2.5 text-gray-400" size={18} />
+                  <input type="text" placeholder="Pesquisar configuração por nome..." value={filtroParcelamento} onChange={e => setFiltroParcelamento(e.target.value)} className="w-full border rounded-lg pl-10 pr-4 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+                </div>
+
+                {showParcelamentoForm && (
+                  <form onSubmit={salvarParcelamentoConfig} className="bg-gray-50 rounded-lg p-6 mb-6">
+                    <h3 className="font-semibold mb-4">{editParcelamentoId ? 'Editar Configuração' : 'Nova Configuração'}</h3>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-sm font-medium mb-1">Nome da Configuração *</label>
+                        <input name="nome" placeholder="Ex: Parcelamento Padrão" value={parcelamentoForm.nome} onChange={e => setParcelamentoForm({ ...parcelamentoForm, nome: e.target.value })} className="w-full border rounded-lg px-3 py-2" required />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium mb-1">Descrição</label>
+                        <input name="descricao" placeholder="Descrição opcional" value={parcelamentoForm.descricao || ''} onChange={e => setParcelamentoForm({ ...parcelamentoForm, descricao: e.target.value })} className="w-full border rounded-lg px-3 py-2" />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium mb-1">Mínimo de Parcelas</label>
+                        <input type="number" min="1" value={parcelamentoForm.minimo_parcelas} onChange={e => setParcelamentoForm({ ...parcelamentoForm, minimo_parcelas: Number(e.target.value) })} className="w-full border rounded-lg px-3 py-2" required />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium mb-1">Máximo de Parcelas</label>
+                        <input type="number" min="1" value={parcelamentoForm.maximo_parcelas} onChange={e => setParcelamentoForm({ ...parcelamentoForm, maximo_parcelas: Number(e.target.value) })} className="w-full border rounded-lg px-3 py-2" required />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium mb-1">Taxa de Juros Mensal (%)</label>
+                        <input type="number" step="0.01" min="0" value={parcelamentoForm.taxa_juros_mensal} onChange={e => setParcelamentoForm({ ...parcelamentoForm, taxa_juros_mensal: Number(e.target.value) })} className="w-full border rounded-lg px-3 py-2" />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium mb-1">Desconto à Vista (%)</label>
+                        <input type="number" step="0.01" min="0" max="100" value={parcelamentoForm.desconto_avista} onChange={e => setParcelamentoForm({ ...parcelamentoForm, desconto_avista: Number(e.target.value) })} className="w-full border rounded-lg px-3 py-2" />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium mb-1">Valor Mínimo da Parcela (Kz)</label>
+                        <input type="number" step="0.01" min="0" value={parcelamentoForm.valor_minimo_parcela} onChange={e => setParcelamentoForm({ ...parcelamentoForm, valor_minimo_parcela: Number(e.target.value) })} className="w-full border rounded-lg px-3 py-2" />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium mb-1">Percentual de Entrada Mínimo (%)</label>
+                        <input type="number" step="0.01" min="0" max="100" value={parcelamentoForm.percentual_entrada_minimo} onChange={e => setParcelamentoForm({ ...parcelamentoForm, percentual_entrada_minimo: Number(e.target.value) })} className="w-full border rounded-lg px-3 py-2" />
+                      </div>
+                      <div className="flex items-center gap-4">
+                        <label className="flex items-center gap-2">
+                          <input type="checkbox" checked={parcelamentoForm.exige_entrada} onChange={e => setParcelamentoForm({ ...parcelamentoForm, exige_entrada: e.target.checked })} className="w-4 h-4" />
+                          <span className="text-sm">Exige Entrada</span>
+                        </label>
+                        <label className="flex items-center gap-2">
+                          <input type="checkbox" checked={parcelamentoForm.ativo} onChange={e => setParcelamentoForm({ ...parcelamentoForm, ativo: e.target.checked })} className="w-4 h-4" />
+                          <span className="text-sm">Ativo</span>
+                        </label>
+                      </div>
+                    </div>
+                    <div className="flex justify-end gap-3 mt-4">
+                      <button type="button" onClick={resetParcelamentoForm} className="px-4 py-2 border rounded-lg">Cancelar</button>
+                      <button type="submit" disabled={loading} className="px-4 py-2 bg-blue-600 text-white rounded-lg">{loading ? 'Salvando...' : 'Salvar'}</button>
+                    </div>
+                  </form>
+                )}
+
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {parcelamentoConfigsFiltrados.map(c => (
+                    <div key={c.id} className="bg-white rounded-lg shadow p-4 border-l-4 border-indigo-500">
+                      <div className="flex justify-between items-start">
+                        <div>
+                          <h3 className="font-semibold text-lg">{c.nome}</h3>
+                          <p className="text-sm text-gray-500 mt-1">{c.descricao || 'Sem descrição'}</p>
+                        </div>
+                        <span className={`text-xs px-2 py-0.5 rounded ${c.ativo ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                          {c.ativo ? 'Ativo' : 'Inativo'}
+                        </span>
+                      </div>
+                      
+                      <div className="mt-3 grid grid-cols-2 gap-2 text-sm">
+                        <div className="flex items-center gap-1">
+                          <Calendar size={14} className="text-gray-400" />
+                          <span>Parcelas: {c.minimo_parcelas} - {c.maximo_parcelas}</span>
+                        </div>
+                        <div className="flex items-center gap-1">
+                          <Percent size={14} className="text-gray-400" />
+                          <span>Juros: {c.taxa_juros_mensal}%</span>
+                        </div>
+                        <div className="flex items-center gap-1">
+                          <DollarSign size={14} className="text-gray-400" />
+                          <span>Mín. Parcela: {c.valor_minimo_parcela.toLocaleString('pt-AO')} Kz</span>
+                        </div>
+                        <div className="flex items-center gap-1">
+                          <Hash size={14} className="text-gray-400" />
+                          <span>Entrada: {c.exige_entrada ? `${c.percentual_entrada_minimo}%` : 'Não exige'}</span>
+                        </div>
+                      </div>
+                      
+                      <div className="flex justify-end gap-2 mt-3 pt-3 border-t">
+                        <button onClick={() => clonarParcelamentoConfig(c.id, c.nome)} className="text-purple-600 hover:text-purple-800" title="Clonar">
+                          <Copy size={18} />
+                        </button>
+                        <button onClick={() => editarParcelamentoConfig(c)} className="text-blue-600 hover:text-blue-800">
+                          <Edit size={18} />
+                        </button>
+                        <button onClick={() => ativarDesativarParcelamentoConfig(c.id, c.ativo)} className={c.ativo ? 'text-gray-500' : 'text-green-600'}>
+                          {c.ativo ? 'Desativar' : 'Ativar'}
+                        </button>
+                        <button onClick={() => setDeleteModal({ isOpen: true, id: c.id, tipo: 'parcelamento', nome: c.nome })} className="text-red-600 hover:text-red-800">
+                          <Trash2 size={18} />
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                {parcelamentoConfigsFiltrados.length === 0 && (
+                  <div className="text-center py-12 bg-gray-50 rounded-lg">
+                    <TrendingUp size={48} className="mx-auto text-gray-400 mb-3" />
+                    <p className="text-gray-500">Nenhuma configuração de parcelamento encontrada</p>
+                    <button onClick={() => { resetParcelamentoForm(); setShowParcelamentoForm(true); }} className="mt-3 text-indigo-600 hover:text-indigo-800 font-medium">
+                      Criar primeira configuração
+                    </button>
+                  </div>
+                )}
               </div>
             )}
           </div>

@@ -36,8 +36,9 @@ import {
   Wallet,
   Calendar,
   DollarSign,
-  FilePlus,        // Ícone para Fatura Pró-Forma
-  FileSignature    // Ícone alternativo (opcional)
+  FilePlus,
+  FileSignature,
+  Shield,
 } from 'lucide-react';
 
 import { useAuth } from '@/contexts/AuthContext';
@@ -80,7 +81,7 @@ export default function Sidebar() {
   const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({});
 
   // Foto do usuário
-  const fotoUrl = user?.foto 
+  const fotoUrl = user?.foto
     ? `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000'}/uploads/${user.foto}`
     : null;
 
@@ -155,35 +156,41 @@ export default function Sidebar() {
 
   // Menu items normais (sem submenu)
   const menuItems: MenuItem[] = [
-    { 
-      label: 'Dashboard', 
-      href: '/dashboard', 
-      icon: <LayoutDashboard size={20} />, 
-      roles: ['admin', 'optometrista', 'caixa', 'recepcao'] 
+    {
+      label: 'Dashboard',
+      href: '/dashboard',
+      icon: <LayoutDashboard size={20} />,
+      roles: ['admin', 'optometrista', 'caixa', 'recepcao']
     },
-    { 
-      label: 'Gestão Comercial', 
-      href: '/dashboard/gestao-comercial', 
-      icon: <ShoppingCart size={20} />, 
-      roles: ['admin', 'optometrista', 'caixa', 'recepcao'] 
+    {
+      label: 'Gestão Comercial',
+      href: '/dashboard/gestao-comercial',
+      icon: <ShoppingCart size={20} />,
+      roles: ['admin', 'optometrista', 'caixa', 'recepcao']
     },
-    { 
+    {
       label: 'Parcelas',
-      href: '/dashboard/parcelas', 
-      icon: <Wallet size={20} />, 
+      href: '/dashboard/parcelas',
+      icon: <Wallet size={20} />,
       roles: ['admin', 'caixa']
     },
-    { 
-      label: 'Relatórios', 
-      href: '/dashboard/relatorios', 
-      icon: <TrendingUp size={20} />, 
-      roles: ['admin'] 
+    {
+      label: 'Relatórios',
+      href: '/dashboard/relatorios',
+      icon: <TrendingUp size={20} />,
+      roles: ['admin']
     },
-    { 
-      label: 'Configurações', 
-      href: '/dashboard/settings', 
-      icon: <Settings size={20} />, 
-      roles: ['admin'] 
+    {
+      label: 'Configurações',
+      href: '/dashboard/settings',
+      icon: <Settings size={20} />,
+      roles: ['admin']
+    },
+    {
+      label: 'SAF-T Fiscal',
+      href: '/dashboard/saft',
+      icon: <Shield size={20} />,
+      roles: ['admin', 'caixa'] 
     },
   ];
 
@@ -201,10 +208,10 @@ export default function Sidebar() {
           roles: ['admin', 'caixa']
         },
         {
-          label: 'Fatura Pró-Forma', 
+          label: 'Fatura Pró-Forma',
           href: '/dashboard/fatura-proforma',
-          icon: <FilePlus size={18} />, 
-          roles: ['admin', 'caixa']  
+          icon: <FilePlus size={18} />,
+          roles: ['admin', 'caixa']
         },
         {
           label: 'Nota de Entrega',
@@ -270,9 +277,8 @@ export default function Sidebar() {
             <img
               src={logoUrl}
               alt="Logo"
-              className={`object-contain transition-all duration-300 ${
-                collapsed ? 'h-10 w-10 rounded-full' : 'h-14'
-              }`}
+              className={`object-contain transition-all duration-300 ${collapsed ? 'h-10 w-10 rounded-full' : 'h-14'
+                }`}
             />
           </div>
         ) : (
@@ -369,11 +375,10 @@ export default function Sidebar() {
               key={item.href}
               href={item.href}
               onClick={() => setMobileOpen(false)}
-              className={`flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all duration-200 group ${
-                active
+              className={`flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all duration-200 group ${active
                   ? 'bg-gradient-to-r from-indigo-600 to-purple-600 text-white shadow-md'
                   : 'text-gray-600 hover:bg-gray-100 hover:text-indigo-600'
-              } ${collapsed ? 'justify-center' : ''}`}
+                } ${collapsed ? 'justify-center' : ''}`}
               title={collapsed ? item.label : ''}
             >
               <span className={active ? 'text-white' : 'text-gray-500 group-hover:text-indigo-600'}>
@@ -388,17 +393,16 @@ export default function Sidebar() {
         {filteredGroups.map((group) => {
           const groupActive = isGroupActive(group);
           const isOpen = openGroups[group.label] || groupActive;
-          
+
           return (
             <div key={group.label} className="space-y-1">
               {/* Botão do grupo */}
               <button
                 onClick={() => !collapsed && toggleGroup(group.label)}
-                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all duration-200 group ${
-                  groupActive
+                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all duration-200 group ${groupActive
                     ? 'bg-gradient-to-r from-indigo-600 to-purple-600 text-white shadow-md'
                     : 'text-gray-600 hover:bg-gray-100 hover:text-indigo-600'
-                } ${collapsed ? 'justify-center' : ''}`}
+                  } ${collapsed ? 'justify-center' : ''}`}
                 title={collapsed ? group.label : ''}
               >
                 <span className={groupActive ? 'text-white' : 'text-gray-500 group-hover:text-indigo-600'}>
@@ -407,8 +411,8 @@ export default function Sidebar() {
                 {!collapsed && (
                   <>
                     <span className="flex-1 text-left font-medium text-sm">{group.label}</span>
-                    <ChevronDown 
-                      size={16} 
+                    <ChevronDown
+                      size={16}
                       className={`transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`}
                     />
                   </>
@@ -425,11 +429,10 @@ export default function Sidebar() {
                         key={subItem.href}
                         href={subItem.href}
                         onClick={() => setMobileOpen(false)}
-                        className={`flex items-center gap-3 px-3 py-2 rounded-lg transition-all duration-200 ${
-                          active
+                        className={`flex items-center gap-3 px-3 py-2 rounded-lg transition-all duration-200 ${active
                             ? 'bg-indigo-50 text-indigo-700 font-medium'
                             : 'text-gray-500 hover:bg-gray-50 hover:text-indigo-600'
-                        }`}
+                          }`}
                       >
                         <span className={active ? 'text-indigo-600' : 'text-gray-400'}>
                           {subItem.icon}
@@ -449,9 +452,8 @@ export default function Sidebar() {
       <div className="mt-auto pt-4 border-t border-gray-100 space-y-2">
         {/* Botão de Ajuda */}
         <button
-          className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-gray-500 hover:bg-gray-100 transition-colors group ${
-            collapsed ? 'justify-center' : ''
-          }`}
+          className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-gray-500 hover:bg-gray-100 transition-colors group ${collapsed ? 'justify-center' : ''
+            }`}
           title={collapsed ? 'Ajuda' : ''}
           onClick={() => window.open('/help', '_blank')}
         >
@@ -491,9 +493,8 @@ export default function Sidebar() {
 
       {/* Sidebar Desktop */}
       <aside
-        className={`hidden lg:flex flex-col fixed left-0 top-0 h-screen bg-white border-r border-gray-200 shadow-lg transition-all duration-300 z-30 ${
-          collapsed ? 'w-20' : 'w-64'
-        }`}
+        className={`hidden lg:flex flex-col fixed left-0 top-0 h-screen bg-white border-r border-gray-200 shadow-lg transition-all duration-300 z-30 ${collapsed ? 'w-20' : 'w-64'
+          }`}
       >
         <div className="flex-1 overflow-y-auto p-4">
           <SidebarContent />
@@ -502,9 +503,8 @@ export default function Sidebar() {
 
       {/* Sidebar Mobile */}
       <aside
-        className={`fixed top-0 left-0 h-full bg-white shadow-xl z-50 transition-transform duration-300 transform lg:hidden ${
-          mobileOpen ? 'translate-x-0' : '-translate-x-full'
-        } w-72`}
+        className={`fixed top-0 left-0 h-full bg-white shadow-xl z-50 transition-transform duration-300 transform lg:hidden ${mobileOpen ? 'translate-x-0' : '-translate-x-full'
+          } w-72`}
       >
         <div className="flex flex-col h-full">
           {/* Header Mobile */}
@@ -547,11 +547,11 @@ export default function Sidebar() {
                 <p className="text-sm text-gray-500">Tem certeza que deseja sair do sistema?</p>
               </div>
             </div>
-            
+
             <p className="text-gray-600 mb-6">
               Você será redirecionado para a página de login e precisará inserir suas credenciais novamente para acessar o sistema.
             </p>
-            
+
             <div className="flex gap-3">
               <button
                 onClick={() => setShowLogoutModal(false)}
