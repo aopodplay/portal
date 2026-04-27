@@ -7,7 +7,7 @@ import {
   FolderTree, Heart, CreditCard, FileText, Plus,
   Edit, Trash2, X, CheckCircle, AlertCircle, Eye,
   Save, Upload, Printer, DollarSign, Hash, Phone, Mail, MapPin,
-  Building, Search, TrendingUp, Calendar, Percent
+  Building, Search, TrendingUp, Calendar, Percent, Truck
 } from 'lucide-react';
 
 // ==================== TIPOS ====================
@@ -34,6 +34,25 @@ interface Usuario {
   foto?: string;
 }
 
+interface Categoria {
+  id: number;
+  nome: string;
+  descricao?: string;
+}
+
+interface Fornecedor {
+  id: number;
+  nome: string;
+  nif: string;
+  telefone: string;
+  email: string;
+  endereco: string;
+  contato_nome: string;
+  contato_telefone: string;
+  ativo: boolean;
+  observacoes: string;
+}
+
 interface Produto {
   id: number;
   nome: string;
@@ -42,7 +61,9 @@ interface Produto {
   estoque: number;
   descricao?: string;
   categoria_id: number;
-  categoria?: { id: number; nome: string };
+  categoria?: Categoria;
+  fornecedor_id?: number;
+  fornecedor?: Fornecedor;
 }
 
 interface Servico {
@@ -50,12 +71,6 @@ interface Servico {
   nome: string;
   descricao?: string;
   valor: number;
-}
-
-interface Categoria {
-  id: number;
-  nome: string;
-  descricao?: string;
 }
 
 interface Seguradora {
@@ -91,7 +106,6 @@ interface Autorizacao {
   plano_seguro_id: number;
 }
 
-// ==================== TIPOS PARA PARCELAMENTO CONFIG ====================
 interface ParcelamentoConfig {
   id: number;
   nome: string;
@@ -104,14 +118,10 @@ interface ParcelamentoConfig {
   exige_entrada: boolean;
   percentual_entrada_minimo: number;
   ativo: boolean;
-  created_at?: string;
-  updated_at?: string;
 }
 
-// ==================== COMPONENTE PRINCIPAL ====================
-
 export default function ConfiguracoesPage() {
-  const [abaAtiva, setAbaAtiva] = useState<'sistema' | 'usuarios' | 'produtos' | 'servicos' | 'categorias' | 'seguradoras' | 'planos' | 'coberturas' | 'autorizacoes' | 'parcelamento'>('sistema');
+  const [abaAtiva, setAbaAtiva] = useState<'sistema' | 'usuarios' | 'produtos' | 'servicos' | 'categorias' | 'seguradoras' | 'planos' | 'coberturas' | 'autorizacoes' | 'parcelamento' | 'fornecedores'>('sistema');
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
@@ -131,7 +141,15 @@ export default function ConfiguracoesPage() {
   const [produtos, setProdutos] = useState<Produto[]>([]);
   const [categorias, setCategorias] = useState<Categoria[]>([]);
   const [showProdutoForm, setShowProdutoForm] = useState(false);
-  const [produtoForm, setProdutoForm] = useState({ nome: '', tipo: 'armacao', preco: '', estoque: '', categoria_id: '', descricao: '' });
+  const [produtoForm, setProdutoForm] = useState({ 
+    nome: '', 
+    tipo: 'armacao', 
+    preco: '', 
+    estoque: '', 
+    categoria_id: '', 
+    fornecedor_id: '',
+    descricao: '' 
+  });
   const [editProdutoId, setEditProdutoId] = useState<number | null>(null);
 
   // ==================== ESTADOS DE SERVIÇOS ====================
@@ -167,6 +185,27 @@ export default function ConfiguracoesPage() {
   const [autorizacoes, setAutorizacoes] = useState<Autorizacao[]>([]);
   const [showAutorizacaoForm, setShowAutorizacaoForm] = useState(false);
   const [autorizacaoForm, setAutorizacaoForm] = useState({ numero_autorizacao: '', valor_autorizado: '', plano_seguro_id: '', status: 'pendente' });
+
+  // ==================== ESTADOS DE FORNECEDORES ====================
+  const [fornecedores, setFornecedores] = useState<Fornecedor[]>([]);
+  const [filtroFornecedores, setFiltroFornecedores] = useState('');
+  const [showFornecedorForm, setShowFornecedorForm] = useState(false);
+  const [fornecedorForm, setFornecedorForm] = useState({
+    nome: '',
+    nif: '',
+    telefone: '',
+    email: '',
+    endereco: '',
+    contato_nome: '',
+    contato_telefone: '',
+    ativo: true,
+    observacoes: ''
+  });
+  const [editFornecedorId, setEditFornecedorId] = useState<number | null>(null);
+  const [showProdutosFornecedorModal, setShowProdutosFornecedorModal] = useState(false);
+  const [fornecedorSelecionado, setFornecedorSelecionado] = useState<Fornecedor | null>(null);
+  const [produtosFornecedor, setProdutosFornecedor] = useState<Produto[]>([]);
+  const [loadingProdutos, setLoadingProdutos] = useState(false);
 
   // ==================== ESTADOS DE PARCELAMENTO CONFIG ====================
   const [parcelamentoConfigs, setParcelamentoConfigs] = useState<ParcelamentoConfig[]>([]);
@@ -349,7 +388,8 @@ export default function ConfiguracoesPage() {
     try {
       const res = await fetch(getApiUrl('/produtos'), { headers: getAuthHeaders() });
       const data = await res.json();
-      setProdutos(data.data || []);
+      const produtosData = data.data || data;
+      setProdutos(produtosData);
     } catch (err) {
       console.error('Erro ao carregar produtos:', err);
     }
@@ -373,15 +413,18 @@ export default function ConfiguracoesPage() {
       const url = editProdutoId ? `/produtos/${editProdutoId}` : '/produtos';
       const method = editProdutoId ? 'PUT' : 'POST';
 
+      const payload = {
+        ...produtoForm,
+        preco: Number(produtoForm.preco),
+        estoque: Number(produtoForm.estoque),
+        categoria_id: produtoForm.categoria_id ? Number(produtoForm.categoria_id) : null,
+        fornecedor_id: produtoForm.fornecedor_id ? Number(produtoForm.fornecedor_id) : null
+      };
+
       const res = await fetch(getApiUrl(url), {
         method,
         headers: { ...getAuthHeaders(), 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          ...produtoForm,
-          preco: Number(produtoForm.preco),
-          estoque: Number(produtoForm.estoque),
-          categoria_id: Number(produtoForm.categoria_id)
-        })
+        body: JSON.stringify(payload)
       });
 
       if (!res.ok) {
@@ -399,7 +442,15 @@ export default function ConfiguracoesPage() {
   };
 
   const resetProdutoForm = () => {
-    setProdutoForm({ nome: '', tipo: 'armacao', preco: '', estoque: '', categoria_id: '', descricao: '' });
+    setProdutoForm({ 
+      nome: '', 
+      tipo: 'armacao', 
+      preco: '', 
+      estoque: '', 
+      categoria_id: '', 
+      fornecedor_id: '',
+      descricao: '' 
+    });
     setEditProdutoId(null);
     setShowProdutoForm(false);
   };
@@ -410,7 +461,8 @@ export default function ConfiguracoesPage() {
       tipo: produto.tipo,
       preco: String(produto.preco),
       estoque: String(produto.estoque),
-      categoria_id: String(produto.categoria_id),
+      categoria_id: String(produto.categoria_id || ''),
+      fornecedor_id: String(produto.fornecedor_id || ''),
       descricao: produto.descricao || ''
     });
     setEditProdutoId(produto.id);
@@ -711,6 +763,117 @@ export default function ConfiguracoesPage() {
     }
   };
 
+  // ==================== FORNECEDORES ====================
+  const fetchFornecedores = async () => {
+    try {
+      const res = await fetch(getApiUrl('/fornecedores'), { headers: getAuthHeaders() });
+      const data = await res.json();
+      setFornecedores(data.data || []);
+    } catch (err) {
+      console.error('Erro ao carregar fornecedores:', err);
+    }
+  };
+
+  const fetchProdutosFornecedor = async (fornecedorId: number) => {
+    setLoadingProdutos(true);
+    try {
+      const res = await fetch(getApiUrl(`/fornecedores/${fornecedorId}/produtos`), { headers: getAuthHeaders() });
+      const data = await res.json();
+      if (data.success) {
+        setFornecedorSelecionado(data.fornecedor);
+        setProdutosFornecedor(data.produtos);
+        setShowProdutosFornecedorModal(true);
+      } else {
+        mostrarMensagem('error', data.error || 'Erro ao carregar produtos');
+      }
+    } catch (err) {
+      console.error('Erro ao carregar produtos do fornecedor:', err);
+      mostrarMensagem('error', 'Erro ao carregar produtos do fornecedor');
+    } finally {
+      setLoadingProdutos(false);
+    }
+  };
+
+  const salvarFornecedor = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
+
+    try {
+      const url = editFornecedorId ? `/fornecedores/${editFornecedorId}` : '/fornecedores';
+      const method = editFornecedorId ? 'PUT' : 'POST';
+
+      const res = await fetch(getApiUrl(url), {
+        method,
+        headers: { ...getAuthHeaders(), 'Content-Type': 'application/json' },
+        body: JSON.stringify(fornecedorForm)
+      });
+
+      if (!res.ok) {
+        const error = await res.json();
+        throw new Error(error.error || 'Erro ao salvar fornecedor');
+      }
+      mostrarMensagem('success', editFornecedorId ? 'Fornecedor atualizado' : 'Fornecedor criado');
+      resetFornecedorForm();
+      fetchFornecedores();
+    } catch (err: any) {
+      mostrarMensagem('error', err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const resetFornecedorForm = () => {
+    setFornecedorForm({
+      nome: '',
+      nif: '',
+      telefone: '',
+      email: '',
+      endereco: '',
+      contato_nome: '',
+      contato_telefone: '',
+      ativo: true,
+      observacoes: ''
+    });
+    setEditFornecedorId(null);
+    setShowFornecedorForm(false);
+  };
+
+  const editarFornecedor = (fornecedor: Fornecedor) => {
+    setFornecedorForm({
+      nome: fornecedor.nome,
+      nif: fornecedor.nif || '',
+      telefone: fornecedor.telefone || '',
+      email: fornecedor.email || '',
+      endereco: fornecedor.endereco || '',
+      contato_nome: fornecedor.contato_nome || '',
+      contato_telefone: fornecedor.contato_telefone || '',
+      ativo: fornecedor.ativo,
+      observacoes: fornecedor.observacoes || ''
+    });
+    setEditFornecedorId(fornecedor.id);
+    setShowFornecedorForm(true);
+  };
+
+  const ativarDesativarFornecedor = async (id: number, ativo: boolean) => {
+    try {
+      const res = await fetch(getApiUrl(`/fornecedores/${id}/toggle`), {
+        method: 'PATCH',
+        headers: getAuthHeaders()
+      });
+      if (!res.ok) throw new Error('Erro ao alterar status');
+      fetchFornecedores();
+      mostrarMensagem('success', ativo ? 'Fornecedor desativado' : 'Fornecedor ativado');
+    } catch (err) {
+      mostrarMensagem('error', 'Erro ao alterar status');
+    }
+  };
+
+  const fornecedoresFiltrados = fornecedores.filter(f =>
+    f.nome.toLowerCase().includes(filtroFornecedores.toLowerCase()) ||
+    (f.nif && f.nif.includes(filtroFornecedores)) ||
+    (f.email && f.email.toLowerCase().includes(filtroFornecedores.toLowerCase()))
+  );
+
   // ==================== PARCELAMENTO CONFIG ====================
   const fetchParcelamentoConfigs = async () => {
     try {
@@ -825,6 +988,8 @@ export default function ConfiguracoesPage() {
         case 'plano': url = `/planos/${deleteModal.id}`; break;
         case 'cobertura': url = `/coberturas/${deleteModal.id}`; break;
         case 'parcelamento': url = `/parcelamento-config/${deleteModal.id}`; break;
+        case 'fornecedor': url = `/fornecedores/${deleteModal.id}`; break;
+        default: return;
       }
 
       const res = await fetch(getApiUrl(url), { method: 'DELETE', headers: getAuthHeaders() });
@@ -842,6 +1007,7 @@ export default function ConfiguracoesPage() {
       if (deleteModal.tipo === 'plano') fetchPlanos();
       if (deleteModal.tipo === 'cobertura') fetchCoberturas();
       if (deleteModal.tipo === 'parcelamento') fetchParcelamentoConfigs();
+      if (deleteModal.tipo === 'fornecedor') fetchFornecedores();
 
     } catch (err: any) {
       mostrarMensagem('error', err.message);
@@ -862,6 +1028,7 @@ export default function ConfiguracoesPage() {
     fetchCoberturas();
     fetchAutorizacoes();
     fetchParcelamentoConfigs();
+    fetchFornecedores();
   }, []);
 
   const logoUrl = logoPreview || (config?.logo ? getApiUrl(config.logo) : null);
@@ -874,13 +1041,12 @@ export default function ConfiguracoesPage() {
     </svg>
   );
 
-  // ==================== RENDER ====================
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100">
       <div className="bg-gradient-to-r from-indigo-700 to-purple-700 text-white shadow-lg">
         <div className="container mx-auto px-6 py-5">
           <h1 className="text-3xl font-bold flex items-center gap-2"><Settings size={28} /> Configurações do Sistema</h1>
-          <p className="text-indigo-100 mt-1">Gerencie usuários, produtos, serviços, parcelamentos e muito mais</p>
+          <p className="text-indigo-100 mt-1">Gerencie usuários, produtos, serviços, fornecedores, parcelamentos e muito mais</p>
         </div>
       </div>
 
@@ -905,6 +1071,7 @@ export default function ConfiguracoesPage() {
             <button onClick={() => setAbaAtiva('coberturas')} className={`px-5 py-3 font-medium transition-colors flex items-center gap-2 whitespace-nowrap ${abaAtiva === 'coberturas' ? 'bg-indigo-600 text-white' : 'text-gray-600 hover:bg-gray-100'}`}><FileText size={18} /> Coberturas</button>
             <button onClick={() => setAbaAtiva('autorizacoes')} className={`px-5 py-3 font-medium transition-colors flex items-center gap-2 whitespace-nowrap ${abaAtiva === 'autorizacoes' ? 'bg-indigo-600 text-white' : 'text-gray-600 hover:bg-gray-100'}`}><CreditCard size={18} /> Autorizações</button>
             <button onClick={() => setAbaAtiva('parcelamento')} className={`px-5 py-3 font-medium transition-colors flex items-center gap-2 whitespace-nowrap ${abaAtiva === 'parcelamento' ? 'bg-indigo-600 text-white' : 'text-gray-600 hover:bg-gray-100'}`}><TrendingUp size={18} /> Parcelamento</button>
+            <button onClick={() => setAbaAtiva('fornecedores')} className={`px-5 py-3 font-medium transition-colors flex items-center gap-2 whitespace-nowrap ${abaAtiva === 'fornecedores' ? 'bg-indigo-600 text-white' : 'text-gray-600 hover:bg-gray-100'}`}><Truck size={18} /> Fornecedores</button>
           </div>
 
           <div className="p-6">
@@ -978,7 +1145,33 @@ export default function ConfiguracoesPage() {
             {abaAtiva === 'produtos' && (
               <div>
                 <div className="flex justify-between items-center mb-6"><h2 className="text-xl font-bold flex items-center gap-2"><Package size={24} /> Produtos</h2><button onClick={() => { resetProdutoForm(); setShowProdutoForm(true); }} className="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 flex items-center gap-2"><Plus size={18} /> Novo Produto</button></div>
-                {showProdutoForm && (<form onSubmit={salvarProduto} className="bg-gray-50 rounded-lg p-6 mb-6"><h3 className="font-semibold mb-4">{editProdutoId ? 'Editar Produto' : 'Novo Produto'}</h3><div className="grid grid-cols-1 md:grid-cols-2 gap-4"><input name="nome" placeholder="Nome" value={produtoForm.nome} onChange={e => setProdutoForm({ ...produtoForm, nome: e.target.value })} className="border rounded-lg px-3 py-2" required /><select name="tipo" value={produtoForm.tipo} onChange={e => setProdutoForm({ ...produtoForm, tipo: e.target.value as any })} className="border rounded-lg px-3 py-2"><option value="armacao">Armação</option><option value="lente">Lente</option></select><input name="preco" type="number" placeholder="Preço" value={produtoForm.preco} onChange={e => setProdutoForm({ ...produtoForm, preco: e.target.value })} className="border rounded-lg px-3 py-2" required /><input name="estoque" type="number" placeholder="Estoque" value={produtoForm.estoque} onChange={e => setProdutoForm({ ...produtoForm, estoque: e.target.value })} className="border rounded-lg px-3 py-2" /><select name="categoria_id" value={produtoForm.categoria_id} onChange={e => setProdutoForm({ ...produtoForm, categoria_id: e.target.value })} className="border rounded-lg px-3 py-2" required><option value="">Selecione a categoria</option>{categorias.map(c => (<option key={c.id} value={c.id}>{c.nome}</option>))}</select><textarea name="descricao" placeholder="Descrição" value={produtoForm.descricao} onChange={e => setProdutoForm({ ...produtoForm, descricao: e.target.value })} className="border rounded-lg px-3 py-2" rows={2} /></div><div className="flex justify-end gap-3 mt-4"><button type="button" onClick={resetProdutoForm} className="px-4 py-2 border rounded-lg">Cancelar</button><button type="submit" disabled={loading} className="px-4 py-2 bg-blue-600 text-white rounded-lg">{loading ? 'Salvando...' : 'Salvar'}</button></div></form>)}
+                {showProdutoForm && (
+                  <form onSubmit={salvarProduto} className="bg-gray-50 rounded-lg p-6 mb-6">
+                    <h3 className="font-semibold mb-4">{editProdutoId ? 'Editar Produto' : 'Novo Produto'}</h3>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <input name="nome" placeholder="Nome" value={produtoForm.nome} onChange={e => setProdutoForm({ ...produtoForm, nome: e.target.value })} className="border rounded-lg px-3 py-2" required />
+                      <select name="tipo" value={produtoForm.tipo} onChange={e => setProdutoForm({ ...produtoForm, tipo: e.target.value as any })} className="border rounded-lg px-3 py-2">
+                        <option value="armacao">Armação</option>
+                        <option value="lente">Lente</option>
+                      </select>
+                      <input name="preco" type="number" placeholder="Preço" value={produtoForm.preco} onChange={e => setProdutoForm({ ...produtoForm, preco: e.target.value })} className="border rounded-lg px-3 py-2" required />
+                      <input name="estoque" type="number" placeholder="Estoque" value={produtoForm.estoque} onChange={e => setProdutoForm({ ...produtoForm, estoque: e.target.value })} className="border rounded-lg px-3 py-2" />
+                      <select name="categoria_id" value={produtoForm.categoria_id} onChange={e => setProdutoForm({ ...produtoForm, categoria_id: e.target.value })} className="border rounded-lg px-3 py-2">
+                        <option value="">Selecione a categoria</option>
+                        {categorias.map(c => (<option key={c.id} value={c.id}>{c.nome}</option>))}
+                      </select>
+                      <select name="fornecedor_id" value={produtoForm.fornecedor_id} onChange={e => setProdutoForm({ ...produtoForm, fornecedor_id: e.target.value })} className="border rounded-lg px-3 py-2">
+                        <option value="">Selecione o fornecedor</option>
+                        {fornecedores.filter(f => f.ativo).map(f => (<option key={f.id} value={f.id}>{f.nome}</option>))}
+                      </select>
+                      <textarea name="descricao" placeholder="Descrição" value={produtoForm.descricao} onChange={e => setProdutoForm({ ...produtoForm, descricao: e.target.value })} className="border rounded-lg px-3 py-2" rows={2} />
+                    </div>
+                    <div className="flex justify-end gap-3 mt-4">
+                      <button type="button" onClick={resetProdutoForm} className="px-4 py-2 border rounded-lg">Cancelar</button>
+                      <button type="submit" disabled={loading} className="px-4 py-2 bg-blue-600 text-white rounded-lg">{loading ? 'Salvando...' : 'Salvar'}</button>
+                    </div>
+                  </form>
+                )}
                 <div className="overflow-x-auto">
                   <table className="w-full">
                     <thead className="bg-gray-100">
@@ -986,6 +1179,7 @@ export default function ConfiguracoesPage() {
                         <th className="p-3 text-left">Nome</th>
                         <th className="p-3 text-left">Tipo</th>
                         <th className="p-3 text-left">Categoria</th>
+                        <th className="p-3 text-left">Fornecedor</th>
                         <th className="p-3 text-left">Preço</th>
                         <th className="p-3 text-left">Estoque</th>
                         <th className="p-3 text-left">Ações</th>
@@ -997,6 +1191,7 @@ export default function ConfiguracoesPage() {
                           <td className="p-3">{p.nome}</td>
                           <td className="p-3">{p.tipo === 'armacao' ? 'Armação' : 'Lente'}</td>
                           <td className="p-3">{p.categoria?.nome || '-'}</td>
+                          <td className="p-3">{p.fornecedor?.nome || '-'}</td>
                           <td className="p-3">{Number(p.preco).toLocaleString('pt-AO')} Kz</td>
                           <td className="p-3">{p.estoque}</td>
                           <td className="p-3 flex gap-2">
@@ -1112,6 +1307,103 @@ export default function ConfiguracoesPage() {
               </div>
             )}
 
+            {/* ==================== ABA FORNECEDORES ==================== */}
+            {abaAtiva === 'fornecedores' && (
+              <div>
+                <div className="flex justify-between items-center mb-6">
+                  <h2 className="text-xl font-bold flex items-center gap-2"><Truck size={24} /> Fornecedores</h2>
+                  <button onClick={() => { resetFornecedorForm(); setShowFornecedorForm(true); }} className="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 flex items-center gap-2"><Plus size={18} /> Novo Fornecedor</button>
+                </div>
+
+                <div className="relative mb-6">
+                  <Search className="absolute left-3 top-2.5 text-gray-400" size={18} />
+                  <input type="text" placeholder="Pesquisar fornecedor por nome, NIF ou email..." value={filtroFornecedores} onChange={e => setFiltroFornecedores(e.target.value)} className="w-full border rounded-lg pl-10 pr-4 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+                </div>
+
+                {showFornecedorForm && (
+                  <form onSubmit={salvarFornecedor} className="bg-gray-50 rounded-lg p-6 mb-6">
+                    <h3 className="font-semibold mb-4">{editFornecedorId ? 'Editar Fornecedor' : 'Novo Fornecedor'}</h3>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <input name="nome" placeholder="Nome do Fornecedor *" value={fornecedorForm.nome} onChange={e => setFornecedorForm({ ...fornecedorForm, nome: e.target.value })} className="border rounded-lg px-3 py-2" required />
+                      <input name="nif" placeholder="NIF" value={fornecedorForm.nif} onChange={e => setFornecedorForm({ ...fornecedorForm, nif: e.target.value })} className="border rounded-lg px-3 py-2" />
+                      <input name="telefone" placeholder="Telefone" value={fornecedorForm.telefone} onChange={e => setFornecedorForm({ ...fornecedorForm, telefone: e.target.value })} className="border rounded-lg px-3 py-2" />
+                      <input name="email" type="email" placeholder="Email" value={fornecedorForm.email} onChange={e => setFornecedorForm({ ...fornecedorForm, email: e.target.value })} className="border rounded-lg px-3 py-2" />
+                      <textarea name="endereco" placeholder="Endereço" value={fornecedorForm.endereco} onChange={e => setFornecedorForm({ ...fornecedorForm, endereco: e.target.value })} className="border rounded-lg px-3 py-2" rows={2} />
+                      <input name="contato_nome" placeholder="Nome do Contato" value={fornecedorForm.contato_nome} onChange={e => setFornecedorForm({ ...fornecedorForm, contato_nome: e.target.value })} className="border rounded-lg px-3 py-2" />
+                      <input name="contato_telefone" placeholder="Telefone do Contato" value={fornecedorForm.contato_telefone} onChange={e => setFornecedorForm({ ...fornecedorForm, contato_telefone: e.target.value })} className="border rounded-lg px-3 py-2" />
+                      <textarea name="observacoes" placeholder="Observações" value={fornecedorForm.observacoes} onChange={e => setFornecedorForm({ ...fornecedorForm, observacoes: e.target.value })} className="border rounded-lg px-3 py-2" rows={2} />
+                      <div className="flex items-center gap-4">
+                        <label className="flex items-center gap-2">
+                          <input type="checkbox" checked={fornecedorForm.ativo} onChange={e => setFornecedorForm({ ...fornecedorForm, ativo: e.target.checked })} className="w-4 h-4" />
+                          <span className="text-sm">Fornecedor Ativo</span>
+                        </label>
+                      </div>
+                    </div>
+                    <div className="flex justify-end gap-3 mt-4">
+                      <button type="button" onClick={resetFornecedorForm} className="px-4 py-2 border rounded-lg">Cancelar</button>
+                      <button type="submit" disabled={loading} className="px-4 py-2 bg-blue-600 text-white rounded-lg">{loading ? 'Salvando...' : 'Salvar'}</button>
+                    </div>
+                  </form>
+                )}
+
+                <div className="overflow-x-auto">
+                  <table className="w-full">
+                    <thead className="bg-gray-100">
+                      <tr>
+                        <th className="p-3 text-left">Fornecedor</th>
+                        <th className="p-3 text-left">NIF</th>
+                        <th className="p-3 text-left">Telefone</th>
+                        <th className="p-3 text-left">Email</th>
+                        <th className="p-3 text-left">Contato</th>
+                        <th className="p-3 text-left">Status</th>
+                        <th className="p-3 text-left">Ações</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {fornecedoresFiltrados.map(f => (
+                        <tr key={f.id} className="border-t hover:bg-gray-50">
+                          <td className="p-3">
+                            <div className="font-medium text-gray-900">{f.nome}</div>
+                            {f.endereco && <div className="text-xs text-gray-400 truncate max-w-[200px]">{f.endereco}</div>}
+                          </td>
+                          <td className="p-3 text-sm">{f.nif || '-'}</td>
+                          <td className="p-3 text-sm">{f.telefone || '-'}</td>
+                          <td className="p-3 text-sm">{f.email || '-'}</td>
+                          <td className="p-3 text-sm">
+                            {f.contato_nome && <div className="font-medium">{f.contato_nome}</div>}
+                            {f.contato_telefone && <div className="text-xs text-gray-500">{f.contato_telefone}</div>}
+                            {!f.contato_nome && '-'}
+                          </td>
+                          <td className="p-3">
+                            <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium ${f.ativo ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
+                              {f.ativo ? 'Ativo' : 'Inativo'}
+                            </span>
+                          </td>
+                          <td className="p-3">
+                            <div className="flex gap-2">
+                              <button onClick={() => editarFornecedor(f)} className="text-blue-600 hover:text-blue-800" title="Editar"><Edit size={18} /></button>
+                              <button onClick={() => ativarDesativarFornecedor(f.id, f.ativo)} className={f.ativo ? 'text-gray-500 hover:text-gray-700' : 'text-green-600 hover:text-green-800'} title={f.ativo ? 'Desativar' : 'Ativar'}>{f.ativo ? 'Desativar' : 'Ativar'}</button>
+                              <button onClick={() => setDeleteModal({ isOpen: true, id: f.id, tipo: 'fornecedor', nome: f.nome })} className="text-red-600 hover:text-red-800" title="Excluir"><Trash2 size={18} /></button>
+                              <button onClick={() => fetchProdutosFornecedor(f.id)} className="text-indigo-600 hover:text-indigo-800" title="Ver Produtos"><Package size={18} /></button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                      {fornecedoresFiltrados.length === 0 && (
+                        <tr>
+                          <td colSpan={7} className="p-8 text-center text-gray-500">
+                            <Truck size={48} className="mx-auto mb-3 text-gray-300" />
+                            Nenhum fornecedor encontrado
+                            <p className="text-sm mt-2">Clique em "Novo Fornecedor" para adicionar</p>
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+
             {/* ==================== ABA PARCELAMENTO ==================== */}
             {abaAtiva === 'parcelamento' && (
               <div>
@@ -1129,120 +1421,64 @@ export default function ConfiguracoesPage() {
                   <form onSubmit={salvarParcelamentoConfig} className="bg-gray-50 rounded-lg p-6 mb-6">
                     <h3 className="font-semibold mb-4">{editParcelamentoId ? 'Editar Configuração' : 'Nova Configuração'}</h3>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <div>
-                        <label className="block text-sm font-medium mb-1">Nome da Configuração *</label>
-                        <input name="nome" placeholder="Ex: Parcelamento Padrão" value={parcelamentoForm.nome} onChange={e => setParcelamentoForm({ ...parcelamentoForm, nome: e.target.value })} className="w-full border rounded-lg px-3 py-2" required />
-                      </div>
-                      <div>
-                        <label className="block text-sm font-medium mb-1">Descrição</label>
-                        <input name="descricao" placeholder="Descrição opcional" value={parcelamentoForm.descricao || ''} onChange={e => setParcelamentoForm({ ...parcelamentoForm, descricao: e.target.value })} className="w-full border rounded-lg px-3 py-2" />
-                      </div>
-                      <div>
-                        <label className="block text-sm font-medium mb-1">Mínimo de Parcelas</label>
-                        <input type="number" min="1" value={parcelamentoForm.minimo_parcelas} onChange={e => setParcelamentoForm({ ...parcelamentoForm, minimo_parcelas: Number(e.target.value) })} className="w-full border rounded-lg px-3 py-2" required />
-                      </div>
-                      <div>
-                        <label className="block text-sm font-medium mb-1">Máximo de Parcelas</label>
-                        <input type="number" min="1" value={parcelamentoForm.maximo_parcelas} onChange={e => setParcelamentoForm({ ...parcelamentoForm, maximo_parcelas: Number(e.target.value) })} className="w-full border rounded-lg px-3 py-2" required />
-                      </div>
-                      <div>
-                        <label className="block text-sm font-medium mb-1">Taxa de Juros Mensal (%)</label>
-                        <input type="number" step="0.01" min="0" value={parcelamentoForm.taxa_juros_mensal} onChange={e => setParcelamentoForm({ ...parcelamentoForm, taxa_juros_mensal: Number(e.target.value) })} className="w-full border rounded-lg px-3 py-2" />
-                      </div>
-                      <div>
-                        <label className="block text-sm font-medium mb-1">Desconto à Vista (%)</label>
-                        <input type="number" step="0.01" min="0" max="100" value={parcelamentoForm.desconto_avista} onChange={e => setParcelamentoForm({ ...parcelamentoForm, desconto_avista: Number(e.target.value) })} className="w-full border rounded-lg px-3 py-2" />
-                      </div>
-                      <div>
-                        <label className="block text-sm font-medium mb-1">Valor Mínimo da Parcela (Kz)</label>
-                        <input type="number" step="0.01" min="0" value={parcelamentoForm.valor_minimo_parcela} onChange={e => setParcelamentoForm({ ...parcelamentoForm, valor_minimo_parcela: Number(e.target.value) })} className="w-full border rounded-lg px-3 py-2" />
-                      </div>
-                      <div>
-                        <label className="block text-sm font-medium mb-1">Percentual de Entrada Mínimo (%)</label>
-                        <input type="number" step="0.01" min="0" max="100" value={parcelamentoForm.percentual_entrada_minimo} onChange={e => setParcelamentoForm({ ...parcelamentoForm, percentual_entrada_minimo: Number(e.target.value) })} className="w-full border rounded-lg px-3 py-2" />
-                      </div>
-                      <div className="flex items-center gap-4">
-                        <label className="flex items-center gap-2">
-                          <input type="checkbox" checked={parcelamentoForm.exige_entrada} onChange={e => setParcelamentoForm({ ...parcelamentoForm, exige_entrada: e.target.checked })} className="w-4 h-4" />
-                          <span className="text-sm">Exige Entrada</span>
-                        </label>
-                        <label className="flex items-center gap-2">
-                          <input type="checkbox" checked={parcelamentoForm.ativo} onChange={e => setParcelamentoForm({ ...parcelamentoForm, ativo: e.target.checked })} className="w-4 h-4" />
-                          <span className="text-sm">Ativo</span>
-                        </label>
-                      </div>
+                      <div><label className="block text-sm font-medium mb-1">Nome da Configuração *</label><input name="nome" placeholder="Ex: Parcelamento Padrão" value={parcelamentoForm.nome} onChange={e => setParcelamentoForm({ ...parcelamentoForm, nome: e.target.value })} className="w-full border rounded-lg px-3 py-2" required /></div>
+                      <div><label className="block text-sm font-medium mb-1">Descrição</label><input name="descricao" placeholder="Descrição opcional" value={parcelamentoForm.descricao || ''} onChange={e => setParcelamentoForm({ ...parcelamentoForm, descricao: e.target.value })} className="w-full border rounded-lg px-3 py-2" /></div>
+                      <div><label className="block text-sm font-medium mb-1">Mínimo de Parcelas</label><input type="number" min="1" value={parcelamentoForm.minimo_parcelas} onChange={e => setParcelamentoForm({ ...parcelamentoForm, minimo_parcelas: Number(e.target.value) })} className="w-full border rounded-lg px-3 py-2" required /></div>
+                      <div><label className="block text-sm font-medium mb-1">Máximo de Parcelas</label><input type="number" min="1" value={parcelamentoForm.maximo_parcelas} onChange={e => setParcelamentoForm({ ...parcelamentoForm, maximo_parcelas: Number(e.target.value) })} className="w-full border rounded-lg px-3 py-2" required /></div>
+                      <div><label className="block text-sm font-medium mb-1">Taxa de Juros Mensal (%)</label><input type="number" step="0.01" min="0" value={parcelamentoForm.taxa_juros_mensal} onChange={e => setParcelamentoForm({ ...parcelamentoForm, taxa_juros_mensal: Number(e.target.value) })} className="w-full border rounded-lg px-3 py-2" /></div>
+                      <div><label className="block text-sm font-medium mb-1">Desconto à Vista (%)</label><input type="number" step="0.01" min="0" max="100" value={parcelamentoForm.desconto_avista} onChange={e => setParcelamentoForm({ ...parcelamentoForm, desconto_avista: Number(e.target.value) })} className="w-full border rounded-lg px-3 py-2" /></div>
+                      <div><label className="block text-sm font-medium mb-1">Valor Mínimo da Parcela (Kz)</label><input type="number" step="0.01" min="0" value={parcelamentoForm.valor_minimo_parcela} onChange={e => setParcelamentoForm({ ...parcelamentoForm, valor_minimo_parcela: Number(e.target.value) })} className="w-full border rounded-lg px-3 py-2" /></div>
+                      <div><label className="block text-sm font-medium mb-1">Percentual de Entrada Mínimo (%)</label><input type="number" step="0.01" min="0" max="100" value={parcelamentoForm.percentual_entrada_minimo} onChange={e => setParcelamentoForm({ ...parcelamentoForm, percentual_entrada_minimo: Number(e.target.value) })} className="w-full border rounded-lg px-3 py-2" /></div>
+                      <div className="flex items-center gap-4"><label className="flex items-center gap-2"><input type="checkbox" checked={parcelamentoForm.exige_entrada} onChange={e => setParcelamentoForm({ ...parcelamentoForm, exige_entrada: e.target.checked })} className="w-4 h-4" /><span className="text-sm">Exige Entrada</span></label><label className="flex items-center gap-2"><input type="checkbox" checked={parcelamentoForm.ativo} onChange={e => setParcelamentoForm({ ...parcelamentoForm, ativo: e.target.checked })} className="w-4 h-4" /><span className="text-sm">Ativo</span></label></div>
                     </div>
-                    <div className="flex justify-end gap-3 mt-4">
-                      <button type="button" onClick={resetParcelamentoForm} className="px-4 py-2 border rounded-lg">Cancelar</button>
-                      <button type="submit" disabled={loading} className="px-4 py-2 bg-blue-600 text-white rounded-lg">{loading ? 'Salvando...' : 'Salvar'}</button>
-                    </div>
+                    <div className="flex justify-end gap-3 mt-4"><button type="button" onClick={resetParcelamentoForm} className="px-4 py-2 border rounded-lg">Cancelar</button><button type="submit" disabled={loading} className="px-4 py-2 bg-blue-600 text-white rounded-lg">{loading ? 'Salvando...' : 'Salvar'}</button></div>
                   </form>
                 )}
 
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                   {parcelamentoConfigsFiltrados.map(c => (
                     <div key={c.id} className="bg-white rounded-lg shadow p-4 border-l-4 border-indigo-500">
-                      <div className="flex justify-between items-start">
-                        <div>
-                          <h3 className="font-semibold text-lg">{c.nome}</h3>
-                          <p className="text-sm text-gray-500 mt-1">{c.descricao || 'Sem descrição'}</p>
-                        </div>
-                        <span className={`text-xs px-2 py-0.5 rounded ${c.ativo ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
-                          {c.ativo ? 'Ativo' : 'Inativo'}
-                        </span>
-                      </div>
-                      
-                      <div className="mt-3 grid grid-cols-2 gap-2 text-sm">
-                        <div className="flex items-center gap-1">
-                          <Calendar size={14} className="text-gray-400" />
-                          <span>Parcelas: {c.minimo_parcelas} - {c.maximo_parcelas}</span>
-                        </div>
-                        <div className="flex items-center gap-1">
-                          <Percent size={14} className="text-gray-400" />
-                          <span>Juros: {c.taxa_juros_mensal}%</span>
-                        </div>
-                        <div className="flex items-center gap-1">
-                          <DollarSign size={14} className="text-gray-400" />
-                          <span>Mín. Parcela: {c.valor_minimo_parcela.toLocaleString('pt-AO')} Kz</span>
-                        </div>
-                        <div className="flex items-center gap-1">
-                          <Hash size={14} className="text-gray-400" />
-                          <span>Entrada: {c.exige_entrada ? `${c.percentual_entrada_minimo}%` : 'Não exige'}</span>
-                        </div>
-                      </div>
-                      
-                      <div className="flex justify-end gap-2 mt-3 pt-3 border-t">
-                        <button onClick={() => clonarParcelamentoConfig(c.id, c.nome)} className="text-purple-600 hover:text-purple-800" title="Clonar">
-                          <Copy size={18} />
-                        </button>
-                        <button onClick={() => editarParcelamentoConfig(c)} className="text-blue-600 hover:text-blue-800">
-                          <Edit size={18} />
-                        </button>
-                        <button onClick={() => ativarDesativarParcelamentoConfig(c.id, c.ativo)} className={c.ativo ? 'text-gray-500' : 'text-green-600'}>
-                          {c.ativo ? 'Desativar' : 'Ativar'}
-                        </button>
-                        <button onClick={() => setDeleteModal({ isOpen: true, id: c.id, tipo: 'parcelamento', nome: c.nome })} className="text-red-600 hover:text-red-800">
-                          <Trash2 size={18} />
-                        </button>
-                      </div>
+                      <div className="flex justify-between items-start"><div><h3 className="font-semibold text-lg">{c.nome}</h3><p className="text-sm text-gray-500 mt-1">{c.descricao || 'Sem descrição'}</p></div><span className={`text-xs px-2 py-0.5 rounded ${c.ativo ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>{c.ativo ? 'Ativo' : 'Inativo'}</span></div>
+                      <div className="mt-3 grid grid-cols-2 gap-2 text-sm"><div className="flex items-center gap-1"><Calendar size={14} className="text-gray-400" /><span>Parcelas: {c.minimo_parcelas} - {c.maximo_parcelas}</span></div><div className="flex items-center gap-1"><Percent size={14} className="text-gray-400" /><span>Juros: {c.taxa_juros_mensal}%</span></div><div className="flex items-center gap-1"><DollarSign size={14} className="text-gray-400" /><span>Mín. Parcela: {c.valor_minimo_parcela.toLocaleString('pt-AO')} Kz</span></div><div className="flex items-center gap-1"><Hash size={14} className="text-gray-400" /><span>Entrada: {c.exige_entrada ? `${c.percentual_entrada_minimo}%` : 'Não exige'}</span></div></div>
+                      <div className="flex justify-end gap-2 mt-3 pt-3 border-t"><button onClick={() => clonarParcelamentoConfig(c.id, c.nome)} className="text-purple-600 hover:text-purple-800" title="Clonar"><Copy size={18} /></button><button onClick={() => editarParcelamentoConfig(c)} className="text-blue-600 hover:text-blue-800"><Edit size={18} /></button><button onClick={() => ativarDesativarParcelamentoConfig(c.id, c.ativo)} className={c.ativo ? 'text-gray-500' : 'text-green-600'}>{c.ativo ? 'Desativar' : 'Ativar'}</button><button onClick={() => setDeleteModal({ isOpen: true, id: c.id, tipo: 'parcelamento', nome: c.nome })} className="text-red-600 hover:text-red-800"><Trash2 size={18} /></button></div>
                     </div>
                   ))}
                 </div>
-
-                {parcelamentoConfigsFiltrados.length === 0 && (
-                  <div className="text-center py-12 bg-gray-50 rounded-lg">
-                    <TrendingUp size={48} className="mx-auto text-gray-400 mb-3" />
-                    <p className="text-gray-500">Nenhuma configuração de parcelamento encontrada</p>
-                    <button onClick={() => { resetParcelamentoForm(); setShowParcelamentoForm(true); }} className="mt-3 text-indigo-600 hover:text-indigo-800 font-medium">
-                      Criar primeira configuração
-                    </button>
-                  </div>
-                )}
+                {parcelamentoConfigsFiltrados.length === 0 && (<div className="text-center py-12 bg-gray-50 rounded-lg"><TrendingUp size={48} className="mx-auto text-gray-400 mb-3" /><p className="text-gray-500">Nenhuma configuração de parcelamento encontrada</p><button onClick={() => { resetParcelamentoForm(); setShowParcelamentoForm(true); }} className="mt-3 text-indigo-600 hover:text-indigo-800 font-medium">Criar primeira configuração</button></div>)}
               </div>
             )}
           </div>
         </div>
       </div>
+
+      {/* Modal de Produtos do Fornecedor */}
+      {showProdutosFornecedorModal && fornecedorSelecionado && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl shadow-lg w-full max-w-4xl max-h-[80vh] overflow-y-auto">
+            <div className="flex justify-between items-center p-6 border-b sticky top-0 bg-white">
+              <div>
+                <h2 className="text-xl font-bold flex items-center gap-2"><Package size={20} className="text-indigo-600" /> Produtos Fornecidos por {fornecedorSelecionado.nome}</h2>
+                {fornecedorSelecionado.nif && <p className="text-sm text-gray-500 mt-1">NIF: {fornecedorSelecionado.nif}</p>}
+              </div>
+              <button onClick={() => setShowProdutosFornecedorModal(false)} className="text-gray-500 hover:text-gray-700"><X size={24} /></button>
+            </div>
+            <div className="p-6">
+              {loadingProdutos ? (<div className="flex justify-center py-12"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600"></div></div>) : produtosFornecedor.length === 0 ? (<div className="text-center py-12"><Package size={48} className="mx-auto text-gray-300 mb-3" /><p className="text-gray-500">Nenhum produto vinculado a este fornecedor</p><p className="text-sm text-gray-400 mt-1">Os produtos serão exibidos aqui quando forem associados a este fornecedor</p></div>) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full">
+                    <thead className="bg-gray-100"><tr><th className="p-3 text-left">Produto</th><th className="p-3 text-left">Categoria</th><th className="p-3 text-right">Preço</th><th className="p-3 text-center">Estoque</th><th className="p-3 text-right">Ações</th></tr></thead>
+                    <tbody>{produtosFornecedor.map(produto => (<tr key={produto.id} className="border-t hover:bg-gray-50"><td className="p-3"><div className="font-medium text-gray-900">{produto.nome}</div>{produto.descricao && <div className="text-xs text-gray-400 truncate max-w-[200px]">{produto.descricao}</div>}</td><td className="p-3 text-sm">{produto.categoria?.nome || '-'}</td><td className="p-3 text-right font-medium text-green-600">{Number(produto.preco).toLocaleString('pt-AO')} Kz</td><td className="p-3 text-center"><span className={`inline-flex px-2 py-0.5 rounded text-xs font-medium ${(produto.estoque || 0) > 0 ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>{produto.estoque || 0} unidades</span></td><td className="p-3 text-right"><button onClick={() => { setShowProdutosFornecedorModal(false); setAbaAtiva('produtos'); setTimeout(() => editarProduto(produto), 100); }} className="text-blue-600 hover:text-blue-800" title="Editar Produto"><Edit size={18} /></button></td></tr>))}</tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+            <div className="flex justify-end gap-3 p-6 pt-0 border-t">
+              <button onClick={() => { setShowProdutosFornecedorModal(false); setAbaAtiva('produtos'); }} className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700">Gerenciar Produtos</button>
+              <button onClick={() => setShowProdutosFornecedorModal(false)} className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50">Fechar</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Modal de Confirmação de Delete */}
       {deleteModal.isOpen && (

@@ -237,7 +237,7 @@ export default function LoginPage() {
 
       setForgotModalMessage({ 
         type: 'success', 
-        text: '✅ Email de recuperação enviado! Verifique sua caixa de entrada.' 
+        text: '✅Email de recuperação enviado! Verifique sua caixa de entrada.' 
       });
       
       setForgotEmail('');

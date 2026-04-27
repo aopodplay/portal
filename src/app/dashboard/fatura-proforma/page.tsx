@@ -667,16 +667,24 @@ export default function FaturaProformaPage() {
     }
   };
 
+  // app/dashboard/fatura-proforma/page.tsx
+  // Corrigir o handleConvert
+
   const handleConvert = async () => {
     if (!confirmModal) return;
 
     try {
-      const response = await fetch(
-        getApiUrl(API_ENDPOINTS.FATURAS_PROFORMA.CONVERTER(confirmModal.id)),
-        { method: 'POST', headers: getAuthHeaders() }
-      );
+      const url = getApiUrl(API_ENDPOINTS.FATURAS_PROFORMA.CONVERTER(confirmModal.id));
 
-      if (!response.ok) throw new Error('Erro ao converter fatura');
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: getAuthHeaders()
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Erro ao converter fatura');
+      }
 
       const result = await response.json();
       showMessage('Sucesso', result.message || 'Fatura convertida para fatura final com sucesso!', 'success');
@@ -684,7 +692,7 @@ export default function FaturaProformaPage() {
       loadProformas();
     } catch (error) {
       console.error('Erro ao converter:', error);
-      showMessage('Erro', 'Erro ao converter fatura', 'error');
+      showMessage('Erro', error instanceof Error ? error.message : 'Erro ao converter fatura', 'error');
     }
   };
 

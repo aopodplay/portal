@@ -106,6 +106,7 @@ export default function FaturasPage() {
   const [produtos, setProdutos] = useState<Produto[]>([]);
   const [servicos, setServicos] = useState<Servico[]>([]);
   const [config, setConfig] = useState<any>(null);
+  const [cancelando, setCancelando] = useState(false);
 
   const [numeroPesquisa, setNumeroPesquisa] = useState('');
   const [dataInicio, setDataInicio] = useState('');
@@ -316,6 +317,7 @@ export default function FaturasPage() {
 
   const executarCancelamento = async () => {
     if (!cancelModal.fatura) return;
+    setCancelando(true);
     try {
       const res = await fetch(getApiUrl(`/faturas/${cancelModal.fatura.id}`), { method: 'DELETE', headers: getAuthHeaders() });
       if (!res.ok) throw new Error('Erro ao cancelar a fatura');
@@ -324,6 +326,8 @@ export default function FaturasPage() {
     } catch (err: any) {
       alert('Erro ao cancelar fatura: ' + (err.message || 'Desconhecido'));
       setCancelModal({ isOpen: false, fatura: null });
+    } finally {
+      setCancelando(false);
     }
   };
 
@@ -820,8 +824,8 @@ export default function FaturasPage() {
         {/* Modal de Confirmação de Cancelamento */}
         {cancelModal.isOpen && cancelModal.fatura && (
           <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-            <div className="bg-white rounded-xl shadow-lg w-full max-w-md p-6">
-              <div className="flex items-center gap-3 mb-4">
+            <div className="bg-white rounded-xl shadow-lg w-full max-w-md">
+              <div className="flex items-center gap-3 p-6 border-b">
                 <div className="w-12 h-12 rounded-full bg-red-100 flex items-center justify-center">
                   <AlertCircle className="text-red-600" size={24} />
                 </div>
@@ -831,18 +835,36 @@ export default function FaturasPage() {
                 </div>
               </div>
 
-              <p className="text-gray-600 mb-6">
-                Tem certeza que deseja cancelar a fatura <strong className="text-red-600">{cancelModal.fatura.numero}</strong>?
-                <br />
-                <span className="text-sm text-gray-400">O valor total é de {formatarValor(cancelModal.fatura.total)}.</span>
-              </p>
+              <div className="p-6">
+                <p className="text-gray-600 mb-2">
+                  Tem certeza que deseja cancelar a fatura <strong className="text-red-600">{cancelModal.fatura.numero}</strong>?
+                </p>
+                <p className="text-sm text-gray-500">
+                  Valor total: <strong>{formatarValor(cancelModal.fatura.total)}</strong>
+                </p>
+              </div>
 
-              <div className="flex gap-3">
-                <button onClick={() => setCancelModal({ isOpen: false, fatura: null })} className="flex-1 px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors">
-                  Cancelar
+              <div className="flex gap-3 p-6 pt-0">
+                <button
+                  onClick={() => setCancelModal({ isOpen: false, fatura: null })}
+                  className="flex-1 px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors"
+                  disabled={cancelando}
+                >
+                  Não, Voltar
                 </button>
-                <button onClick={executarCancelamento} className="flex-1 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors">
-                  Sim, Cancelar Fatura
+                <button
+                  onClick={executarCancelamento}
+                  disabled={cancelando}
+                  className="flex-1 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors disabled:bg-red-400 flex items-center justify-center gap-2"
+                >
+                  {cancelando ? (
+                    <>
+                      <RefreshCw size={16} className="animate-spin" />
+                      Cancelando...
+                    </>
+                  ) : (
+                    'Sim, Cancelar Fatura'
+                  )}
                 </button>
               </div>
             </div>

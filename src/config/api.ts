@@ -3,6 +3,7 @@ import Cookies from "js-cookie";
 
 // URL da API (apenas ambiente local)
 export const API_BASE_URL = "http://localhost:3000";
+/* export const API_BASE_URL = "https://app-027a441b-a523-47d3-bd7a-1b5f3796e221.cleverapps.io"; */
 
 // Endpoints da API da Óptica
 export const API_ENDPOINTS = {
@@ -15,6 +16,7 @@ export const API_ENDPOINTS = {
   PACIENTES: "/pacientes",
   CATEGORIAS: "/categorias",
   PRODUTOS: "/produtos",
+  FORNECEDORES: "/fornecedores",  // NOVO: Fornecedores
 
   ATENDIMENTOS: "/atendimentos",
   CONSULTAS: "/consultas",
@@ -178,6 +180,33 @@ export const API_ENDPOINTS = {
     
     // Enviar para AGT (futuro)
     ENVIAR_AGT: "/saft/enviar-agt",
+  },
+
+  // FORNECEDORES - NOVO
+  FORNECEDOR: {
+    // Listar todos os fornecedores
+    LISTAR: "/fornecedores",
+    
+    // Listar apenas fornecedores ativos (para selects)
+    ATIVOS: "/fornecedores/ativos",
+    
+    // Buscar por ID
+    BUSCAR: (id: number | string) => `/fornecedores/${id}`,
+    
+    // Criar novo fornecedor
+    CRIAR: "/fornecedores",
+    
+    // Atualizar fornecedor
+    ATUALIZAR: (id: number | string) => `/fornecedores/${id}`,
+    
+    // Ativar/Desativar fornecedor
+    TOGGLE: (id: number | string) => `/fornecedores/${id}/toggle`,
+    
+    // Excluir fornecedor
+    EXCLUIR: (id: number | string) => `/fornecedores/${id}`,
+    
+    // Produtos do fornecedor
+    PRODUTOS: (id: number | string) => `/fornecedores/${id}/produtos`,
   },
 };
 
