@@ -3,7 +3,6 @@ import Cookies from "js-cookie";
 
 // URL da API (apenas ambiente local)
 export const API_BASE_URL = "http://localhost:3000";
-/* export const API_BASE_URL = "https://app-027a441b-a523-47d3-bd7a-1b5f3796e221.cleverapps.io"; */
 
 // Endpoints da API da Óptica
 export const API_ENDPOINTS = {
