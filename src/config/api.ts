@@ -67,30 +67,30 @@ export const API_ENDPOINTS = {
 
   // src/config/api.ts - adicione
   RELATORIOS: "/relatorios",
-  
+
   // PARCELAMENTO CONFIGURAÇÕES - NOVO
   PARCELAMENTO_CONFIG: {
     // Listar todas as configurações
     LISTAR: "/parcelamento-config",
-    
+
     // Buscar por ID
     BUSCAR: (id: number | string) => `/parcelamento-config/${id}`,
-    
+
     // Criar nova configuração
     CRIAR: "/parcelamento-config",
-    
+
     // Atualizar configuração
     ATUALIZAR: (id: number | string) => `/parcelamento-config/${id}`,
-    
+
     // Ativar/Desativar configuração
     TOGGLE: (id: number | string) => `/parcelamento-config/${id}/toggle`,
-    
+
     // Deletar configuração
     DELETAR: (id: number | string) => `/parcelamento-config/${id}`,
-    
+
     // Clonar configuração
     CLONAR: (id: number | string) => `/parcelamento-config/${id}/clone`,
-    
+
     // Filtros
     POR_STATUS: (ativo: boolean) => `/parcelamento-config?ativo=${ativo}`,
   },
@@ -100,23 +100,23 @@ export const API_ENDPOINTS = {
     // Configurações (mantido para compatibilidade)
     CONFIGURACOES: "/parcelamentos/configuracoes",
     CONFIGURACAO_ID: (id: number | string) => `/parcelamentos/configuracoes/${id}`,
-    
+
     // Simulação
     SIMULAR: "/parcelamentos/simular",
-    
+
     // Parcelamentos
     LISTAR: "/parcelamentos",
     BUSCAR: (id: number | string) => `/parcelamentos/${id}`,
     CRIAR: "/parcelamentos",
     CANCELAR: (id: number | string) => `/parcelamentos/${id}/cancelar`,
-    
+
     // Dashboard e Relatórios
     DASHBOARD: "/parcelamentos/dashboard",
     RELATORIO: "/parcelamentos/relatorio",
-    
+
     // Parcelas
     PAGAR_PARCELA: (parcelaId: number | string) => `/parcelamentos/parcelas/${parcelaId}/pagar`,
-    
+
     // Filtros
     POR_CLIENTE: (clienteId: number | string) => `/parcelamentos?cliente_id=${clienteId}`,
     POR_STATUS: (status: string) => `/parcelamentos?status=${status}`,
@@ -126,31 +126,31 @@ export const API_ENDPOINTS = {
   FATURAS_PROFORMA: {
     // Listar todas (com filtros)
     LISTAR: "/faturas-proforma",
-    
+
     // Dashboard/Estatísticas
     DASHBOARD: "/faturas-proforma/dashboard",
-    
+
     // Buscar por ID
     BUSCAR: (id: number | string) => `/faturas-proforma/${id}`,
-    
+
     // Criar nova
     CRIAR: "/faturas-proforma",
-    
+
     // Atualizar
     ATUALIZAR: (id: number | string) => `/faturas-proforma/${id}`,
-    
+
     // Excluir (soft delete)
     EXCLUIR: (id: number | string) => `/faturas-proforma/${id}`,
-    
+
     // Converter para fatura final
     CONVERTER: (id: number | string) => `/faturas-proforma/${id}/converter`,
-    
+
     // Cancelar
     CANCELAR: (id: number | string) => `/faturas-proforma/${id}/cancelar`,
-    
+
     // Enviar por e-mail
     ENVIAR_EMAIL: (id: number | string) => `/faturas-proforma/${id}/enviar-email`,
-    
+
     // Filtros específicos
     POR_CLIENTE: (clienteId: number | string) => `/faturas-proforma?cliente_id=${clienteId}`,
     POR_STATUS: (status: string) => `/faturas-proforma?status=${status}`,
@@ -161,22 +161,22 @@ export const API_ENDPOINTS = {
   SAFT: {
     // Gerar arquivo SAF-T
     GERAR: "/saft/gerar",
-    
+
     // Listar movimentos gerados
     MOVIMENTOS: "/saft/movimentos",
-    
+
     // Download do arquivo
     DOWNLOAD: (nomeArquivo: string) => `/saft/download/${nomeArquivo}`,
-    
+
     // Configurações fiscais da empresa
     CONFIGURACOES_FISCAIS: "/saft/configuracoes-fiscais",
-    
+
     // Atualizar configurações fiscais
     ATUALIZAR_CONFIGURACOES: "/saft/configuracoes-fiscais",
-    
+
     // Validar arquivo SAF-T
     VALIDAR: "/saft/validar",
-    
+
     // Enviar para AGT (futuro)
     ENVIAR_AGT: "/saft/enviar-agt",
   },
@@ -185,27 +185,37 @@ export const API_ENDPOINTS = {
   FORNECEDOR: {
     // Listar todos os fornecedores
     LISTAR: "/fornecedores",
-    
+
     // Listar apenas fornecedores ativos (para selects)
     ATIVOS: "/fornecedores/ativos",
-    
+
     // Buscar por ID
     BUSCAR: (id: number | string) => `/fornecedores/${id}`,
-    
+
     // Criar novo fornecedor
     CRIAR: "/fornecedores",
-    
+
     // Atualizar fornecedor
     ATUALIZAR: (id: number | string) => `/fornecedores/${id}`,
-    
+
     // Ativar/Desativar fornecedor
     TOGGLE: (id: number | string) => `/fornecedores/${id}/toggle`,
-    
+
     // Excluir fornecedor
     EXCLUIR: (id: number | string) => `/fornecedores/${id}`,
-    
+
     // Produtos do fornecedor
     PRODUTOS: (id: number | string) => `/fornecedores/${id}/produtos`,
+  },
+
+  // SERIES_DOCUMENTOS
+  SERIES_DOCUMENTOS: {
+    LISTAR: "/series-documentos",
+    BUSCAR: (id: number | string) => `/series-documentos/${id}`,
+    CRIAR: "/series-documentos",
+    ATUALIZAR: (id: number | string) => `/series-documentos/${id}`,
+    DELETAR: (id: number | string) => `/series-documentos/${id}`,
+    REINICIAR_ANO: "/series-documentos/reiniciar-ano",
   },
 };
 
