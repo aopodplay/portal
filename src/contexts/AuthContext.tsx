@@ -37,7 +37,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       const parsedUser: Usuario = JSON.parse(storedUser);
       setUser(parsedUser);
 
-      const s = io('http://localhost:3000', {
+      const s = io('https://opticaapi.onrender.com', {
         autoConnect: false,
         transports: ['websocket', 'polling'],
         auth: { token },
@@ -77,7 +77,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
       setUser(userWithToken);
 
-      const s = io('http://localhost:3000', {
+      const s = io('https://opticaapi.onrender.com', {
         autoConnect: false,
         transports: ['websocket', 'polling'],
         auth: { token },

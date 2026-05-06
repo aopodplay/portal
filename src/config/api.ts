@@ -2,7 +2,7 @@
 import Cookies from "js-cookie";
 
 // URL da API (apenas ambiente local)
-export const API_BASE_URL = "http://localhost:3000";
+export const API_BASE_URL = "https://opticaapi.onrender.com";
 
 // Endpoints da API da Óptica
 export const API_ENDPOINTS = {

@@ -71,7 +71,7 @@ export default function Header() {
   };
 
   const fotoUrl = user?.foto 
-    ? `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000'}/uploads/${user.foto}`
+    ? `${process.env.NEXT_PUBLIC_API_URL || 'https://opticaapi.onrender.com'}/uploads/${user.foto}`
     : null;
 
   const getPageTitle = () => {

@@ -435,7 +435,7 @@ export default function UserProfile() {
     );
   }
 
-  const fotoUrl = preview || (user.foto ? `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000'}/uploads/${user.foto}` : null);
+  const fotoUrl = preview || (user.foto ? `${process.env.NEXT_PUBLIC_API_URL || 'https://opticaapi.onrender.com'}/uploads/${user.foto}` : null);
   const inicial = user.nome ? user.nome.charAt(0).toUpperCase() : 'U';
 
   return (
