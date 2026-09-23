@@ -9,6 +9,7 @@
     "lint": "next lint"
   },
   "dependencies": {
+    "@types/uuid": "^10.0.0",
     "axios": "^1.13.4",
     "chart.js": "^4.4.9",
     "framer-motion": "^12.23.26",
@@ -22,6 +23,7 @@
     "recharts": "^3.6.0",
     "socket.io-client": "^4.8.3",
     "swr": "^2.4.0",
+    "uuid": "^14.0.0",
     "xlsx": "^0.18.5"
   },
   "devDependencies": {

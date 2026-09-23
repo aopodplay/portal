@@ -1,117 +1,268 @@
+// src/contexts/AuthContext.tsx
 'use client';
 
-import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
+import { createContext, useContext, useEffect, useState, ReactNode, useCallback } from 'react';
 import Cookies from 'js-cookie';
-import { io, type Socket } from 'socket.io-client';
-import { API_ENDPOINTS, getApiUrl, defaultHeaders } from '@/config/api';
+import { API_ENDPOINTS, getApiUrl } from '@/config/api';
 
-interface Usuario {
+export interface User {
   id: number;
-  nome: string;
-  perfil: string;
-  foto?: string;
-  token?: string;
+  username: string;
+  email?: string;
+  phone?: string;
+  fullName?: string;
+  role: 'admin' | 'user' | 'creator' | 'moderator';
+  churchId?: number;
+  avatarUrl?: string;
+  isVerified: boolean;
 }
 
 interface AuthContextType {
-  user: Usuario | null;
-  socket: Socket | null;
+  user: User | null;
   loading: boolean;
-  login: (email: string, senha: string) => Promise<void>;
-  logout: () => void;
-  updateUser: (novoUsuario: Partial<Usuario>) => void;
+  login: (identifier: string, password: string) => Promise<{ user: User; accessToken: string; refreshToken: string }>;
+  register: (data: RegisterData) => Promise<any>;
+  verifyAccount: (identifier: string, code: string) => Promise<any>;
+  resendVerificationCode: (identifier: string) => Promise<any>;
+  forgotPassword: (identifier: string) => Promise<any>;
+  resetPassword: (identifier: string, code: string, newPassword: string) => Promise<any>;
+  logout: () => Promise<void>;
+  refreshAccessToken: () => Promise<string | null>;
+  updateUser: (userData: Partial<User>) => void;
+}
+
+interface RegisterData {
+  username: string;
+  email?: string;
+  phone?: string;
+  password: string;
+  fullName?: string;
+  churchId?: string;
 }
 
 const AuthContext = createContext<AuthContextType>({} as AuthContextType);
 
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
-  const [user, setUser] = useState<Usuario | null>(null);
-  const [socket, setSocket] = useState<Socket | null>(null);
+  const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    const token = Cookies.get('token') || localStorage.getItem('token');
-    const storedUser = localStorage.getItem('user');
-
-    if (token && storedUser) {
-      const parsedUser: Usuario = JSON.parse(storedUser);
-      setUser(parsedUser);
-
-      const s = io('https://opticaapi.onrender.com', {
-        autoConnect: false,
-        transports: ['websocket', 'polling'],
-        auth: { token },
-      });
-
-      s.connect();
-      s.emit('join_perfil', parsedUser.perfil);
-
-      setSocket(s);
-    }
-
-    setLoading(false);
-
-    return () => {
-      socket?.disconnect();
-    };
+  // Limpar dados do usuário
+  const clearUserData = useCallback(() => {
+    Cookies.remove('podplay_token', { path: '/' });
+    Cookies.remove('podplay_refresh_token', { path: '/' });
+    localStorage.removeItem('podplay_token');
+    localStorage.removeItem('podplay_refresh_token');
+    localStorage.removeItem('podplay_user');
+    setUser(null);
   }, []);
 
-  const login = async (email: string, senha: string) => {
-    setLoading(true);
-    try {
-      const res = await fetch(getApiUrl(API_ENDPOINTS.LOGIN), {
-        method: 'POST',
-        headers: defaultHeaders,
-        body: JSON.stringify({ email, senha }),
-      });
+  // Carregar usuário do localStorage
+  useEffect(() => {
+    const loadUser = () => {
+      const token = Cookies.get('podplay_token') || localStorage.getItem('podplay_token');
+      const storedUser = localStorage.getItem('podplay_user');
 
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Erro no login');
-
-      const { token, usuario } = data;
-      const userWithToken: Usuario = { ...usuario, token };
-
-      Cookies.set('token', token);
-      localStorage.setItem('token', token);
-      localStorage.setItem('user', JSON.stringify(userWithToken));
-
-      setUser(userWithToken);
-
-      const s = io('https://opticaapi.onrender.com', {
-        autoConnect: false,
-        transports: ['websocket', 'polling'],
-        auth: { token },
-      });
-      s.connect();
-      s.emit('join_perfil', userWithToken.perfil);
-      setSocket(s);
-    } catch (err: any) {
-      console.error('Login error:', err.message);
-      throw err;
-    } finally {
+      if (token && storedUser) {
+        try {
+          const parsedUser: User = JSON.parse(storedUser);
+          setUser(parsedUser);
+        } catch (error) {
+          console.error('Erro ao carregar usuário:', error);
+          clearUserData();
+        }
+      }
       setLoading(false);
+    };
+
+    loadUser();
+  }, [clearUserData]);
+
+  const login = async (identifier: string, password: string) => {
+    const response = await fetch(getApiUrl(API_ENDPOINTS.LOGIN), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ identifier, password }),
+    });
+
+    const result = await response.json();
+
+    if (!response.ok) {
+      throw new Error(result.message || 'Erro no login');
+    }
+
+    const { user: userData, accessToken, refreshToken } = result.data;
+
+    // Salvar tokens
+    Cookies.set('podplay_token', accessToken, { expires: 7, path: '/' });
+    Cookies.set('podplay_refresh_token', refreshToken, { expires: 7, path: '/' });
+    localStorage.setItem('podplay_token', accessToken);
+    localStorage.setItem('podplay_refresh_token', refreshToken);
+    localStorage.setItem('podplay_user', JSON.stringify(userData));
+
+    setUser(userData);
+
+    return { user: userData, accessToken, refreshToken };
+  };
+
+  const register = async (data: RegisterData) => {
+    const response = await fetch(getApiUrl(API_ENDPOINTS.REGISTER), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    });
+
+    const result = await response.json();
+
+    if (!response.ok) {
+      throw new Error(result.message || 'Erro no registro');
+    }
+
+    return result.data;
+  };
+
+  const verifyAccount = async (identifier: string, code: string) => {
+    const response = await fetch(getApiUrl(API_ENDPOINTS.VERIFY_ACCOUNT), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ identifier, code }),
+    });
+
+    const result = await response.json();
+
+    if (!response.ok) {
+      throw new Error(result.message || 'Erro na verificação');
+    }
+
+    return result.data;
+  };
+
+  const resendVerificationCode = async (identifier: string) => {
+    const response = await fetch(getApiUrl(API_ENDPOINTS.RESEND_CODE), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ identifier }),
+    });
+
+    const result = await response.json();
+
+    if (!response.ok) {
+      throw new Error(result.message || 'Erro ao reenviar código');
+    }
+
+    return result.data;
+  };
+
+  const forgotPassword = async (identifier: string) => {
+    const response = await fetch(getApiUrl(API_ENDPOINTS.FORGOT_PASSWORD), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ identifier }),
+    });
+
+    const result = await response.json();
+
+    if (!response.ok) {
+      throw new Error(result.message || 'Erro ao solicitar recuperação');
+    }
+
+    return result.data;
+  };
+
+  const resetPassword = async (identifier: string, code: string, newPassword: string) => {
+    const response = await fetch(getApiUrl(API_ENDPOINTS.RESET_PASSWORD), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ identifier, code, newPassword }),
+    });
+
+    const result = await response.json();
+
+    if (!response.ok) {
+      throw new Error(result.message || 'Erro ao redefinir senha');
+    }
+
+    return result.data;
+  };
+
+  const logout = async () => {
+    try {
+      const refreshToken = localStorage.getItem('podplay_refresh_token');
+      const token = Cookies.get('podplay_token') || localStorage.getItem('podplay_token');
+      
+      if (refreshToken && token) {
+        await fetch(getApiUrl(API_ENDPOINTS.LOGOUT), {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({ refreshToken }),
+        });
+      }
+    } catch (error) {
+      console.error('Erro no logout:', error);
+    } finally {
+      clearUserData();
+      window.location.replace('/login');
     }
   };
 
-  const logout = () => {
-    Cookies.remove('token');
-    localStorage.removeItem('token');
-    localStorage.removeItem('user');
+  const refreshAccessToken = async (): Promise<string | null> => {
+    const refreshToken = localStorage.getItem('podplay_refresh_token');
+    if (!refreshToken) return null;
 
-    socket?.disconnect();
-    setUser(null);
-    setSocket(null);
+    try {
+      const response = await fetch(getApiUrl(API_ENDPOINTS.REFRESH_TOKEN), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ refreshToken }),
+      });
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error('Refresh token inválido');
+      }
+
+      const { accessToken, refreshToken: newRefreshToken } = result.data;
+
+      Cookies.set('podplay_token', accessToken, { expires: 7, path: '/' });
+      Cookies.set('podplay_refresh_token', newRefreshToken, { expires: 7, path: '/' });
+      localStorage.setItem('podplay_token', accessToken);
+      localStorage.setItem('podplay_refresh_token', newRefreshToken);
+
+      return accessToken;
+    } catch (error) {
+      console.error('Erro ao renovar token:', error);
+      await logout();
+      return null;
+    }
   };
 
-  const updateUser = (novoUsuario: Partial<Usuario>) => {
-    if (!user) return;
-    const updatedUser = { ...user, ...novoUsuario };
-    setUser(updatedUser);
-    localStorage.setItem('user', JSON.stringify(updatedUser));
+  const updateUser = (userData: Partial<User>) => {
+    if (user) {
+      const updatedUser = { ...user, ...userData };
+      setUser(updatedUser);
+      localStorage.setItem('podplay_user', JSON.stringify(updatedUser));
+    }
   };
 
   return (
-    <AuthContext.Provider value={{ user, socket, loading, login, logout, updateUser }}>
+    <AuthContext.Provider
+      value={{
+        user,
+        loading,
+        login,
+        register,
+        verifyAccount,
+        resendVerificationCode,
+        forgotPassword,
+        resetPassword,
+        logout,
+        refreshAccessToken,
+        updateUser,
+      }}
+    >
       {children}
     </AuthContext.Provider>
   );
