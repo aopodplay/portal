@@ -1,40 +1,36 @@
 // app/search/page.tsx
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, Suspense } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
+import { usePlayer } from '@/contexts/PlayerContext';
 import { useRouter, useSearchParams } from 'next/navigation';
-import Link from 'next/link';
 import Header from '@/components/layout/Header';
+import PlayerBar from '@/components/PlayerBar';
+import PodPlaySidebar from '@/components/PodPlaySidebar';
 import {
   Search,
   X,
-  Filter,
   Grid3x3,
   List,
   Music,
-  Headphones,
   Play,
   Pause,
-  Heart,
   Eye,
   ThumbsUp,
-  Clock,
-  Home,
-  Flame,
-  Library,
-  User,
-  Plus,
-  Menu,
   Loader2,
   AlertCircle,
-  ChevronDown,
 } from 'lucide-react';
 import { getApiUrl, getAuthHeaders } from '@/config/api';
 
-// Interface para resultado de busca
+// =====================================================================
+// TIPOS
+// =====================================================================
+
 interface SearchResult {
   id: number;
+  music_id?: number;
+  source_id?: number;
   title: string;
   description?: string;
   type: string;
@@ -48,7 +44,29 @@ interface SearchResult {
   published_at?: string;
 }
 
-// Componente de Card de Conteúdo
+// =====================================================================
+// HELPER — converte item para o shape do PlayerContext
+// =====================================================================
+
+function toPlayerMusic(item: SearchResult) {
+  const id = item.music_id ?? item.source_id ?? item.id;
+  return {
+    id,
+    title: item.title,
+    artist: item.author_name || 'Artista',
+    album: null,
+    duration: item.duration || 0,
+    file_path: '',
+    file_size: 0,
+    cover_image: item.cover_url || null,
+    created_at: new Date().toISOString(),
+  };
+}
+
+// =====================================================================
+// CONTENT CARD
+// =====================================================================
+
 const ContentCard = ({
   item,
   isPlaying = false,
@@ -73,7 +91,10 @@ const ContentCard = ({
           </div>
         )}
         <button
-          onClick={onPlay}
+          onClick={(e) => {
+            e.stopPropagation();
+            onPlay?.();
+          }}
           className="absolute bottom-2 right-2 w-10 h-10 bg-purple-600 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all duration-300 transform translate-y-2 group-hover:translate-y-0 shadow-lg hover:scale-110 hover:bg-purple-500"
         >
           {isPlaying ? (
@@ -84,30 +105,46 @@ const ContentCard = ({
         </button>
         {item.duration && (
           <span className="absolute bottom-2 left-2 text-xs bg-black/60 text-white px-1.5 py-0.5 rounded">
-            {Math.floor(item.duration / 60)}:{(item.duration % 60).toString().padStart(2, '0')}
+            {Math.floor(item.duration / 60)}:
+            {(item.duration % 60).toString().padStart(2, '0')}
           </span>
         )}
         <span className="absolute top-2 left-2 text-xs bg-black/60 text-white px-2 py-0.5 rounded-full">
-          {item.type === 'audio' ? 'Música' : item.type === 'video' ? 'Vídeo' : item.type === 'podcast' ? 'Podcast' : 'Pregação'}
+          {item.type === 'audio'
+            ? 'Música'
+            : item.type === 'video'
+            ? 'Vídeo'
+            : item.type === 'podcast'
+            ? 'Podcast'
+            : 'Pregação'}
         </span>
       </div>
       <h4 className="font-medium text-white text-sm truncate">{item.title}</h4>
-      <p className="text-gray-400 text-xs truncate">{item.author_name || 'Artista'}</p>
+      <p className="text-gray-400 text-xs truncate">
+        {item.author_name || 'Artista'}
+      </p>
       <div className="flex items-center gap-3 mt-1">
         <div className="flex items-center gap-1">
           <Eye size={10} className="text-gray-500" />
-          <span className="text-gray-500 text-xs">{item.views?.toLocaleString() || 0}</span>
+          <span className="text-gray-500 text-xs">
+            {item.views?.toLocaleString() || 0}
+          </span>
         </div>
         <div className="flex items-center gap-1">
           <ThumbsUp size={10} className="text-gray-500" />
-          <span className="text-gray-500 text-xs">{item.likes?.toLocaleString() || 0}</span>
+          <span className="text-gray-500 text-xs">
+            {item.likes?.toLocaleString() || 0}
+          </span>
         </div>
       </div>
     </div>
   );
 };
 
-// Componente de Resultado em Lista
+// =====================================================================
+// LIST RESULT ITEM
+// =====================================================================
+
 const ListResultItem = ({
   item,
   isPlaying = false,
@@ -121,7 +158,11 @@ const ListResultItem = ({
     <div className="flex gap-3 p-3 rounded-lg bg-white/5 hover:bg-white/10 transition-all cursor-pointer group">
       <div className="w-16 h-16 rounded-lg bg-gradient-to-br from-purple-500/20 to-pink-500/20 flex-shrink-0 overflow-hidden">
         {item.cover_url ? (
-          <img src={item.cover_url} alt={item.title} className="w-full h-full object-cover" />
+          <img
+            src={item.cover_url}
+            alt={item.title}
+            className="w-full h-full object-cover"
+          />
         ) : (
           <div className="w-full h-full flex items-center justify-center">
             <Music size={24} className="text-purple-400" />
@@ -131,122 +172,71 @@ const ListResultItem = ({
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2">
           <span className="text-xs text-purple-400">
-            {item.type === 'audio' ? 'Música' : item.type === 'video' ? 'Vídeo' : item.type === 'podcast' ? 'Podcast' : 'Pregação'}
+            {item.type === 'audio'
+              ? 'Música'
+              : item.type === 'video'
+              ? 'Vídeo'
+              : item.type === 'podcast'
+              ? 'Podcast'
+              : 'Pregação'}
           </span>
           {item.duration && (
             <>
               <span className="text-gray-600 text-xs">•</span>
               <span className="text-gray-500 text-xs">
-                {Math.floor(item.duration / 60)}:{(item.duration % 60).toString().padStart(2, '0')}
+                {Math.floor(item.duration / 60)}:
+                {(item.duration % 60).toString().padStart(2, '0')}
               </span>
             </>
           )}
         </div>
         <h4 className="font-medium text-white text-sm truncate">{item.title}</h4>
-        <p className="text-gray-400 text-xs truncate">{item.author_name || 'Artista'}</p>
+        <p className="text-gray-400 text-xs truncate">
+          {item.author_name || 'Artista'}
+        </p>
         <div className="flex items-center gap-3 mt-1">
           <div className="flex items-center gap-1">
             <Eye size={10} className="text-gray-500" />
-            <span className="text-gray-500 text-xs">{item.views?.toLocaleString() || 0}</span>
+            <span className="text-gray-500 text-xs">
+              {item.views?.toLocaleString() || 0}
+            </span>
           </div>
           <div className="flex items-center gap-1">
             <ThumbsUp size={10} className="text-gray-500" />
-            <span className="text-gray-500 text-xs">{item.likes?.toLocaleString() || 0}</span>
+            <span className="text-gray-500 text-xs">
+              {item.likes?.toLocaleString() || 0}
+            </span>
           </div>
         </div>
       </div>
       <button
-        onClick={onPlay}
+        onClick={(e) => {
+          e.stopPropagation();
+          onPlay?.();
+        }}
         className="w-10 h-10 bg-purple-600 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all hover:bg-purple-500"
       >
-        {isPlaying ? <Pause size={16} className="text-white" /> : <Play size={16} className="text-white ml-0.5" />}
+        {isPlaying ? (
+          <Pause size={16} className="text-white" />
+        ) : (
+          <Play size={16} className="text-white ml-0.5" />
+        )}
       </button>
     </div>
   );
 };
 
-// Sidebar Component
-const PodfSidebar = ({ collapsed = false }: { collapsed?: boolean }) => {
-  const menuItems = [
-    { icon: Home, label: 'Inicio', href: '/' },
-    { icon: Search, label: 'Pesquisa', href: '/search' },
-    { icon: Flame, label: 'Em Alta', href: '/trending' },
-    { icon: Library, label: 'Biblioteca', href: '/library' },
-    { icon: User, label: 'Perfil', href: '/profile' },
-  ];
+// =====================================================================
+// SEARCH SUGGESTION
+// =====================================================================
 
-  const playlists = [
-    'As Minhas Favoritas',
-    'Oração da Manhã',
-    'Louvores com a Família',
-    'Pregações – Pr. Carlos',
-  ];
-
-  return (
-    <aside
-      className={`fixed left-0 top-0 h-full bg-black/60 backdrop-blur-xl border-r border-white/10 transition-all duration-300 z-30 ${
-        collapsed ? 'w-20' : 'w-64'
-      }`}
-    >
-      <div className="p-4">
-        <div className="flex items-center gap-2 mb-8">
-          <div className="w-8 h-8 bg-purple-600 rounded-lg flex items-center justify-center">
-            <Headphones size={18} className="text-white" />
-          </div>
-          {!collapsed && <h1 className="text-xl font-bold text-white">Podfá Play</h1>}
-        </div>
-
-        <nav className="space-y-1">
-          {menuItems.map((item) => (
-            <Link
-              key={item.label}
-              href={item.href}
-              className={`flex items-center gap-3 px-3 py-2 rounded-lg text-gray-300 hover:text-white hover:bg-white/10 transition-all ${
-                collapsed ? 'justify-center' : ''
-              }`}
-              title={collapsed ? item.label : ''}
-            >
-              <item.icon size={20} />
-              {!collapsed && <span>{item.label}</span>}
-            </Link>
-          ))}
-        </nav>
-
-        {!collapsed && (
-          <div className="mt-8">
-            <div className="flex items-center justify-between mb-3">
-              <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider">
-                AS TUAS PLAYLISTS
-              </h3>
-              <button className="text-gray-400 hover:text-white">
-                <Plus size={16} />
-              </button>
-            </div>
-            <div className="space-y-1">
-              {playlists.map((playlist) => (
-                <Link
-                  key={playlist}
-                  href="#"
-                  className="flex items-center gap-2 px-3 py-1.5 text-sm text-gray-300 hover:text-white hover:bg-white/10 rounded-lg transition-all"
-                >
-                  <div className="w-1 h-1 bg-purple-400 rounded-full" />
-                  <span className="truncate">{playlist}</span>
-                </Link>
-              ))}
-              <button className="flex items-center gap-2 px-3 py-1.5 text-sm text-gray-400 hover:text-white hover:bg-white/10 rounded-lg transition-all w-full">
-                <Plus size={14} />
-                <span>Nova playlist</span>
-              </button>
-            </div>
-          </div>
-        )}
-      </div>
-    </aside>
-  );
-};
-
-// Componente de Sugestão de Busca
-const SearchSuggestion = ({ suggestion, onClick }: { suggestion: string; onClick: () => void }) => (
+const SearchSuggestion = ({
+  suggestion,
+  onClick,
+}: {
+  suggestion: string;
+  onClick: () => void;
+}) => (
   <button
     onClick={onClick}
     className="w-full px-4 py-2 text-left text-gray-300 hover:bg-white/10 transition-colors flex items-center gap-2"
@@ -256,13 +246,16 @@ const SearchSuggestion = ({ suggestion, onClick }: { suggestion: string; onClick
   </button>
 );
 
-export default function SearchPage() {
+// =====================================================================
+// CONTEÚDO PRINCIPAL
+// =====================================================================
+
+function SearchPageContent() {
   const { user } = useAuth();
+  const { play, isPlaying, currentMusic } = usePlayer();
   const router = useRouter();
   const searchParams = useSearchParams();
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
-  
-  // Estados
+
   const [query, setQuery] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -281,17 +274,22 @@ export default function SearchPage() {
     hasPrev: false,
   });
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
-  const [showFilters, setShowFilters] = useState(false);
-  const [currentlyPlaying, setCurrentlyPlaying] = useState<string | null>(null);
   const [showSuggestions, setShowSuggestions] = useState(false);
 
-  // Carregar buscas populares
+  // ---------- Query URL ----------
+  useEffect(() => {
+    const q = searchParams.get('q');
+    if (q) setQuery(q);
+  }, [searchParams]);
+
+  // ---------- Trending ----------
   useEffect(() => {
     const loadTrending = async () => {
       try {
-        const response = await fetch(getApiUrl('/api/v1/search/trending?limit=8'), {
-          headers: getAuthHeaders(),
-        });
+        const response = await fetch(
+          getApiUrl('/api/v1/search/trending?limit=8'),
+          { headers: getAuthHeaders() }
+        );
         const result = await response.json();
         if (result.success) {
           setTrendingSearches(result.data || []);
@@ -304,7 +302,7 @@ export default function SearchPage() {
     loadTrending();
   }, []);
 
-  // Buscar sugestões
+  // ---------- Sugestões ----------
   const loadSuggestions = useCallback(async () => {
     if (query.length < 2) {
       setSuggestions([]);
@@ -312,9 +310,12 @@ export default function SearchPage() {
     }
 
     try {
-      const response = await fetch(getApiUrl(`/api/v1/search/suggestions?q=${encodeURIComponent(query)}&limit=5`), {
-        headers: getAuthHeaders(),
-      });
+      const response = await fetch(
+        getApiUrl(
+          `/api/v1/search/suggestions?q=${encodeURIComponent(query)}&limit=5`
+        ),
+        { headers: getAuthHeaders() }
+      );
       const result = await response.json();
       if (result.success) {
         setSuggestions(result.data || []);
@@ -334,52 +335,56 @@ export default function SearchPage() {
     return () => clearTimeout(timer);
   }, [query, loadSuggestions]);
 
-  // Buscar resultados
-  const performSearch = useCallback(async (page: number = 1) => {
-    if (!query.trim() && query.length === 0) return;
+  // ---------- Buscar ----------
+  const performSearch = useCallback(
+    async (page: number = 1) => {
+      if (!query.trim() && query.length === 0) return;
 
-    setLoading(true);
-    setError('');
-    setShowSuggestions(false);
+      setLoading(true);
+      setError('');
+      setShowSuggestions(false);
 
-    try {
-      let url = `/api/v1/search?q=${encodeURIComponent(query)}&page=${page}&limit=20`;
-      if (filters.type) url += `&type=${filters.type}`;
-      if (filters.sort) url += `&sort=${filters.sort}`;
+      try {
+        let url = `/api/v1/search?q=${encodeURIComponent(query)}&page=${page}&limit=20`;
+        if (filters.type) url += `&type=${filters.type}`;
+        if (filters.sort) url += `&sort=${filters.sort}`;
 
-      const response = await fetch(getApiUrl(url), {
-        headers: getAuthHeaders(),
-      });
-      const result = await response.json();
-
-      if (result.success) {
-        setResults(result.data.results || []);
-        setPagination({
-          page: result.data.pagination.page,
-          total: result.data.pagination.total,
-          totalPages: result.data.pagination.totalPages,
-          hasNext: result.data.pagination.hasNext,
-          hasPrev: result.data.pagination.hasPrev,
+        const response = await fetch(getApiUrl(url), {
+          headers: getAuthHeaders(),
         });
-      } else {
-        setError(result.message || 'Erro ao buscar resultados');
-      }
-    } catch (err) {
-      setError('Erro ao conectar com o servidor');
-    } finally {
-      setLoading(false);
-    }
-  }, [query, filters]);
+        const result = await response.json();
 
-  // Executar busca quando query ou filters mudarem
+        if (result.success) {
+          setResults(result.data.results || []);
+          setPagination({
+            page: result.data.pagination.page,
+            total: result.data.pagination.total,
+            totalPages: result.data.pagination.totalPages,
+            hasNext: result.data.pagination.hasNext,
+            hasPrev: result.data.pagination.hasPrev,
+          });
+        } else {
+          setError(result.message || 'Erro ao buscar resultados');
+        }
+      } catch (err) {
+        setError('Erro ao conectar com o servidor');
+      } finally {
+        setLoading(false);
+      }
+    },
+    [query, filters]
+  );
+
   useEffect(() => {
     if (query.length >= 2) {
       performSearch(1);
     } else if (query.length === 0) {
       setResults([]);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [query, filters.type, filters.sort]);
 
+  // ---------- Handlers ----------
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
     if (query.trim()) {
@@ -399,8 +404,15 @@ export default function SearchPage() {
     performSearch(1);
   };
 
-  const handlePlay = (title: string) => {
-    setCurrentlyPlaying(currentlyPlaying === title ? null : title);
+  // ---------- Play REAL ----------
+  const handlePlay = (item: SearchResult) => {
+    const queue = results.map(toPlayerMusic);
+    play(toPlayerMusic(item), true, queue);
+  };
+
+  const isCurrentPlaying = (item: SearchResult) => {
+    const id = item.music_id ?? item.source_id ?? item.id;
+    return currentMusic?.id === id && isPlaying;
   };
 
   const typeOptions = [
@@ -418,32 +430,37 @@ export default function SearchPage() {
     { value: 'likes', label: 'Mais curtidos' },
   ];
 
+  // =====================================================================
+  // RENDER
+  // =====================================================================
+
   return (
     <div className="min-h-screen bg-gradient-to-b from-slate-900 via-purple-900 to-slate-900">
-      <PodfSidebar collapsed={sidebarCollapsed} />
+      <PodPlaySidebar />
 
-      <main className={`transition-all duration-300 ${sidebarCollapsed ? 'ml-20' : 'ml-64'} min-h-screen`}>
+      <main className="ml-64 min-h-screen pb-24 transition-all duration-300">
         <Header />
 
         <div className="max-w-6xl mx-auto px-4 py-8">
-          {/* Botão mobile */}
-          <button
-            onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
-            className="lg:hidden fixed bottom-4 right-4 z-50 p-3 bg-purple-600 rounded-full shadow-lg"
-          >
-            <Menu size={20} className="text-white" />
-          </button>
-
           {/* Barra de Busca */}
-          <div className="mb-8">
+          <div className="mb-8 relative">
             <form onSubmit={handleSearch} className="relative">
-              <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
+              <Search
+                className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400"
+                size={20}
+              />
               <input
                 type="text"
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
-                onFocus={() => query.length >= 2 && suggestions.length > 0 && setShowSuggestions(true)}
-                onBlur={() => setTimeout(() => setShowSuggestions(false), 200)}
+                onFocus={() =>
+                  query.length >= 2 &&
+                  suggestions.length > 0 &&
+                  setShowSuggestions(true)
+                }
+                onBlur={() =>
+                  setTimeout(() => setShowSuggestions(false), 200)
+                }
                 placeholder="O que você quer ouvir hoje?"
                 className="w-full pl-12 pr-12 py-3 bg-white/10 border border-white/20 rounded-full focus:outline-none focus:ring-2 focus:ring-purple-500 text-white placeholder:text-gray-400"
                 autoFocus
@@ -459,11 +476,14 @@ export default function SearchPage() {
               )}
             </form>
 
-            {/* Sugestões */}
             {showSuggestions && suggestions.length > 0 && (
-              <div className="absolute z-10 mt-1 w-full max-w-6xl bg-gray-900 rounded-xl border border-white/10 shadow-lg overflow-hidden">
+              <div className="absolute z-20 mt-1 w-full bg-gray-900 rounded-xl border border-white/10 shadow-lg overflow-hidden">
                 {suggestions.map((suggestion) => (
-                  <SearchSuggestion key={suggestion} suggestion={suggestion} onClick={() => handleSuggestionClick(suggestion)} />
+                  <SearchSuggestion
+                    key={suggestion}
+                    suggestion={suggestion}
+                    onClick={() => handleSuggestionClick(suggestion)}
+                  />
                 ))}
               </div>
             )}
@@ -472,7 +492,9 @@ export default function SearchPage() {
           {/* Buscas Populares */}
           {!query && trendingSearches.length > 0 && (
             <div className="mb-8">
-              <h3 className="text-sm font-medium text-gray-400 mb-3">Buscas populares</h3>
+              <h3 className="text-sm font-medium text-gray-400 mb-3">
+                Buscas populares
+              </h3>
               <div className="flex flex-wrap gap-2">
                 {trendingSearches.map((term) => (
                   <button
@@ -487,10 +509,9 @@ export default function SearchPage() {
             </div>
           )}
 
-          {/* Filtros e resultados */}
+          {/* Resultados */}
           {query && (
             <>
-              {/* Barra de Filtros */}
               <div className="flex flex-wrap items-center justify-between gap-4 mb-6">
                 <div className="flex flex-wrap gap-2">
                   {typeOptions.map((opt) => (
@@ -511,24 +532,32 @@ export default function SearchPage() {
                 <div className="flex items-center gap-3">
                   <select
                     value={filters.sort}
-                    onChange={(e) => setFilters({ ...filters, sort: e.target.value })}
+                    onChange={(e) =>
+                      setFilters({ ...filters, sort: e.target.value })
+                    }
                     className="px-3 py-1.5 bg-white/10 border border-white/20 rounded-lg text-white text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
                   >
                     {sortOptions.map((opt) => (
-                      <option key={opt.value} value={opt.value}>{opt.label}</option>
+                      <option key={opt.value} value={opt.value}>
+                        {opt.label}
+                      </option>
                     ))}
                   </select>
 
                   <div className="flex gap-1 bg-white/10 rounded-lg p-1">
                     <button
                       onClick={() => setViewMode('grid')}
-                      className={`p-1.5 rounded ${viewMode === 'grid' ? 'bg-purple-600' : 'text-gray-400'}`}
+                      className={`p-1.5 rounded ${
+                        viewMode === 'grid' ? 'bg-purple-600' : 'text-gray-400'
+                      }`}
                     >
                       <Grid3x3 size={16} />
                     </button>
                     <button
                       onClick={() => setViewMode('list')}
-                      className={`p-1.5 rounded ${viewMode === 'list' ? 'bg-purple-600' : 'text-gray-400'}`}
+                      className={`p-1.5 rounded ${
+                        viewMode === 'list' ? 'bg-purple-600' : 'text-gray-400'
+                      }`}
                     >
                       <List size={16} />
                     </button>
@@ -536,7 +565,6 @@ export default function SearchPage() {
                 </div>
               </div>
 
-              {/* Resultados */}
               {loading ? (
                 <div className="flex justify-center py-12">
                   <Loader2 size={40} className="text-purple-500 animate-spin" />
@@ -551,8 +579,12 @@ export default function SearchPage() {
                   <div className="w-20 h-20 bg-white/10 rounded-full flex items-center justify-center mx-auto mb-4">
                     <Search size={32} className="text-gray-400" />
                   </div>
-                  <p className="text-gray-400">Nenhum resultado encontrado para "{query}"</p>
-                  <p className="text-gray-500 text-sm mt-2">Tente usar palavras-chave diferentes</p>
+                  <p className="text-gray-400">
+                    Nenhum resultado encontrado para "{query}"
+                  </p>
+                  <p className="text-gray-500 text-sm mt-2">
+                    Tente usar palavras-chave diferentes
+                  </p>
                 </div>
               ) : (
                 <>
@@ -566,8 +598,8 @@ export default function SearchPage() {
                         <ContentCard
                           key={item.id}
                           item={item}
-                          isPlaying={currentlyPlaying === item.title}
-                          onPlay={() => handlePlay(item.title)}
+                          isPlaying={isCurrentPlaying(item)}
+                          onPlay={() => handlePlay(item)}
                         />
                       ))}
                     </div>
@@ -577,14 +609,13 @@ export default function SearchPage() {
                         <ListResultItem
                           key={item.id}
                           item={item}
-                          isPlaying={currentlyPlaying === item.title}
-                          onPlay={() => handlePlay(item.title)}
+                          isPlaying={isCurrentPlaying(item)}
+                          onPlay={() => handlePlay(item)}
                         />
                       ))}
                     </div>
                   )}
 
-                  {/* Paginação */}
                   {pagination.totalPages > 1 && (
                     <div className="flex justify-center gap-2 mt-8">
                       <button
@@ -613,28 +644,29 @@ export default function SearchPage() {
         </div>
       </main>
 
-      {/* Now Playing Bar */}
-      {currentlyPlaying && (
-        <div className="fixed bottom-0 left-0 right-0 bg-black/80 backdrop-blur-xl border-t border-white/10 z-40">
-          <div className="flex items-center justify-between px-4 py-3 max-w-7xl mx-auto">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 bg-purple-600 rounded-lg flex items-center justify-center">
-                <Music size={18} className="text-white" />
-              </div>
-              <div>
-                <p className="text-white text-sm font-medium">{currentlyPlaying}</p>
-                <p className="text-gray-400 text-xs">Reproduzindo agora</p>
-              </div>
-            </div>
-            <button
-              onClick={() => setCurrentlyPlaying(null)}
-              className="px-4 py-1.5 bg-white/10 text-white rounded-full text-sm hover:bg-white/20 transition-all"
-            >
-              Fechar
-            </button>
-          </div>
-        </div>
-      )}
+      {/* 🔥 PlayerBar GLOBAL — substitui a barra local */}
+      <PlayerBar />
     </div>
+  );
+}
+
+// =====================================================================
+// WRAPPER COM SUSPENSE (obrigatório para useSearchParams)
+// =====================================================================
+
+export default function SearchPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="min-h-screen bg-gradient-to-b from-slate-900 via-purple-900 to-slate-900">
+          <PodPlaySidebar />
+          <main className="ml-64 min-h-screen flex items-center justify-center">
+            <Loader2 size={40} className="text-purple-500 animate-spin" />
+          </main>
+        </div>
+      }
+    >
+      <SearchPageContent />
+    </Suspense>
   );
 }

@@ -3,9 +3,12 @@
 
 import { useState, useEffect } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
+import { usePlayer } from '@/contexts/PlayerContext';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import Header from '@/components/layout/Header';
+import PlayerBar from '@/components/PlayerBar';
+import PodPlaySidebar from '@/components/PodPlaySidebar';
 import {
   Heart,
   Download,
@@ -13,19 +16,10 @@ import {
   Play,
   Pause,
   Music,
-  Headphones,
-  Home,
-  Search,
-  Flame,
-  Library,
-  User,
-  Plus,
-  Menu,
   Loader2,
   AlertCircle,
   Trash2,
   X,
-  ChevronRight,
 } from 'lucide-react';
 import { API_ENDPOINTS, getApiUrl, getAuthHeaders } from '@/config/api';
 import { historyApi, HistoryItem as HistoryRecord } from '@/lib/historyApi';
@@ -34,7 +28,6 @@ import { historyApi, HistoryItem as HistoryRecord } from '@/lib/historyApi';
 // TIPOS
 // =====================================================================
 
-// Item genérico da biblioteca (favoritos/downloads)
 interface LibraryItem {
   id: number;
   content_id: number;
@@ -49,7 +42,25 @@ interface LibraryItem {
 }
 
 // =====================================================================
-// COMPONENTES
+// HELPERS — converte qualquer item para o shape do PlayerContext
+// =====================================================================
+
+function toPlayerMusic(item: any) {
+  return {
+    id: item.content_id ?? item.id,
+    title: item.title || `Conteúdo #${item.content_id ?? item.id}`,
+    artist: item.full_name || item.username || item.author || 'Artista',
+    album: null,
+    duration: item.duration || 0,
+    file_path: '',
+    file_size: 0,
+    cover_image: item.cover_url || null,
+    created_at: item.created_at || new Date().toISOString(),
+  };
+}
+
+// =====================================================================
+// CONTENT CARD
 // =====================================================================
 
 const ContentCard = ({
@@ -115,10 +126,10 @@ const ContentCard = ({
   );
 };
 
-/**
- * Item do histórico — agora aceita o shape do `/api/v1/history`
- * (snake_case: content_id, cover_url, last_position, last_played_at, ...).
- */
+// =====================================================================
+// HISTORY ITEM ROW
+// =====================================================================
+
 const HistoryItemRow = ({
   item,
   isPlaying = false,
@@ -168,7 +179,6 @@ const HistoryItemRow = ({
             : ` · ${formatTime(item.last_position)}`}
         </p>
 
-        {/* Barra de progresso */}
         <div className="mt-1.5 h-1 bg-white/10 rounded-full overflow-hidden">
           <div
             className={`h-full transition-all ${isDone ? 'bg-green-500' : 'bg-purple-500'}`}
@@ -199,103 +209,21 @@ const HistoryItemRow = ({
   );
 };
 
-// Sidebar Component
-const PodfSidebar = ({ collapsed = false }: { collapsed?: boolean }) => {
-  const menuItems = [
-    { icon: Home, label: 'Inicio', href: '/' },
-    { icon: Search, label: 'Pesquisa', href: '/search' },
-    { icon: Flame, label: 'Em Alta', href: '/trending' },
-    { icon: Library, label: 'Biblioteca', href: '/library' },
-    { icon: User, label: 'Perfil', href: '/profile' },
-  ];
-
-  const playlists = [
-    'As Minhas Favoritas',
-    'Oração da Manhã',
-    'Louvores com a Família',
-    'Pregações – Pr. Carlos',
-  ];
-
-  return (
-    <aside
-      className={`fixed left-0 top-0 h-full bg-black/60 backdrop-blur-xl border-r border-white/10 transition-all duration-300 z-30 ${
-        collapsed ? 'w-20' : 'w-64'
-      }`}
-    >
-      <div className="p-4">
-        <div className="flex items-center gap-2 mb-8">
-          <div className="w-8 h-8 bg-purple-600 rounded-lg flex items-center justify-center">
-            <Headphones size={18} className="text-white" />
-          </div>
-          {!collapsed && <h1 className="text-xl font-bold text-white">Podfá Play</h1>}
-        </div>
-
-        <nav className="space-y-1">
-          {menuItems.map((item) => (
-            <Link
-              key={item.label}
-              href={item.href}
-              className={`flex items-center gap-3 px-3 py-2 rounded-lg text-gray-300 hover:text-white hover:bg-white/10 transition-all ${
-                collapsed ? 'justify-center' : ''
-              }`}
-              title={collapsed ? item.label : ''}
-            >
-              <item.icon size={20} />
-              {!collapsed && <span>{item.label}</span>}
-            </Link>
-          ))}
-        </nav>
-
-        {!collapsed && (
-          <div className="mt-8">
-            <div className="flex items-center justify-between mb-3">
-              <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider">
-                AS TUAS PLAYLISTS
-              </h3>
-              <button className="text-gray-400 hover:text-white">
-                <Plus size={16} />
-              </button>
-            </div>
-            <div className="space-y-1">
-              {playlists.map((playlist) => (
-                <Link
-                  key={playlist}
-                  href="#"
-                  className="flex items-center gap-2 px-3 py-1.5 text-sm text-gray-300 hover:text-white hover:bg-white/10 rounded-lg transition-all"
-                >
-                  <div className="w-1 h-1 bg-purple-400 rounded-full" />
-                  <span className="truncate">{playlist}</span>
-                </Link>
-              ))}
-              <button className="flex items-center gap-2 px-3 py-1.5 text-sm text-gray-400 hover:text-white hover:bg-white/10 rounded-lg transition-all w-full">
-                <Plus size={14} />
-                <span>Nova playlist</span>
-              </button>
-            </div>
-          </div>
-        )}
-      </div>
-    </aside>
-  );
-};
-
 // =====================================================================
 // PÁGINA
 // =====================================================================
 
 export default function LibraryPage() {
   const { user } = useAuth();
+  const { play, isPlaying, currentMusic } = usePlayer();
   const router = useRouter();
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
-  const [activeTab, setActiveTab] = useState<'favorites' | 'downloads' | 'history'>('favorites');
-  const [currentlyPlaying, setCurrentlyPlaying] = useState<string | null>(null);
 
-  // Estados
+  const [activeTab, setActiveTab] = useState<'favorites' | 'downloads' | 'history'>('favorites');
+
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
 
-  // Dados
   const [favorites, setFavorites] = useState<LibraryItem[]>([]);
   const [downloads, setDownloads] = useState<LibraryItem[]>([]);
   const [history, setHistory] = useState<HistoryRecord[]>([]);
@@ -304,13 +232,13 @@ export default function LibraryPage() {
     recentHistory: [],
   });
 
-  // Paginação
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
 
-  // Carregar dados
+  // ---------- Carregar ----------
   useEffect(() => {
     loadData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTab, page]);
 
   const loadData = async () => {
@@ -339,13 +267,11 @@ export default function LibraryPage() {
           setTotalPages(result.data.pagination?.totalPages || 1);
         }
       } else if (activeTab === 'history') {
-        // 🔥 Aba Histórico agora usa o novo /api/v1/history
         const data = await historyApi.getHistory({ page, limit: 20 });
         setHistory(data.items);
         setTotalPages(data.pagination.totalPages || 1);
       }
 
-      // Carregar resumo (só faz sentido para favoritos/downloads — mantemos)
       try {
         const summaryResponse = await fetch(getApiUrl(API_ENDPOINTS.LIBRARY_SUMMARY), {
           headers: getAuthHeaders(),
@@ -355,7 +281,7 @@ export default function LibraryPage() {
           setSummary(summaryResult.data);
         }
       } catch {
-        // resumo é opcional — não bloqueia
+        // opcional
       }
     } catch (err: any) {
       setError(err?.message || 'Erro ao carregar dados');
@@ -364,6 +290,7 @@ export default function LibraryPage() {
     }
   };
 
+  // ---------- Remover ----------
   const handleRemoveFavorite = async (contentId: number) => {
     try {
       const response = await fetch(
@@ -400,7 +327,6 @@ export default function LibraryPage() {
 
   const handleRemoveHistory = async (contentId: number) => {
     try {
-      // 🔥 Usa o novo endpoint
       await historyApi.clearContent(contentId);
       setHistory(history.filter((h) => h.content_id !== contentId));
       setSuccess('Removido do histórico');
@@ -412,9 +338,7 @@ export default function LibraryPage() {
 
   const handleClearHistory = async () => {
     if (!confirm('Tem certeza que deseja limpar todo o histórico?')) return;
-
     try {
-      // 🔥 Usa o novo endpoint
       await historyApi.clearAll();
       setHistory([]);
       setSuccess('Histórico limpo com sucesso');
@@ -424,10 +348,7 @@ export default function LibraryPage() {
     }
   };
 
-  const handlePlay = (title: string) => {
-    setCurrentlyPlaying(currentlyPlaying === title ? null : title);
-  };
-
+  // ---------- Play REAL via PlayerContext ----------
   const getCurrentItems = () => {
     switch (activeTab) {
       case 'favorites':
@@ -443,27 +364,37 @@ export default function LibraryPage() {
 
   const currentItems = getCurrentItems();
 
+  const handlePlay = (item: LibraryItem | HistoryRecord) => {
+    // Enfileira a partir do item clicado + os seguintes
+    const itemsArray = currentItems as any[];
+    const startIdx = itemsArray.findIndex(
+      (i) => (i.content_id ?? i.id) === ((item as any).content_id ?? (item as any).id)
+    );
+
+    const queueFromIdx =
+      startIdx >= 0 ? itemsArray.slice(startIdx) : [item];
+
+    const queue = queueFromIdx.map(toPlayerMusic);
+    play(toPlayerMusic(item), true, queue);
+  };
+
+  const isCurrentPlaying = (item: LibraryItem | HistoryRecord) => {
+    const id = (item as any).content_id ?? (item as any).id;
+    return currentMusic?.id === id && isPlaying;
+  };
+
+  // =====================================================================
+  // RENDER
+  // =====================================================================
+
   return (
     <div className="min-h-screen bg-gradient-to-b from-slate-900 via-purple-900 to-slate-900">
-      <PodfSidebar collapsed={sidebarCollapsed} />
+      <PodPlaySidebar />
 
-      <main
-        className={`transition-all duration-300 ${
-          sidebarCollapsed ? 'ml-20' : 'ml-64'
-        } min-h-screen`}
-      >
+      <main className="ml-64 min-h-screen pb-24 transition-all duration-300">
         <Header />
 
         <div className="max-w-6xl mx-auto px-4 py-8">
-          {/* Botão mobile */}
-          <button
-            onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
-            className="lg:hidden fixed bottom-4 right-4 z-50 p-3 bg-purple-600 rounded-full shadow-lg"
-          >
-            <Menu size={20} className="text-white" />
-          </button>
-
-          {/* Título */}
           <div className="mb-6">
             <h1 className="text-2xl font-bold text-white">Biblioteca</h1>
             <p className="text-gray-400 text-sm">
@@ -496,7 +427,6 @@ export default function LibraryPage() {
             </div>
           </div>
 
-          {/* Mensagens */}
           {error && (
             <div className="mb-4 p-3 bg-red-500/20 border border-red-500/30 rounded-lg text-red-300 text-sm flex items-center gap-2">
               <AlertCircle size={16} />
@@ -597,8 +527,8 @@ export default function LibraryPage() {
                     <HistoryItemRow
                       key={item.id}
                       item={item}
-                      isPlaying={currentlyPlaying === item.title}
-                      onPlay={() => handlePlay(item.title)}
+                      isPlaying={isCurrentPlaying(item)}
+                      onPlay={() => handlePlay(item)}
                       onRemove={() => handleRemoveHistory(item.content_id)}
                     />
                   ))}
@@ -617,8 +547,8 @@ export default function LibraryPage() {
                     <ContentCard
                       key={item.id}
                       item={item}
-                      isPlaying={currentlyPlaying === item.title}
-                      onPlay={() => handlePlay(item.title)}
+                      isPlaying={isCurrentPlaying(item)}
+                      onPlay={() => handlePlay(item)}
                       onRemove={() =>
                         activeTab === 'favorites'
                           ? handleRemoveFavorite(item.content_id)
@@ -630,7 +560,6 @@ export default function LibraryPage() {
                 </div>
               )}
 
-              {/* Paginação */}
               {totalPages > 1 && (
                 <div className="flex justify-center gap-2 mt-8">
                   <button
@@ -657,28 +586,8 @@ export default function LibraryPage() {
         </div>
       </main>
 
-      {/* Now Playing Bar */}
-      {currentlyPlaying && (
-        <div className="fixed bottom-0 left-0 right-0 bg-black/80 backdrop-blur-xl border-t border-white/10 z-40">
-          <div className="flex items-center justify-between px-4 py-3 max-w-7xl mx-auto">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 bg-purple-600 rounded-lg flex items-center justify-center">
-                <Music size={18} className="text-white" />
-              </div>
-              <div>
-                <p className="text-white text-sm font-medium">{currentlyPlaying}</p>
-                <p className="text-gray-400 text-xs">Reproduzindo agora</p>
-              </div>
-            </div>
-            <button
-              onClick={() => setCurrentlyPlaying(null)}
-              className="px-4 py-1.5 bg-white/10 text-white rounded-full text-sm hover:bg-white/20 transition-all"
-            >
-              Fechar
-            </button>
-          </div>
-        </div>
-      )}
+      {/* 🔥 PlayerBar GLOBAL — substitui a "Now Playing Bar" local */}
+      <PlayerBar />
     </div>
   );
 }

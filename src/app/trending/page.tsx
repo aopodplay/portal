@@ -3,25 +3,19 @@
 
 import { useState, useEffect } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
+import { usePlayer } from '@/contexts/PlayerContext';
 import Link from 'next/link';
 import Header from '@/components/layout/Header';
+import PlayerBar from '@/components/PlayerBar';
+import PodPlaySidebar from '@/components/PodPlaySidebar';
 import {
   Play,
-  Heart,
-  Headphones,
   Music,
-  Search,
-  Home,
   Flame,
-  Library,
-  User,
-  Plus,
   Pause,
   TrendingUp,
-  Clock,
   Eye,
   ThumbsUp,
-  Menu,
   Loader2,
   AlertCircle,
   Calendar,
@@ -30,10 +24,15 @@ import {
 } from 'lucide-react';
 import { getApiUrl, getAuthHeaders } from '@/config/api';
 
-// Interface para item em alta
+// =====================================================================
+// TIPOS
+// =====================================================================
+
 interface TrendingItem {
   id: number;
   contentId: number;
+  music_id?: number;
+  source_id?: number;
   title: string;
   type: string;
   cover_url?: string;
@@ -46,7 +45,6 @@ interface TrendingItem {
   duration?: number;
 }
 
-// Interface para categoria em alta
 interface TrendingCategory {
   id?: number;
   category_id?: number;
@@ -59,7 +57,10 @@ interface TrendingCategory {
   is_auto?: boolean;
 }
 
-// Helper para gerar key estável para categorias
+// =====================================================================
+// HELPERS
+// =====================================================================
+
 const getCategoryKey = (category: TrendingCategory, index: number) =>
   String(
     category.id ??
@@ -67,11 +68,28 @@ const getCategoryKey = (category: TrendingCategory, index: number) =>
       `${category.category}-${category.position ?? index}`
   );
 
-// Helper para gerar key estável para itens em alta
 const getItemKey = (item: TrendingItem, index: number) =>
   String(item.id ?? item.contentId ?? `trending-${index}`);
 
-// Componente de Card de Conteúdo
+function toPlayerMusic(item: TrendingItem) {
+  const id = item.music_id ?? item.source_id ?? item.contentId ?? item.id;
+  return {
+    id,
+    title: item.title,
+    artist: item.author || 'Artista',
+    album: null,
+    duration: item.duration || 0,
+    file_path: '',
+    file_size: 0,
+    cover_image: item.cover_url || null,
+    created_at: new Date().toISOString(),
+  };
+}
+
+// =====================================================================
+// CONTENT CARD
+// =====================================================================
+
 const ContentCard = ({
   item,
   isPlaying = false,
@@ -113,7 +131,10 @@ const ContentCard = ({
           </div>
         )}
         <button
-          onClick={onPlay}
+          onClick={(e) => {
+            e.stopPropagation();
+            onPlay?.();
+          }}
           className="absolute bottom-2 right-2 w-10 h-10 bg-purple-600 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all duration-300 transform translate-y-2 group-hover:translate-y-0 shadow-lg hover:scale-110 hover:bg-purple-500"
         >
           {isPlaying ? (
@@ -151,7 +172,10 @@ const ContentCard = ({
   );
 };
 
-// Componente de Categoria em Alta
+// =====================================================================
+// CATEGORY CARD
+// =====================================================================
+
 const CategoryCard = ({
   category,
   onClick,
@@ -193,105 +217,26 @@ const CategoryCard = ({
   );
 };
 
-// Sidebar Component
-const PodfSidebar = ({ collapsed = false }: { collapsed?: boolean }) => {
-  const menuItems = [
-    { icon: Home, label: 'Inicio', href: '/' },
-    { icon: Search, label: 'Pesquisa', href: '/search' },
-    { icon: Flame, label: 'Em Alta', href: '/trending' },
-    { icon: Library, label: 'Biblioteca', href: '/library' },
-    { icon: User, label: 'Perfil', href: '/profile' },
-  ];
-
-  const playlists = [
-    'As Minhas Favoritas',
-    'Oração da Manhã',
-    'Louvores com a Família',
-    'Pregações – Pr. Carlos',
-  ];
-
-  return (
-    <aside
-      className={`fixed left-0 top-0 h-full bg-black/60 backdrop-blur-xl border-r border-white/10 transition-all duration-300 z-30 ${
-        collapsed ? 'w-20' : 'w-64'
-      }`}
-    >
-      <div className="p-4">
-        <div className="flex items-center gap-2 mb-8">
-          <div className="w-8 h-8 bg-purple-600 rounded-lg flex items-center justify-center">
-            <Headphones size={18} className="text-white" />
-          </div>
-          {!collapsed && (
-            <h1 className="text-xl font-bold text-white">Podfá Play</h1>
-          )}
-        </div>
-
-        <nav className="space-y-1">
-          {menuItems.map((item) => (
-            <Link
-              key={item.label}
-              href={item.href}
-              className={`flex items-center gap-3 px-3 py-2 rounded-lg text-gray-300 hover:text-white hover:bg-white/10 transition-all ${
-                collapsed ? 'justify-center' : ''
-              }`}
-              title={collapsed ? item.label : ''}
-            >
-              <item.icon size={20} />
-              {!collapsed && <span>{item.label}</span>}
-            </Link>
-          ))}
-        </nav>
-
-        {!collapsed && (
-          <div className="mt-8">
-            <div className="flex items-center justify-between mb-3">
-              <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider">
-                AS TUAS PLAYLISTS
-              </h3>
-              <button className="text-gray-400 hover:text-white">
-                <Plus size={16} />
-              </button>
-            </div>
-            <div className="space-y-1">
-              {playlists.map((playlist) => (
-                <Link
-                  key={playlist}
-                  href="#"
-                  className="flex items-center gap-2 px-3 py-1.5 text-sm text-gray-300 hover:text-white hover:bg-white/10 rounded-lg transition-all"
-                >
-                  <div className="w-1 h-1 bg-purple-400 rounded-full" />
-                  <span className="truncate">{playlist}</span>
-                </Link>
-              ))}
-              <button className="flex items-center gap-2 px-3 py-1.5 text-sm text-gray-400 hover:text-white hover:bg-white/10 rounded-lg transition-all w-full">
-                <Plus size={14} />
-                <span>Nova playlist</span>
-              </button>
-            </div>
-          </div>
-        )}
-      </div>
-    </aside>
-  );
-};
+// =====================================================================
+// PÁGINA
+// =====================================================================
 
 export default function TrendingPage() {
   const { user } = useAuth();
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
-  const [currentlyPlaying, setCurrentlyPlaying] = useState<string | null>(null);
+  const { play, isPlaying, currentMusic } = usePlayer();
   const [period, setPeriod] = useState<'day' | 'week' | 'month'>('week');
 
-  // Estados
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [trendingItems, setTrendingItems] = useState<TrendingItem[]>([]);
   const [categories, setCategories] = useState<TrendingCategory[]>([]);
   const [source, setSource] = useState<string>('');
 
-  // Carregar dados
+  // ---------- Carregar ----------
   useEffect(() => {
     loadTrending();
     loadCategories();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [period]);
 
   const loadTrending = async () => {
@@ -301,9 +246,7 @@ export default function TrendingPage() {
     try {
       const response = await fetch(
         `${getApiUrl('/api/v1/trending')}?limit=20&period=${period}`,
-        {
-          headers: getAuthHeaders(),
-        }
+        { headers: getAuthHeaders() }
       );
       const result = await response.json();
 
@@ -329,8 +272,6 @@ export default function TrendingPage() {
 
       if (result.success) {
         const raw: TrendingCategory[] = result.data || [];
-
-        // Deduplica por id OU por categoria (evita keys duplicadas)
         const seen = new Set<string>();
         const unique = raw.filter((cat) => {
           const key = String(cat.id ?? cat.category_id ?? cat.category);
@@ -338,7 +279,6 @@ export default function TrendingPage() {
           seen.add(key);
           return true;
         });
-
         setCategories(unique);
       }
     } catch (err) {
@@ -346,12 +286,18 @@ export default function TrendingPage() {
     }
   };
 
-  const handlePlay = (title: string) => {
-    setCurrentlyPlaying(currentlyPlaying === title ? null : title);
+  // ---------- Play REAL ----------
+  const handlePlayItem = (item: TrendingItem) => {
+    const queue = trendingItems.map(toPlayerMusic);
+    play(toPlayerMusic(item), true, queue);
+  };
+
+  const isCurrentPlaying = (item: TrendingItem) => {
+    const id = item.music_id ?? item.source_id ?? item.contentId ?? item.id;
+    return currentMusic?.id === id && isPlaying;
   };
 
   const handleCategoryClick = (category: TrendingCategory) => {
-    // Navegar para página de busca com filtro de categoria
     window.location.href = `/search?category=${encodeURIComponent(
       category.category
     )}`;
@@ -363,26 +309,18 @@ export default function TrendingPage() {
     { value: 'month', label: 'Este mês', icon: <TrendingUp size={14} /> },
   ];
 
+  // =====================================================================
+  // RENDER
+  // =====================================================================
+
   return (
     <div className="min-h-screen bg-gradient-to-b from-slate-900 via-purple-900 to-slate-900">
-      <PodfSidebar collapsed={sidebarCollapsed} />
+      <PodPlaySidebar />
 
-      <main
-        className={`transition-all duration-300 ${
-          sidebarCollapsed ? 'ml-20' : 'ml-64'
-        } min-h-screen`}
-      >
+      <main className="ml-64 min-h-screen pb-24 transition-all duration-300">
         <Header />
 
         <div className="max-w-6xl mx-auto px-4 py-8">
-          {/* Botão mobile */}
-          <button
-            onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
-            className="lg:hidden fixed bottom-4 right-4 z-50 p-3 bg-purple-600 rounded-full shadow-lg"
-          >
-            <Menu size={20} className="text-white" />
-          </button>
-
           {/* Header */}
           <div className="flex flex-col md:flex-row md:items-center md:justify-between mb-6">
             <div>
@@ -395,7 +333,6 @@ export default function TrendingPage() {
               </p>
             </div>
 
-            {/* Seletor de período */}
             <div className="flex gap-2 mt-4 md:mt-0">
               {periods.map((p) => (
                 <button
@@ -414,7 +351,6 @@ export default function TrendingPage() {
             </div>
           </div>
 
-          {/* Mensagens */}
           {error && (
             <div className="mb-4 p-3 bg-red-500/20 border border-red-500/30 rounded-lg text-red-300 text-sm flex items-center gap-2">
               <AlertCircle size={16} />
@@ -425,7 +361,6 @@ export default function TrendingPage() {
             </div>
           )}
 
-          {/* Source badge */}
           {source && (
             <div className="mb-4 flex justify-end">
               <span className="text-xs text-gray-500">
@@ -436,7 +371,6 @@ export default function TrendingPage() {
             </div>
           )}
 
-          {/* Conteúdo */}
           {loading ? (
             <div className="flex justify-center py-12">
               <Loader2 size={40} className="text-purple-500 animate-spin" />
@@ -452,20 +386,18 @@ export default function TrendingPage() {
             </div>
           ) : (
             <>
-              {/* Grid de conteúdos */}
               <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4 mb-10">
                 {trendingItems.map((item, index) => (
                   <ContentCard
                     key={getItemKey(item, index)}
                     item={item}
                     rank={index + 1}
-                    isPlaying={currentlyPlaying === item.title}
-                    onPlay={() => handlePlay(item.title)}
+                    isPlaying={isCurrentPlaying(item)}
+                    onPlay={() => handlePlayItem(item)}
                   />
                 ))}
               </div>
 
-              {/* Categorias em alta */}
               {categories.length > 0 && (
                 <div>
                   <div className="flex items-center gap-2 mb-4">
@@ -490,30 +422,8 @@ export default function TrendingPage() {
         </div>
       </main>
 
-      {/* Now Playing Bar */}
-      {currentlyPlaying && (
-        <div className="fixed bottom-0 left-0 right-0 bg-black/80 backdrop-blur-xl border-t border-white/10 z-40">
-          <div className="flex items-center justify-between px-4 py-3 max-w-7xl mx-auto">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 bg-purple-600 rounded-lg flex items-center justify-center">
-                <Music size={18} className="text-white" />
-              </div>
-              <div>
-                <p className="text-white text-sm font-medium">
-                  {currentlyPlaying}
-                </p>
-                <p className="text-gray-400 text-xs">Reproduzindo agora</p>
-              </div>
-            </div>
-            <button
-              onClick={() => setCurrentlyPlaying(null)}
-              className="px-4 py-1.5 bg-white/10 text-white rounded-full text-sm hover:bg-white/20 transition-all"
-            >
-              Fechar
-            </button>
-          </div>
-        </div>
-      )}
+      {/* 🔥 PlayerBar GLOBAL — substitui a barra local */}
+      <PlayerBar />
     </div>
   );
 }

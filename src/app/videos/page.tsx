@@ -1,21 +1,15 @@
+// app/videos/page.tsx
 'use client';
 
 import { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
-import Link from 'next/link';
 import Header from '@/components/layout/Header';
 import PlayerBar from '@/components/PlayerBar';
 import VideoPlayerModal from '@/components/VideoPlayerModal';
+import PodPlaySidebar from '@/components/PodPlaySidebar';
 import {
   Play,
   Search,
-  Home,
-  Flame,
-  Library,
-  User,
-  Plus,
-  ChevronRight,
-  Headphones,
   Video as VideoIcon,
   Eye,
   Clock,
@@ -24,6 +18,10 @@ import {
 } from 'lucide-react';
 import { getApiUrl, getAuthHeaders } from '@/config/api';
 import { resolveThumbUrl } from '@/lib/media';
+
+// =====================================================================
+// TIPO
+// =====================================================================
 
 interface VideoItem {
   id: number;
@@ -39,91 +37,9 @@ interface VideoItem {
   created_at: string;
 }
 
-// ---------- Sidebar (mesma do resto da app) ----------
-
-const Sidebar = ({ collapsed = false }: { collapsed?: boolean }) => {
-  const { user } = useAuth();
-
-  const menuItems = [
-    { icon: Home, label: 'Inicio', href: '/' },
-    { icon: Search, label: 'Pesquisa', href: '/search' },
-    { icon: VideoIcon, label: 'Vídeos', href: '/videos' },
-    { icon: Flame, label: 'Em Alta', href: '/trending' },
-    { icon: Library, label: 'Biblioteca', href: '/library' },
-    { icon: User, label: 'Perfil', href: '/profile' },
-  ];
-
-  const playlists = [
-    'As Minhas Favoritas',
-    'Oração da Manhã',
-    'Louvores com a Família',
-    'Pregações — Pr. Carlos',
-  ];
-
-  return (
-    <aside
-      className={`fixed left-0 top-0 h-full bg-black/60 backdrop-blur-xl border-r border-white/10 transition-all duration-300 z-30 ${
-        collapsed ? 'w-20' : 'w-64'
-      }`}
-    >
-      <div className="p-4">
-        <div className="flex items-center gap-2 mb-8">
-          <div className="w-8 h-8 bg-purple-600 rounded-lg flex items-center justify-center">
-            <Headphones size={18} className="text-white" />
-          </div>
-          {!collapsed && <h1 className="text-xl font-bold text-white">Podfe Play</h1>}
-        </div>
-
-        <nav className="space-y-1">
-          {menuItems.map((item) => (
-            <Link
-              key={item.label}
-              href={item.href}
-              className={`flex items-center gap-3 px-3 py-2 rounded-lg text-gray-300 hover:text-white hover:bg-white/10 transition-all ${
-                item.href === '/videos' ? 'bg-white/10 text-white' : ''
-              } ${collapsed ? 'justify-center' : ''}`}
-              title={collapsed ? item.label : ''}
-            >
-              <item.icon size={20} />
-              {!collapsed && <span>{item.label}</span>}
-            </Link>
-          ))}
-        </nav>
-
-        {!collapsed && (
-          <div className="mt-8">
-            <div className="flex items-center justify-between mb-3">
-              <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider">
-                AS TUAS PLAYLISTS
-              </h3>
-              <button className="text-gray-400 hover:text-white">
-                <Plus size={16} />
-              </button>
-            </div>
-            <div className="space-y-1">
-              {playlists.map((playlist) => (
-                <Link
-                  key={playlist}
-                  href="#"
-                  className="flex items-center gap-2 px-3 py-1.5 text-sm text-gray-300 hover:text-white hover:bg-white/10 rounded-lg transition-all"
-                >
-                  <div className="w-1 h-1 bg-purple-400 rounded-full" />
-                  <span className="truncate">{playlist}</span>
-                </Link>
-              ))}
-              <button className="flex items-center gap-2 px-3 py-1.5 text-sm text-gray-400 hover:text-white hover:bg-white/10 rounded-lg transition-all w-full">
-                <Plus size={14} />
-                <span>Nova playlist</span>
-              </button>
-            </div>
-          </div>
-        )}
-      </div>
-    </aside>
-  );
-};
-
-// ---------- Card de Vídeo (formato 16:9) ----------
+// =====================================================================
+// VIDEO CARD
+// =====================================================================
 
 const VideoCard = ({
   video,
@@ -196,18 +112,19 @@ const VideoCard = ({
   );
 };
 
-// ---------- Página Principal ----------
+// =====================================================================
+// PÁGINA
+// =====================================================================
 
 export default function VideosPage() {
   const { user } = useAuth();
-  const [sidebarCollapsed] = useState(false);
   const [allVideos, setAllVideos] = useState<VideoItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedVideo, setSelectedVideo] = useState<VideoItem | null>(null);
 
-  // Carregar todos os vídeos
+  // ---------- Carregar vídeos ----------
   useEffect(() => {
     const loadVideos = async () => {
       try {
@@ -238,7 +155,7 @@ export default function VideosPage() {
     loadVideos();
   }, []);
 
-  // Filtro local por texto
+  // ---------- Filtro local ----------
   const filteredVideos = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
     if (!q) return allVideos;
@@ -253,19 +170,18 @@ export default function VideosPage() {
     setSelectedVideo(video);
   };
 
+  // =====================================================================
+  // RENDER
+  // =====================================================================
+
   return (
     <div className="min-h-screen bg-gradient-to-b from-slate-900 via-purple-900 to-slate-900">
-      <Sidebar collapsed={sidebarCollapsed} />
+      <PodPlaySidebar />
 
-      <main
-        className={`transition-all duration-300 ${
-          sidebarCollapsed ? 'ml-20' : 'ml-64'
-        } min-h-screen pb-24`}
-      >
+      <main className="ml-64 min-h-screen pb-24 transition-all duration-300">
         <Header />
 
         <div className="p-6">
-          {/* Cabeçalho da página */}
           <div className="mb-6">
             <div className="flex items-center gap-3 mb-1">
               <VideoIcon size={28} className="text-purple-400" />
@@ -308,14 +224,12 @@ export default function VideosPage() {
             )}
           </div>
 
-          {/* Estado: a carregar */}
           {loading && (
             <div className="flex justify-center py-20">
               <Loader2 size={40} className="text-purple-500 animate-spin" />
             </div>
           )}
 
-          {/* Estado: erro */}
           {!loading && error && (
             <div className="text-center py-20">
               <p className="text-red-400 mb-3">{error}</p>
@@ -328,7 +242,6 @@ export default function VideosPage() {
             </div>
           )}
 
-          {/* Estado: sem vídeos */}
           {!loading && !error && filteredVideos.length === 0 && (
             <div className="text-center py-20">
               <VideoIcon size={64} className="text-gray-600 mx-auto mb-4" />
@@ -348,7 +261,6 @@ export default function VideosPage() {
             </div>
           )}
 
-          {/* Grid de vídeos */}
           {!loading && !error && filteredVideos.length > 0 && (
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
               {filteredVideos.map((video) => (
@@ -359,10 +271,8 @@ export default function VideosPage() {
         </div>
       </main>
 
-      {/* Player Bar Global */}
       <PlayerBar />
 
-      {/* Modal do Player de Vídeo */}
       <VideoPlayerModal
         video={selectedVideo}
         onClose={() => setSelectedVideo(null)}

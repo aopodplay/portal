@@ -6,6 +6,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import Header from '@/components/layout/Header';
+import PodPlaySidebar from '@/components/PodPlaySidebar';
 import {
   User,
   Mail,
@@ -16,28 +17,23 @@ import {
   Save,
   X,
   Camera,
-  Headphones,
   Heart,
   Clock,
   Play,
   Music,
   BookOpen,
   Shield,
-  LogOut,
   ChevronRight,
   Loader2,
   CheckCircle,
   AlertCircle,
-  Home,
-  Search,
-  Flame,
-  Library,
-  Plus,
-  Menu,
 } from 'lucide-react';
 import { API_ENDPOINTS, getApiUrl, getAuthHeaders } from '@/config/api';
 
-// Interface para o perfil do usuário
+// =====================================================================
+// TIPOS
+// =====================================================================
+
 interface UserProfile {
   id: number;
   username: string;
@@ -56,7 +52,6 @@ interface UserProfile {
   last_login?: string;
 }
 
-// Interface para estatísticas
 interface ProfileStats {
   total_playlists: number;
   total_favorites: number;
@@ -64,8 +59,19 @@ interface ProfileStats {
   total_listening_time?: number;
 }
 
-// Componente de Estatística
-const StatCard = ({ icon: Icon, label, value }: { icon: any; label: string; value: number | string }) => (
+// =====================================================================
+// SUB-COMPONENTES
+// =====================================================================
+
+const StatCard = ({
+  icon: Icon,
+  label,
+  value,
+}: {
+  icon: any;
+  label: string;
+  value: number | string;
+}) => (
   <div className="bg-white/5 rounded-xl p-4 text-center">
     <Icon size={24} className="text-purple-400 mx-auto mb-2" />
     <p className="text-2xl font-bold text-white">{value}</p>
@@ -73,7 +79,6 @@ const StatCard = ({ icon: Icon, label, value }: { icon: any; label: string; valu
   </div>
 );
 
-// Componente de Campo Editável
 const EditableField = ({
   label,
   value,
@@ -113,91 +118,14 @@ const EditableField = ({
   </div>
 );
 
-// Sidebar Component da PodFá Play
-const PodfSidebar = ({ collapsed = false }: { collapsed?: boolean }) => {
-  const menuItems = [
-    { icon: Home, label: 'Inicio', href: '/' },
-    { icon: Search, label: 'Pesquisa', href: '/search' },
-    { icon: Flame, label: 'Em Alta', href: '/trending' },
-    { icon: Library, label: 'Biblioteca', href: '/library' },
-    { icon: User, label: 'Perfil', href: '/profile' },
-  ];
-
-  const playlists = [
-    'As Minhas Favoritas',
-    'Oração da Manhã',
-    'Louvores com a Família',
-    'Pregações – Pr. Carlos',
-  ];
-
-  return (
-    <aside
-      className={`fixed left-0 top-0 h-full bg-black/60 backdrop-blur-xl border-r border-white/10 transition-all duration-300 z-30 ${
-        collapsed ? 'w-20' : 'w-64'
-      }`}
-    >
-      <div className="p-4">
-        <div className="flex items-center gap-2 mb-8">
-          <div className="w-8 h-8 bg-purple-600 rounded-lg flex items-center justify-center">
-            <Headphones size={18} className="text-white" />
-          </div>
-          {!collapsed && <h1 className="text-xl font-bold text-white">Podfá Play</h1>}
-        </div>
-
-        <nav className="space-y-1">
-          {menuItems.map((item) => (
-            <Link
-              key={item.label}
-              href={item.href}
-              className={`flex items-center gap-3 px-3 py-2 rounded-lg text-gray-300 hover:text-white hover:bg-white/10 transition-all ${
-                collapsed ? 'justify-center' : ''
-              }`}
-              title={collapsed ? item.label : ''}
-            >
-              <item.icon size={20} />
-              {!collapsed && <span>{item.label}</span>}
-            </Link>
-          ))}
-        </nav>
-
-        {!collapsed && (
-          <div className="mt-8">
-            <div className="flex items-center justify-between mb-3">
-              <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider">
-                AS TUAS PLAYLISTS
-              </h3>
-              <button className="text-gray-400 hover:text-white">
-                <Plus size={16} />
-              </button>
-            </div>
-            <div className="space-y-1">
-              {playlists.map((playlist) => (
-                <Link
-                  key={playlist}
-                  href="#"
-                  className="flex items-center gap-2 px-3 py-1.5 text-sm text-gray-300 hover:text-white hover:bg-white/10 rounded-lg transition-all"
-                >
-                  <div className="w-1 h-1 bg-purple-400 rounded-full" />
-                  <span className="truncate">{playlist}</span>
-                </Link>
-              ))}
-              <button className="flex items-center gap-2 px-3 py-1.5 text-sm text-gray-400 hover:text-white hover:bg-white/10 rounded-lg transition-all w-full">
-                <Plus size={14} />
-                <span>Nova playlist</span>
-              </button>
-            </div>
-          </div>
-        )}
-      </div>
-    </aside>
-  );
-};
+// =====================================================================
+// PÁGINA
+// =====================================================================
 
 export default function ProfilePage() {
   const { user, logout, updateUser } = useAuth();
   const router = useRouter();
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [stats, setStats] = useState<ProfileStats | null>(null);
@@ -207,8 +135,7 @@ export default function ProfilePage() {
   const [success, setSuccess] = useState('');
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
   const [avatarKey, setAvatarKey] = useState(Date.now());
-  
-  // Estado de edição
+
   const [isEditing, setIsEditing] = useState(false);
   const [editForm, setEditForm] = useState({
     full_name: '',
@@ -217,7 +144,7 @@ export default function ProfilePage() {
     gender: '',
   });
 
-  // Carregar dados do perfil
+  // ---------- Carregar dados do perfil ----------
   useEffect(() => {
     const loadProfile = async () => {
       try {
@@ -231,7 +158,7 @@ export default function ProfilePage() {
           headers: getAuthHeaders(),
         });
         const profileResult = await profileResponse.json();
-        
+
         if (profileResult.success) {
           setProfile(profileResult.data);
           setEditForm({
@@ -246,7 +173,7 @@ export default function ProfilePage() {
           headers: getAuthHeaders(),
         });
         const statsResult = await statsResponse.json();
-        
+
         if (statsResult.success) {
           setStats(statsResult.data);
         }
@@ -261,6 +188,7 @@ export default function ProfilePage() {
     loadProfile();
   }, [router]);
 
+  // ---------- Guardar perfil ----------
   const handleSaveProfile = async () => {
     setSaving(true);
     setError('');
@@ -296,6 +224,7 @@ export default function ProfilePage() {
     }
   };
 
+  // ---------- Avatar ----------
   const handleAvatarUpload = async (file: File) => {
     const formData = new FormData();
     formData.append('avatar', file);
@@ -305,9 +234,7 @@ export default function ProfilePage() {
       const token = localStorage.getItem('podplay_token');
       const response = await fetch(getApiUrl(API_ENDPOINTS.PROFILE_AVATAR), {
         method: 'POST',
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
+        headers: { Authorization: `Bearer ${token}` },
         body: formData,
       });
 
@@ -315,7 +242,7 @@ export default function ProfilePage() {
 
       if (result.success) {
         const avatarUrl = result.data.avatar_url;
-        setProfile(prev => prev ? { ...prev, avatar_url: avatarUrl } : null);
+        setProfile((prev) => (prev ? { ...prev, avatar_url: avatarUrl } : null));
         setAvatarKey(Date.now());
         setSuccess('Foto atualizada com sucesso!');
         setTimeout(() => setSuccess(''), 3000);
@@ -355,43 +282,39 @@ export default function ProfilePage() {
     return new Date(dateString).toLocaleDateString('pt-PT');
   };
 
-  // Construir URL completa do avatar
   const getFullAvatarUrl = () => {
     if (!profile?.avatar_url) return null;
-    // Se já for URL completa, retorna
     if (profile.avatar_url.startsWith('http')) {
       return `${profile.avatar_url}?t=${avatarKey}`;
     }
-    // Se for caminho relativo, adiciona a base URL
     return `${getApiUrl(profile.avatar_url)}?t=${avatarKey}`;
   };
 
   const fullAvatarUrl = getFullAvatarUrl();
 
+  // =====================================================================
+  // RENDER
+  // =====================================================================
+
   if (loading) {
     return (
-      <div className="min-h-screen bg-gradient-to-b from-slate-900 via-purple-900 to-slate-900 flex items-center justify-center">
-        <Loader2 size={40} className="text-purple-500 animate-spin" />
+      <div className="min-h-screen bg-gradient-to-b from-slate-900 via-purple-900 to-slate-900">
+        <PodPlaySidebar />
+        <main className="ml-64 min-h-screen flex items-center justify-center">
+          <Loader2 size={40} className="text-purple-500 animate-spin" />
+        </main>
       </div>
     );
   }
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-slate-900 via-purple-900 to-slate-900">
-      <PodfSidebar collapsed={sidebarCollapsed} />
+      <PodPlaySidebar />
 
-      <main className={`transition-all duration-300 ${sidebarCollapsed ? 'ml-20' : 'ml-64'} min-h-screen`}>
+      <main className="ml-64 min-h-screen pb-24 transition-all duration-300">
         <Header />
 
         <div className="max-w-4xl mx-auto px-4 py-8">
-          {/* Botão para colapsar sidebar (mobile) */}
-          <button
-            onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
-            className="lg:hidden fixed bottom-4 right-4 z-50 p-3 bg-purple-600 rounded-full shadow-lg"
-          >
-            <Menu size={20} className="text-white" />
-          </button>
-
           {error && (
             <div className="mb-4 p-3 bg-red-500/20 border border-red-500/30 rounded-lg text-red-300 text-sm flex items-center gap-2">
               <AlertCircle size={16} />
@@ -401,7 +324,7 @@ export default function ProfilePage() {
               </button>
             </div>
           )}
-          
+
           {success && (
             <div className="mb-4 p-3 bg-green-500/20 border border-green-500/30 rounded-lg text-green-300 text-sm flex items-center gap-2">
               <CheckCircle size={16} />
@@ -424,20 +347,27 @@ export default function ProfilePage() {
                         alt={profile?.full_name || profile?.username || 'Profile'}
                         className="w-full h-full object-cover"
                         onError={(e) => {
-                          // Se falhar, mostrar fallback
                           e.currentTarget.style.display = 'none';
                           const parent = e.currentTarget.parentElement;
                           if (parent) {
                             const span = document.createElement('span');
                             span.className = 'text-white text-3xl font-bold';
-                            span.textContent = (profile?.full_name?.charAt(0) || profile?.username?.charAt(0) || 'U').toUpperCase();
+                            span.textContent = (
+                              profile?.full_name?.charAt(0) ||
+                              profile?.username?.charAt(0) ||
+                              'U'
+                            ).toUpperCase();
                             parent.appendChild(span);
                           }
                         }}
                       />
                     ) : (
                       <span className="text-white text-3xl font-bold">
-                        {(profile?.full_name?.charAt(0) || profile?.username?.charAt(0) || 'U').toUpperCase()}
+                        {(
+                          profile?.full_name?.charAt(0) ||
+                          profile?.username?.charAt(0) ||
+                          'U'
+                        ).toUpperCase()}
                       </span>
                     )}
                   </div>
@@ -495,7 +425,11 @@ export default function ProfilePage() {
                         disabled={saving}
                         className="px-4 py-2 bg-purple-600 hover:bg-purple-500 text-white rounded-lg text-sm font-medium transition-colors flex items-center gap-2"
                       >
-                        {saving ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
+                        {saving ? (
+                          <Loader2 size={16} className="animate-spin" />
+                        ) : (
+                          <Save size={16} />
+                        )}
                         Salvar
                       </button>
                     </>
@@ -515,7 +449,9 @@ export default function ProfilePage() {
                     value={editForm.full_name}
                     icon={User}
                     isEditing={isEditing}
-                    onChange={(name, value) => setEditForm(prev => ({ ...prev, [name]: value }))}
+                    onChange={(name, value) =>
+                      setEditForm((prev) => ({ ...prev, [name]: value }))
+                    }
                     placeholder="Seu nome completo"
                   />
                   <EditableField
@@ -524,7 +460,9 @@ export default function ProfilePage() {
                     value={editForm.bio}
                     icon={BookOpen}
                     isEditing={isEditing}
-                    onChange={(name, value) => setEditForm(prev => ({ ...prev, [name]: value }))}
+                    onChange={(name, value) =>
+                      setEditForm((prev) => ({ ...prev, [name]: value }))
+                    }
                     placeholder="Conte um pouco sobre você..."
                   />
                   <EditableField
@@ -534,7 +472,9 @@ export default function ProfilePage() {
                     value={editForm.birth_date}
                     icon={Calendar}
                     isEditing={isEditing}
-                    onChange={(name, value) => setEditForm(prev => ({ ...prev, [name]: value }))}
+                    onChange={(name, value) =>
+                      setEditForm((prev) => ({ ...prev, [name]: value }))
+                    }
                   />
                   <div className="border-b border-white/10 py-3">
                     <label className="block text-xs text-gray-400 mb-1">Género</label>
@@ -542,7 +482,7 @@ export default function ProfilePage() {
                       {[
                         { value: 'M', label: 'Masculino' },
                         { value: 'F', label: 'Feminino' },
-                        { value: 'OTHER', label: 'Outro' }
+                        { value: 'OTHER', label: 'Outro' },
                       ].map((g) => (
                         <label key={g.value} className="flex items-center gap-2">
                           <input
@@ -550,7 +490,9 @@ export default function ProfilePage() {
                             name="gender"
                             value={g.value}
                             checked={editForm.gender === g.value}
-                            onChange={(e) => setEditForm(prev => ({ ...prev, gender: e.target.value }))}
+                            onChange={(e) =>
+                              setEditForm((prev) => ({ ...prev, gender: e.target.value }))
+                            }
                             className="text-purple-500 focus:ring-purple-500"
                           />
                           <span className="text-white text-sm">{g.label}</span>
@@ -592,7 +534,11 @@ export default function ProfilePage() {
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
             <StatCard icon={Music} label="Playlists" value={stats?.total_playlists || 0} />
             <StatCard icon={Heart} label="Favoritos" value={stats?.total_favorites || 0} />
-            <StatCard icon={Clock} label="Tempo ouvido" value={`${Math.floor((stats?.total_listening_time || 0) / 60)}h`} />
+            <StatCard
+              icon={Clock}
+              label="Tempo ouvido"
+              value={`${Math.floor((stats?.total_listening_time || 0) / 60)}h`}
+            />
             <StatCard icon={Play} label="Downloads" value={stats?.total_downloads || 0} />
           </div>
 
@@ -609,7 +555,10 @@ export default function ProfilePage() {
                   <p className="text-gray-400 text-xs">Ver conteúdos guardados</p>
                 </div>
               </div>
-              <ChevronRight size={20} className="text-gray-500 group-hover:text-purple-400 transition-colors" />
+              <ChevronRight
+                size={20}
+                className="text-gray-500 group-hover:text-purple-400 transition-colors"
+              />
             </Link>
 
             <Link
@@ -623,7 +572,10 @@ export default function ProfilePage() {
                   <p className="text-gray-400 text-xs">Conteúdos reproduzidos</p>
                 </div>
               </div>
-              <ChevronRight size={20} className="text-gray-500 group-hover:text-purple-400 transition-colors" />
+              <ChevronRight
+                size={20}
+                className="text-gray-500 group-hover:text-purple-400 transition-colors"
+              />
             </Link>
 
             <Link
@@ -637,7 +589,10 @@ export default function ProfilePage() {
                   <p className="text-gray-400 text-xs">Gerir as suas playlists</p>
                 </div>
               </div>
-              <ChevronRight size={20} className="text-gray-500 group-hover:text-purple-400 transition-colors" />
+              <ChevronRight
+                size={20}
+                className="text-gray-500 group-hover:text-purple-400 transition-colors"
+              />
             </Link>
           </div>
         </div>

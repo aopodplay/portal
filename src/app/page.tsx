@@ -7,15 +7,12 @@ import Link from 'next/link';
 import Header from '@/components/layout/Header';
 import PlayerBar from '@/components/PlayerBar';
 import VideoPlayerModal from '@/components/VideoPlayerModal';
+import PodPlaySidebar from '@/components/PodPlaySidebar';
+import AddToPlaylistButton from '@/components/AddToPlaylistButton';
 import {
   Play,
   Pause,
-  Headphones,
-  Search,
-  Home,
   Flame,
-  Library,
-  User,
   Plus,
   ChevronRight,
   Calendar,
@@ -39,6 +36,7 @@ import { historyApi } from '@/lib/historyApi';
 import { favoritesApi, downloadsApi, ContentType } from '@/lib/favoritesApi';
 import { metricsApi } from '@/lib/metricsApi';
 import type { ContentMetrics } from '@/lib/metricsApi';
+import { formatDurationOrDash, playsLabel } from '@/lib/catalogApi';
 
 // =====================================================================
 // TIPOS
@@ -48,12 +46,15 @@ interface MusicItem {
   id: number;
   title: string;
   artist: string;
+  artist_id?: number | null;
   album: string | null;
+  album_id?: number | null;
   duration: number | null;
   file_path: string;
   file_size: number;
   cover_image: string | null;
   created_at: string;
+  plays?: number;
 }
 
 interface VideoItem {
@@ -81,92 +82,7 @@ interface Category {
 }
 
 // =====================================================================
-// SIDEBAR
-// =====================================================================
-
-const Sidebar = ({ collapsed = false }: { collapsed?: boolean }) => {
-  const menuItems = [
-    { icon: Home, label: 'Inicio', href: '/' },
-    { icon: Search, label: 'Pesquisa', href: '/search' },
-    { icon: MusicIcon, label: 'Músicas', href: '/music' },
-    { icon: VideoIcon, label: 'Vídeos', href: '/videos' },
-    { icon: Flame, label: 'Em Alta', href: '/trending' },
-    { icon: Library, label: 'Biblioteca', href: '/library' },
-    { icon: User, label: 'Perfil', href: '/profile' },
-  ];
-
-  const playlists = [
-    'As Minhas Favoritas',
-    'Oração da Manhã',
-    'Louvores com a Família',
-    'Pregações — Pr. Carlos',
-  ];
-
-  return (
-    <aside
-      className={`fixed left-0 top-0 h-full bg-black/60 backdrop-blur-xl border-r border-white/10 transition-all duration-300 z-30 ${
-        collapsed ? 'w-20' : 'w-64'
-      }`}
-    >
-      <div className="p-4">
-        <div className="flex items-center gap-2 mb-8">
-          <div className="w-8 h-8 bg-purple-600 rounded-lg flex items-center justify-center">
-            <Headphones size={18} className="text-white" />
-          </div>
-          {!collapsed && <h1 className="text-xl font-bold text-white">Podfe Play</h1>}
-        </div>
-
-        <nav className="space-y-1">
-          {menuItems.map((item) => (
-            <Link
-              key={item.label}
-              href={item.href}
-              className={`flex items-center gap-3 px-3 py-2 rounded-lg text-gray-300 hover:text-white hover:bg-white/10 transition-all ${
-                collapsed ? 'justify-center' : ''
-              }`}
-              title={collapsed ? item.label : ''}
-            >
-              <item.icon size={20} />
-              {!collapsed && <span>{item.label}</span>}
-            </Link>
-          ))}
-        </nav>
-
-        {!collapsed && (
-          <div className="mt-8">
-            <div className="flex items-center justify-between mb-3">
-              <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider">
-                AS TUAS PLAYLISTS
-              </h3>
-              <button className="text-gray-400 hover:text-white">
-                <Plus size={16} />
-              </button>
-            </div>
-            <div className="space-y-1">
-              {playlists.map((playlist) => (
-                <Link
-                  key={playlist}
-                  href="#"
-                  className="flex items-center gap-2 px-3 py-1.5 text-sm text-gray-300 hover:text-white hover:bg-white/10 rounded-lg transition-all"
-                >
-                  <div className="w-1 h-1 bg-purple-400 rounded-full" />
-                  <span className="truncate">{playlist}</span>
-                </Link>
-              ))}
-              <button className="flex items-center gap-2 px-3 py-1.5 text-sm text-gray-400 hover:text-white hover:bg-white/10 rounded-lg transition-all w-full">
-                <Plus size={14} />
-                <span>Nova playlist</span>
-              </button>
-            </div>
-          </div>
-        )}
-      </div>
-    </aside>
-  );
-};
-
-// =====================================================================
-// CARDS
+// MUSIC CARD
 // =====================================================================
 
 const MusicCard = ({
@@ -190,14 +106,14 @@ const MusicCard = ({
 }) => {
   const coverUrl = resolveCoverUrl(music.cover_image);
   const isPlaying = isCurrentMusicPlaying(music);
-  const durationLabel =
-    music.duration && music.duration > 0
-      ? `${Math.floor(music.duration / 60)}:${String(music.duration % 60).padStart(2, '0')}`
-      : null;
+  const plays = music.plays ?? metrics?.likes ?? 0;
 
   return (
-    <div className="group cursor-pointer" onClick={() => onPlay(music)}>
-      <div className="relative rounded-lg overflow-hidden aspect-square mb-2 bg-gradient-to-br from-purple-500/20 to-pink-500/20">
+    <div className="group">
+      <div
+        className="relative rounded-lg overflow-hidden aspect-square mb-2 bg-gradient-to-br from-purple-500/20 to-pink-500/20 cursor-pointer"
+        onClick={() => onPlay(music)}
+      >
         <img
           src={coverUrl}
           alt={music.title}
@@ -217,7 +133,6 @@ const MusicCard = ({
           </div>
         )}
 
-        {/* Botão favoritar */}
         <button
           onClick={(e) => {
             e.stopPropagation();
@@ -236,8 +151,11 @@ const MusicCard = ({
           />
         </button>
 
-        {/* Botões play + download */}
         <div className="absolute bottom-2 right-2 flex gap-1.5 z-10">
+          <div className="opacity-0 group-hover:opacity-100 transition-all">
+            <AddToPlaylistButton musicId={music.id} />
+          </div>
+
           <button
             onClick={(e) => {
               e.stopPropagation();
@@ -271,36 +189,57 @@ const MusicCard = ({
           </button>
         </div>
 
-        {durationLabel && (
+        {music.duration && music.duration > 0 && (
           <span className="absolute bottom-2 left-2 text-xs bg-black/70 text-white px-1.5 py-0.5 rounded flex items-center gap-1">
             <Clock size={10} />
-            {durationLabel}
+            {formatDurationOrDash(music.duration)}
           </span>
         )}
       </div>
 
-      <h4 className={`font-medium text-sm truncate ${isPlaying ? 'text-purple-400' : 'text-white'}`}>
-        {music.title}
-      </h4>
-      <p className="text-gray-400 text-xs truncate">{music.artist}</p>
-      {music.album && (
-        <p className="text-gray-500 text-xs truncate">{music.album}</p>
-      )}
+      <div className="space-y-0.5">
+        <h4
+          className={`font-medium text-sm truncate ${
+            isPlaying ? 'text-purple-400' : 'text-white'
+          }`}
+          title={music.title}
+        >
+          {music.title}
+        </h4>
 
-      {/* 🔥 Views + Likes */}
-      <div className="flex items-center gap-3 mt-1">
-        <span className="text-gray-400 text-xs flex items-center gap-1">
-          <Eye size={11} />
-          {metrics?.views ?? 0}
-        </span>
-        <span className="text-gray-400 text-xs flex items-center gap-1">
-          <Heart size={11} />
-          {metrics?.likes ?? 0}
-        </span>
+        {music.artist_id ? (
+          <Link
+            href={`/artists/${music.artist_id}`}
+            className="text-gray-400 text-xs truncate block hover:text-purple-300 transition-colors"
+            title={music.artist}
+          >
+            {music.artist}
+          </Link>
+        ) : (
+          <p className="text-gray-400 text-xs truncate">{music.artist}</p>
+        )}
+
+        {music.album && music.album_id ? (
+          <Link
+            href={`/albums/${music.album_id}`}
+            className="text-gray-500 text-xs truncate block hover:text-purple-300 transition-colors"
+            title={music.album}
+          >
+            {music.album}
+          </Link>
+        ) : music.album ? (
+          <p className="text-gray-500 text-xs truncate">{music.album}</p>
+        ) : null}
+
+        <p className="text-gray-500 text-xs truncate">{playsLabel(plays)}</p>
       </div>
     </div>
   );
 };
+
+// =====================================================================
+// VIDEO CARD
+// =====================================================================
 
 const VideoCard = ({
   video,
@@ -322,7 +261,7 @@ const VideoCard = ({
   const thumbUrl = resolveThumbUrl(video.thumbnail_path);
   const durationLabel =
     video.duration && video.duration > 0
-      ? `${Math.floor(video.duration / 60)}:${String(video.duration % 60).padStart(2, '0')}`
+      ? formatDurationOrDash(video.duration)
       : null;
 
   return (
@@ -337,7 +276,6 @@ const VideoCard = ({
           }}
         />
 
-        {/* Botão favoritar */}
         <button
           onClick={(e) => {
             e.stopPropagation();
@@ -356,7 +294,6 @@ const VideoCard = ({
           />
         </button>
 
-        {/* Botão download */}
         <button
           onClick={(e) => {
             e.stopPropagation();
@@ -388,7 +325,6 @@ const VideoCard = ({
       </div>
       <h4 className="font-medium text-white text-sm truncate">{video.title}</h4>
 
-      {/* 🔥 Views + Likes */}
       <div className="flex items-center gap-3 mt-0.5">
         <p className="text-gray-400 text-xs flex items-center gap-1">
           <Eye size={11} />
@@ -501,33 +437,23 @@ const CategoryPill = ({
 export default function HomePage() {
   const { user } = useAuth();
   const { play, isPlaying, currentMusic } = usePlayer();
-  const [sidebarCollapsed] = useState(false);
 
   const [activeCategory, setActiveCategory] = useState<string>('all');
 
-  // Músicas
   const [allMusic, setAllMusic] = useState<MusicItem[]>([]);
   const [musicLoading, setMusicLoading] = useState(true);
 
-  // Vídeos
   const [videoList, setVideoList] = useState<VideoItem[]>([]);
   const [videosLoading, setVideosLoading] = useState(true);
   const [selectedVideo, setSelectedVideo] = useState<VideoItem | null>(null);
 
-  // Categorias
   const [categories, setCategories] = useState<Category[]>([]);
   const [categoriesLoading, setCategoriesLoading] = useState(true);
 
-  // Estado de favoritos
   const [favoritesSet, setFavoritesSet] = useState<Set<string>>(new Set());
-
-  // Estado de downloads em curso
   const [downloadingSet, setDownloadingSet] = useState<Set<string>>(new Set());
-
-  // 🔥 Métricas (views + likes) por chave `${contentType}:${id}`
   const [metricsMap, setMetricsMap] = useState<Record<string, ContentMetrics>>({});
 
-  // Toast
   const [toast, setToast] = useState<{ type: 'success' | 'error'; msg: string } | null>(null);
 
   const showToast = (type: 'success' | 'error', msg: string) => {
@@ -550,7 +476,6 @@ export default function HomePage() {
     { title: 'Identidade em Cristo', subtitle: 'Pr. Lucinho Barreto', badge: '12 EP.' },
   ];
 
-  // ---------- REGISTAR REPRODUÇÃO ----------
   const registrarReproducao = useCallback(
     (contentId: number, contentType: 'music' | 'video') => {
       if (!user || !contentId) return;
@@ -570,7 +495,6 @@ export default function HomePage() {
     [user]
   );
 
-  // ---------- ATUALIZAR MÉTRICAS DE UM ITEM ----------
   const refreshMetrics = useCallback(
     async (contentType: ContentType, id: number) => {
       try {
@@ -583,7 +507,6 @@ export default function HomePage() {
     []
   );
 
-  // ---------- FAVORITAR ----------
   const handleToggleFavorite = useCallback(
     async (item: { id: number }, contentType: ContentType) => {
       if (!user) {
@@ -594,7 +517,6 @@ export default function HomePage() {
       const key = favKey(contentType, item.id);
       const wasFavorited = favoritesSet.has(key);
 
-      // Otimista
       setFavoritesSet((prev) => {
         const next = new Set(prev);
         if (wasFavorited) next.delete(key);
@@ -611,11 +533,8 @@ export default function HomePage() {
           return next;
         });
         showToast('success', res.favorited ? 'Adicionado aos favoritos' : 'Removido dos favoritos');
-
-        // 🔥 Atualiza métricas (likes mudaram)
         refreshMetrics(contentType, item.id);
       } catch (err: any) {
-        // Reverter
         setFavoritesSet((prev) => {
           const next = new Set(prev);
           if (wasFavorited) next.add(key);
@@ -628,7 +547,6 @@ export default function HomePage() {
     [user, favoritesSet, refreshMetrics]
   );
 
-  // ---------- DOWNLOAD ----------
   const handleDownload = useCallback(
     async (item: { id: number; title: string }, contentType: ContentType) => {
       if (!user) {
@@ -643,7 +561,6 @@ export default function HomePage() {
 
       try {
         const { blob, fileName } = await downloadsApi.download(item.id, contentType, 'high');
-
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
@@ -652,7 +569,6 @@ export default function HomePage() {
         a.click();
         document.body.removeChild(a);
         URL.revokeObjectURL(url);
-
         showToast('success', `Download iniciado: ${fileName}`);
       } catch (err: any) {
         showToast('error', err?.message || 'Erro ao descarregar');
@@ -667,7 +583,7 @@ export default function HomePage() {
     [user, downloadingSet]
   );
 
-  // ---------- CARREGAR CATEGORIAS ----------
+  // Categorias
   useEffect(() => {
     (async () => {
       try {
@@ -685,7 +601,7 @@ export default function HomePage() {
     })();
   }, []);
 
-  // ---------- CARREGAR MÚSICAS ----------
+  // Músicas
   useEffect(() => {
     (async () => {
       try {
@@ -710,7 +626,7 @@ export default function HomePage() {
     })();
   }, []);
 
-  // ---------- CARREGAR VÍDEOS ----------
+  // Vídeos
   useEffect(() => {
     (async () => {
       try {
@@ -735,7 +651,7 @@ export default function HomePage() {
     })();
   }, []);
 
-  // 🔥 Marcar como favoritado os itens que já estão na BD
+  // Favoritos iniciais
   useEffect(() => {
     if (!user) return;
     if (allMusic.length === 0 && videoList.length === 0) return;
@@ -764,7 +680,6 @@ export default function HomePage() {
           })
         );
         results.push(...chunkResults);
-
         if (cancelled) return;
       }
 
@@ -784,7 +699,7 @@ export default function HomePage() {
     };
   }, [user, allMusic.length, videoList.length]);
 
-  // 🔥 Carregar métricas (views + likes) para os cards
+  // Métricas iniciais
   useEffect(() => {
     if (!user) return;
     if (allMusic.length === 0 && videoList.length === 0) return;
@@ -830,7 +745,7 @@ export default function HomePage() {
     };
   }, [user, allMusic.length, videoList.length]);
 
-  // ---------- FILTROS ----------
+  // Filtros
   const filteredMusic = useMemo(() => {
     if (activeCategory === 'all') return allMusic;
     const cat = categories.find((c) => c.slug === activeCategory);
@@ -852,15 +767,12 @@ export default function HomePage() {
   const recentMusic = useMemo(() => allMusic.slice(0, 5), [allMusic]);
   const featuredVideos = useMemo(() => filteredVideos.slice(0, 4), [filteredVideos]);
 
-  // ---------- PLAY ----------
   const handlePlayMusic = (music: MusicItem) => {
     registrarReproducao(music.id, 'music');
-
-    // 🔥 Atualiza métricas deste item em background
     refreshMetrics('music', music.id);
 
     if (allMusic.length === 0) {
-      play(music, false, [music]);
+      play(music, true, [music]);
       return;
     }
     const currentIndex = allMusic.findIndex((m) => m.id === music.id);
@@ -869,18 +781,15 @@ export default function HomePage() {
         ...allMusic.slice(currentIndex),
         ...allMusic.slice(0, currentIndex),
       ];
-      play(music, false, newQueue);
+      play(music, true, newQueue);
     } else {
-      play(music, false, [music]);
+      play(music, true, [music]);
     }
   };
 
   const handlePlayVideo = (video: VideoItem) => {
     registrarReproducao(video.id, 'video');
-
-    // 🔥 Atualiza métricas deste item em background
     refreshMetrics('video', video.id);
-
     setSelectedVideo(video);
   };
 
@@ -905,13 +814,9 @@ export default function HomePage() {
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-slate-900 via-purple-900 to-slate-900">
-      <Sidebar collapsed={sidebarCollapsed} />
+      <PodPlaySidebar />
 
-      <main
-        className={`transition-all duration-300 ${
-          sidebarCollapsed ? 'ml-20' : 'ml-64'
-        } min-h-screen pb-24`}
-      >
+      <main className="ml-64 min-h-screen pb-24 transition-all duration-300">
         <Header />
 
         <div className="p-6">
@@ -1157,7 +1062,16 @@ export default function HomePage() {
                           </div>
                           <div className="min-w-0">
                             <h4 className="font-medium text-white text-sm truncate">{music.title}</h4>
-                            <p className="text-gray-400 text-xs truncate">{music.artist}</p>
+                            {music.artist_id ? (
+                              <Link
+                                href={`/artists/${music.artist_id}`}
+                                className="text-gray-400 text-xs truncate block hover:text-purple-300"
+                              >
+                                {music.artist}
+                              </Link>
+                            ) : (
+                              <p className="text-gray-400 text-xs truncate">{music.artist}</p>
+                            )}
                           </div>
                         </div>
                         <button
@@ -1180,7 +1094,6 @@ export default function HomePage() {
 
       <VideoPlayerModal video={selectedVideo} onClose={() => setSelectedVideo(null)} />
 
-      {/* Toast de feedback */}
       {toast && (
         <div
           className={`fixed bottom-24 right-6 z-50 px-4 py-3 rounded-lg shadow-lg backdrop-blur-sm text-sm font-medium transition-all ${

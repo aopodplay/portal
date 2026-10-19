@@ -9,17 +9,20 @@ export interface HistoryItem {
   id: number;
   user_id: number;
   content_id: number;
+  music_id?: number | null;   
+  source?: string | null;        
+  source_id?: number | null;   
   title: string;
-  type: string;                 // "VIDEO" | "AUDIO" | "PODCAST" | "SERMON" | ...
+  type: string;
   cover_url: string | null;
   video_url: string | null;
   audio_url: string | null;
   duration: number | null;
   total_duration: number;
-  progress: number;             // 0–100
-  progress_percentage: string;  // "0.00"
-  last_position: number;        // segundos
-  completed: number;            // 0 ou 1
+  progress: number;
+  progress_percentage: string;
+  last_position: number;
+  completed: number;
   play_count: number;
   device_type: string;
   ip_address: string;
@@ -27,7 +30,6 @@ export interface HistoryItem {
   last_played_at: string;
   created_at: string;
   updated_at: string;
-  // do JOIN com users:
   full_name: string | null;
   username: string;
   avatar_url: string | null;
