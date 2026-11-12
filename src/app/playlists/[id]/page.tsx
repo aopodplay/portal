@@ -23,6 +23,9 @@ import { resolveCoverUrl } from '@/lib/media';
 import { playlistApi, Playlist } from '@/lib/playlistApi';
 import { formatDurationOrDash, playsLabel, type MusicTrack } from '@/lib/catalogApi';
 
+// Importamos o tipo MusicItem
+import type { MusicItem } from '@/contexts/PlayerContext';
+
 export default function PlaylistDetailPage() {
   const params = useParams();
   const router = useRouter();
@@ -68,13 +71,13 @@ export default function PlaylistDetailPage() {
 
   const handlePlayAll = useCallback(() => {
     if (tracks.length === 0) return;
-    play(tracks[0], true, tracks);
+    play(tracks[0] as unknown as MusicItem, true, tracks as unknown as MusicItem[]);
   }, [tracks, play]);
 
   const handleShuffle = useCallback(() => {
     if (tracks.length === 0) return;
     const random = tracks[Math.floor(Math.random() * tracks.length)];
-    play(random, true, tracks);
+    play(random as unknown as MusicItem, true, tracks as unknown as MusicItem[]);
   }, [tracks, play]);
 
   const handleRemove = async (musicId: number, title: string) => {
@@ -247,7 +250,7 @@ export default function PlaylistDetailPage() {
                     onDragStart={() => handleDragStart(i)}
                     onDragOver={(e) => handleDragOver(e, i)}
                     onDragEnd={handleDragEnd}
-                    onClick={() => play(track, true, tracks)}
+                    onClick={() => play(track as unknown as MusicItem, true, tracks as unknown as MusicItem[])}
                     className={`group grid grid-cols-[24px_32px_1fr_auto_auto] sm:grid-cols-[24px_40px_2fr_1.5fr_1fr_80px_40px] gap-3 items-center px-3 py-2 rounded-lg cursor-pointer transition-colors ${
                       isCurrent ? 'bg-purple-600/20' : 'hover:bg-white/5'
                     }`}

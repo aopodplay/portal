@@ -5,18 +5,11 @@ import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useState, useCallback } from 'react';
 import {
   LayoutDashboard,
-  Users,
-  Stethoscope,
   ShoppingCart,
-  ClipboardList,
   FileText,
   User,
   Settings,
-  CreditCard,
-  Activity,
-  Package,
   Glasses,
-  ShieldCheck,
   LogOut,
   ChevronLeft,
   ChevronRight,
@@ -24,20 +17,13 @@ import {
   X,
   HelpCircle,
   TrendingUp,
-  CalendarCheck,
-  Briefcase,
-  FlaskConical,
-  AlertCircle,
   ChevronDown,
   Receipt,
   Truck,
   FileCheck,
   FileWarning,
   Wallet,
-  Calendar,
-  DollarSign,
   FilePlus,
-  FileSignature,
   Shield,
 } from 'lucide-react';
 
@@ -71,7 +57,10 @@ export default function Sidebar() {
   const pathname = usePathname();
   const router = useRouter();
   const { user, loading, logout } = useAuth();
+  
+  // Já não precisamos forçar o cast, o tipo User já tem perfil
   const perfil = user?.perfil as Perfil | undefined;
+  
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [config, setConfig] = useState<any>(null);
@@ -112,7 +101,6 @@ export default function Sidebar() {
     };
   }, [fetchConfig]);
 
-  // Fechar menu mobile ao redimensionar para desktop
   useEffect(() => {
     const handleResize = () => {
       if (window.innerWidth >= 1024 && mobileOpen) {
@@ -123,7 +111,6 @@ export default function Sidebar() {
     return () => window.removeEventListener('resize', handleResize);
   }, [mobileOpen]);
 
-  // Impedir scroll do body quando menu mobile estiver aberto
   useEffect(() => {
     if (mobileOpen) {
       document.body.style.overflow = 'hidden';
@@ -148,13 +135,11 @@ export default function Sidebar() {
     }));
   };
 
-  // Função para verificar se o usuário tem permissão para um item
   const hasPermission = (roles: Perfil[]) => {
     if (!perfil) return false;
     return roles.includes(perfil);
   };
 
-  // Menu items normais (sem submenu)
   const menuItems: MenuItem[] = [
     {
       label: 'Dashboard',
@@ -194,7 +179,6 @@ export default function Sidebar() {
     },
   ];
 
-  // Menu groups (com submenus)
   const menuGroups: MenuGroup[] = [
     {
       label: 'Documentos',
@@ -235,21 +219,18 @@ export default function Sidebar() {
     }
   ];
 
-  // Filtrar menu items normais baseado no perfil
   const allowedMenu = menuItems.filter(
     (item) => perfil && item.roles.includes(perfil)
   );
 
-  // Filtrar grupos baseado no perfil (se o grupo tem alguma role que o usuário tem)
   const allowedGroups = menuGroups.filter(
     (group) => perfil && group.roles.includes(perfil)
   );
 
-  // Para cada grupo, filtrar os subItems baseado no perfil do usuário
   const filteredGroups = allowedGroups.map(group => ({
     ...group,
     subItems: group.subItems.filter(subItem => hasPermission(subItem.roles))
-  })).filter(group => group.subItems.length > 0); // Remove grupos que ficaram sem subitens
+  })).filter(group => group.subItems.length > 0);
 
   const isActive = (href: string) => {
     if (href === '/dashboard') {
@@ -258,7 +239,6 @@ export default function Sidebar() {
     return pathname.startsWith(href);
   };
 
-  // Verificar se algum subitem do grupo está ativo
   const isGroupActive = (group: MenuGroup) => {
     return group.subItems.some(subItem => pathname.startsWith(subItem.href));
   };
@@ -270,7 +250,6 @@ export default function Sidebar() {
 
   const SidebarContent = () => (
     <div className="flex flex-col h-full">
-      {/* Logo e Nome da Empresa */}
       <div className="mb-8 px-2">
         {logoUrl ? (
           <div className="flex justify-center">
@@ -293,7 +272,6 @@ export default function Sidebar() {
         )}
       </div>
 
-      {/* Informações do Usuário com Dropdown */}
       {!collapsed && user && (
         <div className="relative mb-6">
           <button
@@ -320,7 +298,6 @@ export default function Sidebar() {
             </div>
           </button>
 
-          {/* Dropdown Menu */}
           {showUserDropdown && (
             <>
               <div
@@ -352,7 +329,6 @@ export default function Sidebar() {
         </div>
       )}
 
-      {/* Versão colapsada - apenas avatar */}
       {collapsed && user && (
         <div className="mb-6 flex justify-center">
           <button
@@ -365,9 +341,7 @@ export default function Sidebar() {
         </div>
       )}
 
-      {/* Menu de Navegação */}
       <nav className="flex-1 space-y-1 overflow-y-auto">
-        {/* Menu items normais */}
         {allowedMenu.map((item) => {
           const active = isActive(item.href);
           return (
@@ -389,14 +363,12 @@ export default function Sidebar() {
           );
         })}
 
-        {/* Menu groups com submenus - já filtrados por perfil */}
         {filteredGroups.map((group) => {
           const groupActive = isGroupActive(group);
           const isOpen = openGroups[group.label] || groupActive;
 
           return (
             <div key={group.label} className="space-y-1">
-              {/* Botão do grupo */}
               <button
                 onClick={() => !collapsed && toggleGroup(group.label)}
                 className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all duration-200 group ${groupActive
@@ -419,7 +391,6 @@ export default function Sidebar() {
                 )}
               </button>
 
-              {/* Submenus - apenas os que o usuário tem permissão */}
               {!collapsed && isOpen && (
                 <div className="ml-6 space-y-1 border-l-2 border-gray-100 pl-2">
                   {group.subItems.map((subItem) => {
@@ -448,9 +419,7 @@ export default function Sidebar() {
         })}
       </nav>
 
-      {/* Footer com Botões */}
       <div className="mt-auto pt-4 border-t border-gray-100 space-y-2">
-        {/* Botão de Ajuda */}
         <button
           className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-gray-500 hover:bg-gray-100 transition-colors group ${collapsed ? 'justify-center' : ''
             }`}
@@ -461,7 +430,6 @@ export default function Sidebar() {
           {!collapsed && <span className="text-sm">Ajuda</span>}
         </button>
 
-        {/* Botão de Colapsar (Desktop) */}
         <button
           onClick={() => setCollapsed(!collapsed)}
           className="hidden lg:flex w-full items-center justify-center gap-2 px-3 py-2 rounded-lg text-gray-400 hover:bg-gray-100 transition-colors"
@@ -475,7 +443,6 @@ export default function Sidebar() {
 
   return (
     <>
-      {/* Botão do Menu Mobile */}
       <button
         onClick={() => setMobileOpen(true)}
         className="lg:hidden fixed top-4 left-4 z-50 p-2 bg-white rounded-lg shadow-md text-gray-600 hover:text-indigo-600 transition-colors"
@@ -483,7 +450,6 @@ export default function Sidebar() {
         <Menu size={24} />
       </button>
 
-      {/* Overlay Mobile */}
       {mobileOpen && (
         <div
           className="fixed inset-0 bg-black/50 z-40 lg:hidden"
@@ -491,7 +457,6 @@ export default function Sidebar() {
         />
       )}
 
-      {/* Sidebar Desktop */}
       <aside
         className={`hidden lg:flex flex-col fixed left-0 top-0 h-screen bg-white border-r border-gray-200 shadow-lg transition-all duration-300 z-30 ${collapsed ? 'w-20' : 'w-64'
           }`}
@@ -501,13 +466,11 @@ export default function Sidebar() {
         </div>
       </aside>
 
-      {/* Sidebar Mobile */}
       <aside
         className={`fixed top-0 left-0 h-full bg-white shadow-xl z-50 transition-transform duration-300 transform lg:hidden ${mobileOpen ? 'translate-x-0' : '-translate-x-full'
           } w-72`}
       >
         <div className="flex flex-col h-full">
-          {/* Header Mobile */}
           <div className="flex justify-between items-center p-4 border-b">
             <div className="flex items-center gap-2">
               {logoUrl ? (
@@ -527,14 +490,12 @@ export default function Sidebar() {
             </button>
           </div>
 
-          {/* Conteúdo Mobile */}
           <div className="flex-1 overflow-y-auto p-4">
             <SidebarContent />
           </div>
         </div>
       </aside>
 
-      {/* Modal de Confirmação de Logout */}
       {showLogoutModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60] p-4">
           <div className="bg-white rounded-xl shadow-lg w-full max-w-md p-6">
@@ -570,7 +531,6 @@ export default function Sidebar() {
         </div>
       )}
 
-      {/* Espaçamento para o conteúdo principal */}
       <div className={`hidden lg:block transition-all duration-300 ${collapsed ? 'ml-20' : 'ml-64'}`} />
     </>
   );

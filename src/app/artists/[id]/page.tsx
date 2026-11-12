@@ -32,6 +32,9 @@ import {
   type MusicTrack,
 } from '@/lib/catalogApi';
 
+// Importamos o tipo MusicItem do seu Context
+import type { MusicItem } from '@/contexts/PlayerContext';
+
 // =====================================================================
 // TRACK ROW
 // =====================================================================
@@ -212,22 +215,22 @@ export default function ArtistPage() {
   // =====================================================================
   const handlePlayTop = useCallback(() => {
     if (top.length === 0) return;
-    play(top[0], true, top);
+    play(top[0] as unknown as MusicItem, true, top as unknown as MusicItem[]);
   }, [top, play]);
 
   const handlePlayAll = useCallback(() => {
     if (allTracks.length === 0) return;
-    play(allTracks[0], true, allTracks);
+    play(allTracks[0] as unknown as MusicItem, true, allTracks as unknown as MusicItem[]);
   }, [allTracks, play]);
 
   const handleShufflePlay = useCallback(() => {
     if (allTracks.length === 0) return;
     const random = allTracks[Math.floor(Math.random() * allTracks.length)];
-    play(random, true, allTracks);
+    play(random as unknown as MusicItem, true, allTracks as unknown as MusicItem[]);
   }, [allTracks, play]);
 
   const playTrack = (track: MusicTrack, list: MusicTrack[]) => {
-    play(track, true, list);
+    play(track as unknown as MusicItem, true, list as unknown as MusicItem[]);
   };
 
   const totalMinutes = Math.round(
