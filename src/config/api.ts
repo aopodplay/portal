@@ -2,7 +2,7 @@
 import Cookies from "js-cookie";
 
 // URL da API PodPlay (removida a barra final para evitar // no final)
-export const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3000";
+export const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "https://api-3e0j.onrender.com";
 
 // Endpoints da API
 export const API_ENDPOINTS = {
