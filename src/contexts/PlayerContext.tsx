@@ -20,15 +20,15 @@ export interface MusicItem {
   id: number;
   title: string;
   artist: string;
-  artist_id?: number | null;   // 🔥 NOVO
+  artist_id?: number | null; 
   album: string | null;
-  album_id?: number | null;    // 🔥 NOVO
+  album_id?: number | null;    
   duration: number | null;
   file_path: string;
   file_size: number;
   cover_image: string | null;
   created_at: string;
-  plays?: number;              // 🔥 NOVO (opcional — vem do /api/v1/music)
+  plays?: number;        
 }
 
 export type RepeatMode = 'off' | 'all' | 'one';
