@@ -1,8 +1,8 @@
 // src/config/api.ts
-import Cookies from "js-cookie"; 
+import Cookies from "js-cookie";
 
-// URL da API PodPlay
-export const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3000/";
+// URL da API PodPlay (removida a barra final para evitar // no final)
+export const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3000";
 
 // Endpoints da API
 export const API_ENDPOINTS = {
@@ -166,8 +166,12 @@ export const clearHistory = () => `/api/v1/library/history`;
 export const addDownload = (contentId: number) => `/api/v1/library/downloads/${contentId}`;
 export const removeDownload = (contentId: number) => `/api/v1/library/downloads/${contentId}`;
 
-// Monta URL completa
-export const getApiUrl = (endpoint: string) => `${API_BASE_URL}${endpoint}`;
+// Monta URL completa (normaliza barras duplas)
+export const getApiUrl = (endpoint: string) => {
+  const base = API_BASE_URL.replace(/\/+$/, ""); // Remove barras do final da base
+  const path = endpoint.startsWith("/") ? endpoint : `/${endpoint}`; // Garante barra no início
+  return `${base}${path}`;
+};
 
 // Headers padrão
 export const defaultHeaders: HeadersInit = {
@@ -246,13 +250,11 @@ export async function fetchWithAuth(
           const { data } = await refreshResponse.json();
           const { accessToken, refreshToken: newRefreshToken } = data;
 
-          // Atualizar tokens
           localStorage.setItem("podplay_token", accessToken);
           localStorage.setItem("podplay_refresh_token", newRefreshToken);
           Cookies.set("podplay_token", accessToken, { expires: 7 });
           Cookies.set("podplay_refresh_token", newRefreshToken, { expires: 7 });
 
-          // Repetir requisição original com novo token
           response = await makeRequest(accessToken);
         }
       } catch (error) {
@@ -1110,7 +1112,7 @@ export async function getHistoryStats(): Promise<HistoryStats> {
 export async function syncOfflineHistory(offlineRecords: any[]) {
   const response = await fetchWithAuth("/api/v1/history/sync", {
     method: "POST",
-    body: JSON.stringify({ offlineRecords }),
+    body: JSON.stringify(offlineRecords),
   });
   const result = await response.json();
   if (!result.success) throw new Error(result.message || "Erro ao sincronizar histórico");
