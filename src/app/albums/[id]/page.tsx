@@ -25,6 +25,9 @@ import {
   type MusicTrack,
 } from '@/lib/catalogApi';
 
+// Importamos o tipo MusicItem do seu Context (ajuste o caminho se necessário)
+import type { MusicItem } from '@/contexts/PlayerContext';
+
 function TrackRow({
   index,
   track,
@@ -132,13 +135,14 @@ export default function AlbumPage() {
 
   const handlePlayAlbum = useCallback(() => {
     if (tracks.length === 0) return;
-    play(tracks[0], true, tracks);
+    // CAST: os dados são compatíveis em runtime
+    play(tracks[0] as unknown as MusicItem, true, tracks as unknown as MusicItem[]);
   }, [tracks, play]);
 
   const handleShuffle = useCallback(() => {
     if (tracks.length === 0) return;
     const random = tracks[Math.floor(Math.random() * tracks.length)];
-    play(random, true, tracks);
+    play(random as unknown as MusicItem, true, tracks as unknown as MusicItem[]);
   }, [tracks, play]);
 
   const isCurrentTrack = (track: MusicTrack) => currentMusic?.id === track.id;
@@ -277,7 +281,9 @@ export default function AlbumPage() {
                   track={track}
                   isCurrent={isCurrentTrack(track)}
                   isPlaying={isPlaying}
-                  onPlay={() => play(track, true, tracks)}
+                  onPlay={() =>
+                    play(track as unknown as MusicItem, true, tracks as unknown as MusicItem[])
+                  }
                 />
               ))}
             </div>

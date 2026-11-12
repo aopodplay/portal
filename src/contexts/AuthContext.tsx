@@ -5,13 +5,18 @@ import { createContext, useContext, useEffect, useState, ReactNode, useCallback 
 import Cookies from 'js-cookie';
 import { API_ENDPOINTS, getApiUrl } from '@/config/api';
 
+export type Perfil = 'admin' | 'recepcao' | 'caixa' | 'optometrista';
+
 export interface User {
   id: number;
   username: string;
   email?: string;
   phone?: string;
   fullName?: string;
-  role: 'admin' | 'user' | 'creator' | 'moderator';
+  nome?: string;       // 👈 adicionado (Sidebar usa user.nome)
+  perfil?: Perfil;     // 👈 adicionado (Sidebar usa user.perfil)
+  foto?: string | null; // 👈 adicionado (Sidebar usa user.foto)
+  role?: string;       // mantido para compatibilidade
   churchId?: number;
   avatarUrl?: string;
   isVerified: boolean;
@@ -46,7 +51,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
 
-  // Limpar dados do usuário
   const clearUserData = useCallback(() => {
     Cookies.remove('podplay_token', { path: '/' });
     Cookies.remove('podplay_refresh_token', { path: '/' });
@@ -56,7 +60,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     setUser(null);
   }, []);
 
-  // Carregar usuário do localStorage
   useEffect(() => {
     const loadUser = () => {
       const token = Cookies.get('podplay_token') || localStorage.getItem('podplay_token');
@@ -92,7 +95,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
     const { user: userData, accessToken, refreshToken } = result.data;
 
-    // Salvar tokens
     Cookies.set('podplay_token', accessToken, { expires: 7, path: '/' });
     Cookies.set('podplay_refresh_token', refreshToken, { expires: 7, path: '/' });
     localStorage.setItem('podplay_token', accessToken);
@@ -110,13 +112,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data),
     });
-
     const result = await response.json();
-
-    if (!response.ok) {
-      throw new Error(result.message || 'Erro no registro');
-    }
-
+    if (!response.ok) throw new Error(result.message || 'Erro no registro');
     return result.data;
   };
 
@@ -126,13 +123,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ identifier, code }),
     });
-
     const result = await response.json();
-
-    if (!response.ok) {
-      throw new Error(result.message || 'Erro na verificação');
-    }
-
+    if (!response.ok) throw new Error(result.message || 'Erro na verificação');
     return result.data;
   };
 
@@ -142,13 +134,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ identifier }),
     });
-
     const result = await response.json();
-
-    if (!response.ok) {
-      throw new Error(result.message || 'Erro ao reenviar código');
-    }
-
+    if (!response.ok) throw new Error(result.message || 'Erro ao reenviar código');
     return result.data;
   };
 
@@ -158,13 +145,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ identifier }),
     });
-
     const result = await response.json();
-
-    if (!response.ok) {
-      throw new Error(result.message || 'Erro ao solicitar recuperação');
-    }
-
+    if (!response.ok) throw new Error(result.message || 'Erro ao solicitar recuperação');
     return result.data;
   };
 
@@ -174,13 +156,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ identifier, code, newPassword }),
     });
-
     const result = await response.json();
-
-    if (!response.ok) {
-      throw new Error(result.message || 'Erro ao redefinir senha');
-    }
-
+    if (!response.ok) throw new Error(result.message || 'Erro ao redefinir senha');
     return result.data;
   };
 
@@ -217,12 +194,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ refreshToken }),
       });
-
       const result = await response.json();
-
-      if (!response.ok) {
-        throw new Error('Refresh token inválido');
-      }
+      if (!response.ok) throw new Error('Refresh token inválido');
 
       const { accessToken, refreshToken: newRefreshToken } = result.data;
 

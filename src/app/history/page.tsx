@@ -154,11 +154,9 @@ export default function HistoryPage() {
 
                   {/* Badge de concluído */}
                   {isDone && (
-                    <CheckCircle2
-                      size={18}
-                      className="text-green-400 flex-shrink-0"
-                      title="Concluído"
-                    />
+                    <div title="Concluído" className="flex-shrink-0">
+                      <CheckCircle2 size={18} className="text-green-400" />
+                    </div>
                   )}
 
                   {/* Apagar */}

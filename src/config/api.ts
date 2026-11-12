@@ -1,11 +1,11 @@
 // src/config/api.ts
-import Cookies from "js-cookie";
+import Cookies from "js-cookie"; 
 
 // URL da API PodPlay
-export const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3000";
+export const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3000/";
 
 // Endpoints da API
-export const API_ENDPOINTS = { 
+export const API_ENDPOINTS = {
   // Auth
   LOGIN: "/api/v1/auth/login",
   REGISTER: "/api/v1/auth/register",
