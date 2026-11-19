@@ -1,5 +1,5 @@
 // lib/historyApi.ts
-import { getApiUrl, getAuthHeaders } from '@/config/api';
+import { fetchWithAuth } from '@/config/api';
 
 // ============================================================
 // TIPOS — alinhados com o shape REAL do backend
@@ -59,12 +59,12 @@ export interface HistoryStats {
 // HELPER INTERNO
 // ============================================================
 
-async function jsonFetch<T>(url: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(url, {
+async function jsonFetch<T>(endpoint: string, init?: RequestInit): Promise<T> {
+  const res = await fetchWithAuth(endpoint, {
+    cache: 'no-store',
     ...init,
     headers: {
       'Content-Type': 'application/json',
-      ...getAuthHeaders(),
       ...(init?.headers ?? {}),
     },
   });
@@ -107,19 +107,26 @@ export const historyApi = {
    *  Se for 'music' ou 'video', o backend cria (ou reutiliza) um
    *  espelho na tabela `contents` para satisfazer a FK de `history_temp`.
    */
-  recordPlayback: (payload: {
+  recordPlayback: async (payload: {
     contentId: number;
     contentType?: 'content' | 'music' | 'video';   // 🔥 NOVO
-    progress: number;       // 0–100
+    progress: number;       // segundos ou progresso
+    lastPosition?: number;
+    totalDuration?: number;
     duration?: number;
     completed?: boolean;
     deviceType?: 'mobile' | 'desktop' | 'tablet' | 'tv';
     sessionId?: string;
-  }) =>
-    jsonFetch(`${getApiUrl('/api/v1/history/record')}`, {
+  }) => {
+    const data = await jsonFetch('/api/v1/history/record', {
       method: 'POST',
       body: JSON.stringify(payload),
-    }),
+    });
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('podplay:history-updated'));
+    }
+    return data;
+  },
 
   /** GET /api/v1/history
    *  Backend devolve: { success, message, data: { history: [...], pagination: {...} } }
@@ -138,8 +145,8 @@ export const historyApi = {
       completed: params?.completed,
     });
 
-    const res = await fetch(`${getApiUrl('/api/v1/history')}${qs}`, {
-      headers: getAuthHeaders(),
+    const res = await fetchWithAuth(`/api/v1/history${qs}`, {
+      cache: 'no-store',
     });
     const body = await res.json();
 
@@ -166,42 +173,52 @@ export const historyApi = {
   /** GET /api/v1/history/content/:id/resume */
   getResumePoint: (contentId: number | string) =>
     jsonFetch<ResumePoint | null>(
-      `${getApiUrl(`/api/v1/history/content/${contentId}/resume`)}`
+      `/api/v1/history/content/${contentId}/resume`
     ),
 
   /** GET /api/v1/history/content/:id/progress */
   getLastProgress: (contentId: number | string) =>
     jsonFetch<HistoryItem | null>(
-      `${getApiUrl(`/api/v1/history/content/${contentId}/progress`)}`
+      `/api/v1/history/content/${contentId}/progress`
     ),
 
   /** POST /api/v1/history/content/:id/complete */
   markCompleted: (contentId: number | string) =>
-    jsonFetch(`${getApiUrl(`/api/v1/history/content/${contentId}/complete`)}`, {
+    jsonFetch(`/api/v1/history/content/${contentId}/complete`, {
       method: 'POST',
     }),
 
   /** DELETE /api/v1/history/content/:id */
-  clearContent: (contentId: number | string) =>
-    jsonFetch(`${getApiUrl(`/api/v1/history/content/${contentId}`)}`, {
+  clearContent: async (contentId: number | string) => {
+    const data = await jsonFetch(`/api/v1/history/content/${contentId}`, {
       method: 'DELETE',
-    }),
+    });
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('podplay:history-updated'));
+    }
+    return data;
+  },
 
   /** DELETE /api/v1/history/clear-all */
-  clearAll: () =>
-    jsonFetch(`${getApiUrl('/api/v1/history/clear-all')}`, {
+  clearAll: async () => {
+    const data = await jsonFetch('/api/v1/history/clear-all', {
       method: 'DELETE',
-    }),
+    });
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('podplay:history-updated'));
+    }
+    return data;
+  },
 
   /** GET /api/v1/history/stats */
   getStats: (period?: 'day' | 'week' | 'month' | 'year' | 'all') => {
     const qs = buildQuery({ period });
-    return jsonFetch<HistoryStats>(`${getApiUrl('/api/v1/history/stats')}${qs}`);
+    return jsonFetch<HistoryStats>(`/api/v1/history/stats${qs}`);
   },
 
   /** POST /api/v1/history/sync */
   syncOffline: (items: any[], deviceId?: string) =>
-    jsonFetch(`${getApiUrl('/api/v1/history/sync')}`, {
+    jsonFetch('/api/v1/history/sync', {
       method: 'POST',
       body: JSON.stringify({ items, deviceId }),
     }),

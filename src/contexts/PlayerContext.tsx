@@ -11,6 +11,7 @@ import {
 } from 'react';
 import { getApiUrl } from '@/config/api';
 import { musicApi } from '@/lib/musicApi';
+import { historyApi } from '@/lib/historyApi';
 import { cacheAudioInBackground, getOfflineBlobUrl } from '@/lib/offlineStorage';
 
 // ============================================================
@@ -143,6 +144,8 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const playReportedRef = useRef<Set<string>>(new Set());
   const failedPlayRef = useRef<Set<string>>(new Set()); // 🔥 backoff
   const sessionIdRef = useRef<string>('ssr');
+  const lastHistoryRecordedIdRef = useRef<number | null>(null);
+  const lastHistorySyncAtRef = useRef<number>(0);
 
   // ---------- manter refs sincronizadas ----------
   useEffect(() => {
@@ -261,22 +264,63 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       }
     };
 
+    const syncHistory = (music: MusicItem, time: number, dur: number, completed = false) => {
+      const hasToken =
+        typeof window !== 'undefined' &&
+        (Boolean(localStorage.getItem('podplay_token')) ||
+          document.cookie.includes('podplay_token='));
+      if (!hasToken) return;
+      const safeDur = Math.round(dur || music.duration || 0);
+      const safeTime = Math.round(time || 0);
+      historyApi
+        .recordPlayback({
+          contentId: music.id,
+          contentType: 'music',
+          progress: safeTime,
+          lastPosition: safeTime,
+          totalDuration: safeDur,
+          completed,
+          deviceType: 'desktop',
+        })
+        .catch(() => {});
+    };
+
     const onTime = () => {
       setCurrentTime(audio.currentTime);
       if (Math.floor(audio.currentTime) % 5 === 0) {
         localStorage.setItem(STORAGE.TIME, String(audio.currentTime));
       }
       maybeReportPlay(audio.currentTime, audio.duration || 0);
+      const now = Date.now();
+      const music = currentMusicRef.current;
+      if (music && now - lastHistorySyncAtRef.current >= 15_000) {
+        lastHistorySyncAtRef.current = now;
+        lastHistoryRecordedIdRef.current = music.id;
+        syncHistory(music, audio.currentTime, audio.duration || 0, false);
+      }
     };
 
     const onEnded = () => {
       localStorage.setItem(STORAGE.TIME, '0');
+      const music = currentMusicRef.current;
+      if (music) {
+        const dur = audio.duration || music.duration || 0;
+        syncHistory(music, dur, dur, true);
+      }
       handleEnded();
     };
 
     const onWaiting = () => setIsLoading(true);
     const onCanPlay = () => setIsLoading(false);
-    const onPlay = () => setIsPlaying(true);
+    const onPlay = () => {
+      setIsPlaying(true);
+      const music = currentMusicRef.current;
+      if (music && lastHistoryRecordedIdRef.current !== music.id) {
+        lastHistoryRecordedIdRef.current = music.id;
+        lastHistorySyncAtRef.current = Date.now();
+        syncHistory(music, audio.currentTime || 0, audio.duration || 0, false);
+      }
+    };
     const onPause = () => setIsPlaying(false);
     const onError = () => setIsLoading(false);
 

@@ -74,6 +74,10 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     localStorage.removeItem('podplay_token');
     localStorage.removeItem('podplay_refresh_token');
     localStorage.removeItem('podplay_user');
+    localStorage.removeItem('podplay_current_music');
+    localStorage.removeItem('podplay_current_time');
+    localStorage.removeItem('podplay_queue');
+    localStorage.removeItem('podplay_current_index');
     setUser(null);
   }, []);
 

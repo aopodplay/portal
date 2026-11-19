@@ -353,14 +353,20 @@ export default function Header() {
                     <Clock size={16} />
                     <span>Histórico</span>
                   </Link>
-                  {String((user as any)?.role || (user as any)?.type || '').toLowerCase() === 'admin' && (
+                  {['admin', 'moderator'].includes(
+                    String((user as any)?.role || (user as any)?.type || '').toLowerCase()
+                  ) && (
                     <Link
                       href="/controle"
                       className="flex items-center gap-3 px-4 py-2.5 text-sm text-gray-300 hover:bg-white/10 transition-colors"
                       onClick={() => setShowUserDropdown(false)}
                     >
                       <Settings size={16} />
-                      <span>Controlo Geral</span>
+                      <span>
+                        {String((user as any)?.role || '').toLowerCase() === 'moderator'
+                          ? 'Painel de Revisão'
+                          : 'Controlo Geral'}
+                      </span>
                     </Link>
                   )}
                   <div className="border-t border-white/10 my-1"></div>

@@ -22,6 +22,7 @@ import { getApiUrl } from '@/config/api';
 import { resolveCoverUrl } from '@/lib/media';
 
 const STORAGE_COLLAPSED = 'podplay_sidebar_collapsed';
+const STORAGE_BRANDING_LOGO = 'podplay_branding_logo';
 
 const menuItems = [
   { icon: Home, label: 'Início', href: '/' },
@@ -43,11 +44,21 @@ export default function PodPlaySidebar() {
 
   useEffect(() => {
     let cancelled = false;
-    fetch(getApiUrl('/api/v1/branding'))
+    try {
+      const cached = localStorage.getItem(STORAGE_BRANDING_LOGO);
+      if (cached) setLogoUrl(cached);
+    } catch {}
+
+    fetch(getApiUrl('/api/v1/branding'), { cache: 'no-store' })
       .then((r) => r.json())
       .then((b) => {
-        if (!cancelled && b?.success && b?.data?.logo_url) {
-          setLogoUrl(b.data.logo_url);
+        if (!cancelled && b?.success && b?.data) {
+          const nextUrl = b.data.logo_url || null;
+          setLogoUrl(nextUrl);
+          try {
+            if (nextUrl) localStorage.setItem(STORAGE_BRANDING_LOGO, nextUrl);
+            else localStorage.removeItem(STORAGE_BRANDING_LOGO);
+          } catch {}
         }
       })
       .catch(() => {});
@@ -55,6 +66,10 @@ export default function PodPlaySidebar() {
     const onBrandingUpdated = (e: Event) => {
       const url = (e as CustomEvent)?.detail?.logo_url ?? null;
       setLogoUrl(url);
+      try {
+        if (url) localStorage.setItem(STORAGE_BRANDING_LOGO, url);
+        else localStorage.removeItem(STORAGE_BRANDING_LOGO);
+      } catch {}
     };
     window.addEventListener('podplay:branding-updated', onBrandingUpdated);
     return () => {
@@ -73,11 +88,11 @@ export default function PodPlaySidebar() {
     return () => window.removeEventListener('podplay:toggle-mobile-sidebar', onToggle);
   }, []);
 
-  // Controlo Geral apenas para utilizadores com tipo/role === 'admin'
+  // Controlo Geral / Revisão para utilizadores com tipo/role === 'admin' ou 'moderator' (Revisor)
   const userType = String(
     (user as any)?.role || (user as any)?.type || (user as any)?.perfil || ''
   ).toLowerCase();
-  const isAdmin = Boolean(user && userType === 'admin');
+  const isAdmin = Boolean(user && (userType === 'admin' || userType === 'moderator'));
 
   useEffect(() => {
     if (typeof window === 'undefined') return;

@@ -476,12 +476,37 @@ export default function HomePage() {
 
   const favKey = (contentType: ContentType, id: number) => `${contentType}:${id}`;
 
-  const churchEvents = [
+  const defaultChurchEvents = [
     { title: 'Domingo — Pr. Carlos', description: 'Culto de Celebração', date: '26 Abril 2026', icon: Mic },
     { title: 'Estudo Bíblico — Romanos', description: 'Célula de Quarta-feira', date: 'Quarta - Célula', icon: Book },
     { title: 'Louvor & Adoração', description: 'Equipa de Louvor', date: 'Ensaio semanal', icon: DiscAlbum },
     { title: 'Próximo directo', description: 'Transmissão ao vivo', date: 'Domingo 09:00', icon: Radio },
   ];
+  const [platformEvents, setPlatformEvents] = useState<any[]>([]);
+
+  useEffect(() => {
+    fetch(getApiUrl('/api/v1/events'), { cache: 'no-store' })
+      .then((r) => r.json())
+      .then((b) => {
+        if (b?.success && Array.isArray(b.data) && b.data.length > 0) {
+          setPlatformEvents(b.data);
+        }
+      })
+      .catch(() => {});
+  }, []);
+
+  const eventsOnly = platformEvents.filter((ev) => ev.category !== 'publicidade');
+  const adsList = platformEvents.filter((ev) => ev.category === 'publicidade');
+
+  const churchEvents =
+    eventsOnly.length > 0
+      ? eventsOnly.map((ev) => ({
+          title: ev.title,
+          description: ev.description || ev.location || 'Evento da Plataforma',
+          date: ev.event_date || new Date(ev.created_at).toLocaleDateString('pt-PT'),
+          icon: Radio,
+        }))
+      : defaultChurchEvents;
 
   const registrarReproducao = useCallback(
     (contentId: number, contentType: 'music' | 'video') => {
@@ -814,7 +839,63 @@ export default function HomePage() {
   }, [albums]);
 
   const musicCards = useMemo(() => topPlayedMusic.slice(0, 6), [topPlayedMusic]);
-  const recentMusic = useMemo(() => allMusic.slice(0, 5), [allMusic]);
+  const [continueListening, setContinueListening] = useState<Array<{ music: MusicItem; progressPct: number }>>([]);
+
+  useEffect(() => {
+    if (!user?.id) {
+      setContinueListening([]);
+      return;
+    }
+    let cancelled = false;
+
+    const loadUserContinue = async () => {
+      try {
+        const res = await historyApi.getHistory({ page: 1, limit: 12, type: 'AUDIO' });
+        if (cancelled) return;
+        const byId = new Map(allMusic.map((m) => [m.id, m]));
+        const seen = new Set<number>();
+        const list: Array<{ music: MusicItem; progressPct: number }> = [];
+
+        for (const h of res.items) {
+          const mid = h.music_id ?? (h.source === 'music' ? h.source_id : null);
+          if (!mid || seen.has(mid)) continue;
+          const matched = byId.get(mid) || (h.audio_url
+            ? ({
+                id: mid,
+                title: h.title,
+                artist: h.full_name || h.username || 'PodFéPlay',
+                album: null,
+                duration: h.duration ?? h.total_duration ?? null,
+                file_path: h.audio_url,
+                file_size: 0,
+                cover_image: h.cover_url,
+                created_at: h.created_at,
+              } as MusicItem)
+            : null);
+          if (!matched) continue;
+          seen.add(mid);
+          const rawPct = Number(h.progress_percentage ?? 0);
+          const pct = Number.isFinite(rawPct) && rawPct > 0
+            ? Math.min(100, Math.round(rawPct))
+            : h.completed
+              ? 100
+              : 10;
+          list.push({ music: matched, progressPct: pct });
+        }
+        setContinueListening(list);
+      } catch {
+        if (!cancelled) setContinueListening([]);
+      }
+    };
+
+    loadUserContinue();
+    window.addEventListener('podplay:history-updated', loadUserContinue);
+    return () => {
+      cancelled = true;
+      window.removeEventListener('podplay:history-updated', loadUserContinue);
+    };
+  }, [user?.id, allMusic]);
+
   const featuredVideos = useMemo(() => {
     return [...filteredVideos]
       .sort((a, b) => (b.views ?? 0) - (a.views ?? 0))
@@ -822,7 +903,6 @@ export default function HomePage() {
   }, [filteredVideos]);
 
   const handlePlayMusic = (music: MusicItem) => {
-    registrarReproducao(music.id, 'music');
     refreshMetrics('music', music.id);
 
     if (allMusic.length === 0) {
@@ -943,7 +1023,7 @@ export default function HomePage() {
           </div>
 
           {/* CONTINUE A OUVIR (cards horizontais estilo Spotify) */}
-          {activeCategory === 'all' && user && recentMusic.length > 0 && (
+          {activeCategory === 'all' && user && continueListening.length > 0 && (
             <section className="mb-8">
               <div className="flex items-center justify-between mb-3.5">
                 <div>
@@ -955,9 +1035,9 @@ export default function HomePage() {
                 </Link>
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5">
-                {recentMusic.slice(0, 6).map((music, idx) => {
+                {continueListening.slice(0, 6).map(({ music, progressPct }) => {
                   const playingThis = isCurrentMusicPlaying(music);
-                  const pct = Math.min(92, 35 + ((idx * 17) % 55));
+                  const pct = progressPct;
                   return (
                     <div
                       key={`continue-${music.id}`}
@@ -1278,6 +1358,81 @@ export default function HomePage() {
                       ))}
                     </div>
                   )}
+                </section>
+              )}
+
+              {/* PUBLICIDADES & DESTAQUES (entre a penúltima e a última secção) */}
+              {activeCategory === 'all' && adsList.length > 0 && (
+                <section className="mb-10">
+                  <div className="flex items-center justify-between mb-3.5">
+                    <div>
+                      <h3 className="text-lg font-bold text-white">Publicidades & Destaques</h3>
+                      <p className="text-xs text-gray-400">Novidades e parceiros da plataforma</p>
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {adsList.map((ad) => {
+                      const content = (
+                        <div className="group relative rounded-2xl overflow-hidden border border-white/10 bg-gradient-to-r from-purple-900/50 via-slate-900/80 to-pink-900/40 hover:border-purple-400/50 transition-all shadow-lg">
+                          {ad.banner_url ? (
+                            <div className="relative h-44 w-full overflow-hidden">
+                              <img
+                                src={resolveCoverUrl(ad.banner_url)}
+                                alt={ad.title}
+                                className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                              />
+                              <div className="absolute inset-0 bg-gradient-to-t from-slate-950/90 via-slate-950/35 to-transparent" />
+                              <div className="absolute bottom-0 left-0 right-0 p-4">
+                                <span className="inline-block text-[10px] uppercase tracking-wider font-semibold px-2 py-0.5 rounded-full bg-pink-500/80 text-white mb-1.5">
+                                  Publicidade
+                                </span>
+                                <h4 className="text-base font-bold text-white truncate">{ad.title}</h4>
+                                {ad.description && (
+                                  <p className="text-xs text-gray-200 line-clamp-2 mt-0.5">{ad.description}</p>
+                                )}
+                              </div>
+                            </div>
+                          ) : (
+                            <div className="p-5 flex items-center justify-between gap-4">
+                              <div className="min-w-0">
+                                <span className="inline-block text-[10px] uppercase tracking-wider font-semibold px-2 py-0.5 rounded-full bg-pink-500/20 text-pink-300 border border-pink-500/30 mb-2">
+                                  Publicidade
+                                </span>
+                                <h4 className="text-base font-bold text-white truncate">{ad.title}</h4>
+                                {ad.description && (
+                                  <p className="text-xs text-gray-300 line-clamp-2 mt-1">{ad.description}</p>
+                                )}
+                                {(ad.event_date || ad.location) && (
+                                  <p className="text-[11px] text-purple-300 mt-2">
+                                    {[ad.event_date, ad.location].filter(Boolean).join(' · ')}
+                                  </p>
+                                )}
+                              </div>
+                              {ad.link_url && (
+                                <span className="px-3.5 py-2 rounded-full bg-purple-600 group-hover:bg-purple-500 text-xs font-semibold text-white flex-shrink-0">
+                                  Saiba mais
+                                </span>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      );
+
+                      return ad.link_url ? (
+                        <a
+                          key={`ad-${ad.id}`}
+                          href={ad.link_url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="block"
+                        >
+                          {content}
+                        </a>
+                      ) : (
+                        <div key={`ad-${ad.id}`}>{content}</div>
+                      );
+                    })}
+                  </div>
                 </section>
               )}
 

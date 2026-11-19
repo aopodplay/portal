@@ -114,6 +114,7 @@ async function uploadDirectTus(
 
 export default function AddVideoModal({ open, onClose, onSuccess }: AddVideoModalProps) {
   const [title, setTitle] = useState('');
+  const [category, setCategory] = useState('video');
   const [description, setDescription] = useState('');
   const [videoFile, setVideoFile] = useState<File | null>(null);
   const [thumbFile, setThumbFile] = useState<File | null>(null);
@@ -188,6 +189,7 @@ export default function AddVideoModal({ open, onClose, onSuccess }: AddVideoModa
       const confirmFd = new FormData();
       confirmFd.append('uid', uid);
       confirmFd.append('title', title.trim());
+      confirmFd.append('category', category);
       if (description.trim()) confirmFd.append('description', description.trim());
       confirmFd.append('comments_locked', String(commentsLocked));
       confirmFd.append('file_size', String(videoFile.size));
@@ -261,6 +263,25 @@ export default function AddVideoModal({ open, onClose, onSuccess }: AddVideoModa
               disabled={submitting}
               className="w-full px-3.5 py-2.5 rounded-xl bg-white/5 border border-white/10 text-sm text-white placeholder-gray-500 focus:outline-none focus:border-purple-500 disabled:opacity-60"
             />
+          </div>
+
+          <div>
+            <label className="block text-xs font-medium text-gray-300 mb-1.5">
+              Categoria *
+            </label>
+            <select
+              value={category}
+              onChange={(e) => setCategory(e.target.value)}
+              disabled={submitting}
+              className="w-full px-3.5 py-2.5 rounded-xl bg-slate-800 border border-white/10 text-sm text-white focus:outline-none focus:border-purple-500 disabled:opacity-60"
+            >
+              <option value="video">Vídeo / Clipe</option>
+              <option value="sermao">Sermão</option>
+              <option value="podcast">Podcast</option>
+              <option value="estudo">Estudo Bíblico</option>
+              <option value="culto">Culto / Conferência</option>
+              <option value="outro">Outro</option>
+            </select>
           </div>
 
           <div>

@@ -12,8 +12,10 @@ import {
   AlertCircle,
 } from 'lucide-react';
 import { historyApi, HistoryItem } from '@/lib/historyApi';
+import { useAuth } from '@/contexts/AuthContext';
 
 export default function HistoryPage() {
+  const { user } = useAuth();
   const [items, setItems] = useState<HistoryItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -21,6 +23,12 @@ export default function HistoryPage() {
   const [totalPages, setTotalPages] = useState(1);
 
   const load = async (p = 1) => {
+    if (!user?.id) {
+      setItems([]);
+      setTotalPages(1);
+      setLoading(false);
+      return;
+    }
     setLoading(true);
     setError('');
     try {
@@ -36,7 +44,8 @@ export default function HistoryPage() {
 
   useEffect(() => {
     load(page);
-  }, [page]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [page, user?.id]);
 
   const handleDelete = async (contentId: number) => {
     if (!confirm('Remover este item do histórico?')) return;
