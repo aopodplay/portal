@@ -1,11 +1,12 @@
 // app/videos/page.tsx
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import Header from '@/components/layout/Header';
 import PlayerBar from '@/components/PlayerBar';
 import VideoPlayerModal from '@/components/VideoPlayerModal';
+import AddVideoModal from '@/components/AddVideoModal';
 import PodPlaySidebar from '@/components/PodPlaySidebar';
 import {
   Play,
@@ -15,8 +16,11 @@ import {
   Clock,
   Loader2,
   X,
+  Plus,
+  Sparkles,
+  Repeat,
 } from 'lucide-react';
-import { getApiUrl, getAuthHeaders } from '@/config/api';
+import { fetchWithAuth, getApiUrl, getAuthHeaders } from '@/config/api';
 import { resolveThumbUrl } from '@/lib/media';
 
 // =====================================================================
@@ -34,6 +38,9 @@ interface VideoItem {
   file_size: number;
   views: number;
   likes: number;
+  user_id?: number | null;
+  comments_locked?: boolean | number;
+  user_play_count?: number;
   created_at: string;
 }
 
@@ -44,9 +51,11 @@ interface VideoItem {
 const VideoCard = ({
   video,
   onPlay,
+  badge,
 }: {
   video: VideoItem;
   onPlay: (video: VideoItem) => void;
+  badge?: string;
 }) => {
   const thumbUrl = resolveThumbUrl(video.thumbnail_path);
   const durationLabel =
@@ -85,10 +94,17 @@ const VideoCard = ({
             {durationLabel}
           </span>
         )}
-        {video.resolution && (
-          <span className="absolute top-2 left-2 text-xs font-semibold bg-purple-600 text-white px-1.5 py-0.5 rounded">
-            {video.resolution}
+        {badge ? (
+          <span className="absolute top-2 left-2 text-[11px] font-semibold bg-purple-600/90 text-white px-2 py-0.5 rounded-full flex items-center gap-1">
+            <Repeat size={10} />
+            {badge}
           </span>
+        ) : (
+          video.resolution && (
+            <span className="absolute top-2 left-2 text-xs font-semibold bg-purple-600 text-white px-1.5 py-0.5 rounded">
+              {video.resolution}
+            </span>
+          )
         )}
       </div>
       <div className="p-3">
@@ -119,41 +135,80 @@ const VideoCard = ({
 export default function VideosPage() {
   const { user } = useAuth();
   const [allVideos, setAllVideos] = useState<VideoItem[]>([]);
+  const [mixVideos, setMixVideos] = useState<VideoItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedVideo, setSelectedVideo] = useState<VideoItem | null>(null);
+  const [activeQueue, setActiveQueue] = useState<VideoItem[] | null>(null);
+  const [showAddModal, setShowAddModal] = useState(false);
 
   // ---------- Carregar vídeos ----------
-  useEffect(() => {
-    const loadVideos = async () => {
-      try {
-        setLoading(true);
-        setError(null);
-        const response = await fetch(getApiUrl('/api/v1/videos'), {
-          headers: getAuthHeaders(),
-        });
-        const result = await response.json();
+  const loadVideos = useCallback(async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      const response = await fetch(getApiUrl('/api/v1/videos'), {
+        headers: getAuthHeaders(),
+      });
+      const result = await response.json();
 
-        if (result.success && result.data) {
-          const items: VideoItem[] = Array.isArray(result.data)
-            ? result.data
-            : Array.isArray(result.data.items)
-              ? result.data.items
-              : [];
-          setAllVideos(items);
-        } else {
-          setError(result.message || 'Erro ao carregar vídeos');
-        }
-      } catch (err) {
-        console.error('Erro ao carregar vídeos:', err);
-        setError('Erro ao carregar vídeos');
-      } finally {
-        setLoading(false);
+      if (result.success && result.data) {
+        const items: VideoItem[] = Array.isArray(result.data)
+          ? result.data
+          : Array.isArray(result.data.items)
+            ? result.data.items
+            : [];
+        setAllVideos(items);
+      } else {
+        setError(result.message || 'Erro ao carregar vídeos');
       }
-    };
-    loadVideos();
+    } catch (err) {
+      console.error('Erro ao carregar vídeos:', err);
+      setError('Erro ao carregar vídeos');
+    } finally {
+      setLoading(false);
+    }
   }, []);
+
+  // ---------- Carregar Mix personalizado ----------
+  const loadMix = useCallback(async () => {
+    if (!user) {
+      setMixVideos([]);
+      return;
+    }
+    try {
+      const res = await fetchWithAuth('/api/v1/videos/mix');
+      if (!res.ok) return;
+      const body = await res.json();
+      if (body?.success && Array.isArray(body.data?.videos)) {
+        setMixVideos(body.data.videos);
+      }
+    } catch {
+      // Silencioso
+    }
+  }, [user]);
+
+  useEffect(() => {
+    loadVideos();
+  }, [loadVideos]);
+
+  useEffect(() => {
+    loadMix();
+  }, [loadMix]);
+
+  // ---------- Abrir vídeo via query ?v=ID ----------
+  useEffect(() => {
+    if (typeof window === 'undefined' || allVideos.length === 0) return;
+    const params = new URLSearchParams(window.location.search);
+    const vParam = params.get('v');
+    if (vParam) {
+      const target = allVideos.find((v) => String(v.id) === vParam);
+      if (target) {
+        setSelectedVideo(target);
+      }
+    }
+  }, [allVideos]);
 
   // ---------- Filtro local ----------
   const filteredVideos = useMemo(() => {
@@ -166,30 +221,45 @@ export default function VideosPage() {
     );
   }, [allVideos, searchQuery]);
 
-  const handlePlayVideo = (video: VideoItem) => {
+  const handlePlayVideo = (video: VideoItem, customQueue?: VideoItem[]) => {
+    setActiveQueue(customQueue || null);
     setSelectedVideo(video);
   };
 
-  // =====================================================================
-  // RENDER
-  // =====================================================================
+  const handleClosePlayer = () => {
+    setSelectedVideo(null);
+    setActiveQueue(null);
+    loadMix();
+  };
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-slate-900 via-purple-900 to-slate-900">
       <PodPlaySidebar />
 
-      <main className="ml-64 min-h-screen pb-24 transition-all duration-300">
+      <main className="ml-0 md:ml-60 min-h-screen pb-24 transition-all duration-300">
         <Header />
 
         <div className="p-6">
-          <div className="mb-6">
-            <div className="flex items-center gap-3 mb-1">
-              <VideoIcon size={28} className="text-purple-400" />
-              <h1 className="text-3xl font-bold text-white">Vídeos</h1>
+          <div className="mb-6 flex flex-wrap items-center justify-between gap-4">
+            <div>
+              <div className="flex items-center gap-3 mb-1">
+                <VideoIcon size={28} className="text-purple-400" />
+                <h1 className="text-3xl font-bold text-white">Vídeos</h1>
+              </div>
+              <p className="text-purple-200 text-sm">
+                Todos os vídeos disponíveis na Podfe Play
+              </p>
             </div>
-            <p className="text-purple-200 text-sm">
-              Todos os vídeos disponíveis na Podfe Play
-            </p>
+
+            {user && (
+              <button
+                onClick={() => setShowAddModal(true)}
+                className="inline-flex items-center gap-2 px-4 py-2.5 rounded-full bg-purple-600 hover:bg-purple-500 text-white text-sm font-medium shadow-lg shadow-purple-600/25 transition-all"
+              >
+                <Plus size={18} />
+                <span>Adicionar Vídeo</span>
+              </button>
+            )}
           </div>
 
           {/* Barra de busca */}
@@ -223,6 +293,40 @@ export default function VideosPage() {
               </p>
             )}
           </div>
+
+          {/* Mix Personalizado (estilo YouTube, baseado em vídeos repetidos) */}
+          {!loading && !searchQuery && mixVideos.length > 0 && (
+            <section className="mb-8 p-5 rounded-2xl bg-gradient-to-r from-purple-900/50 via-indigo-900/40 to-slate-900/60 border border-purple-500/20">
+              <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <Sparkles size={18} className="text-purple-300" />
+                    <h2 className="text-lg font-bold text-white">O teu Mix de Vídeos</h2>
+                  </div>
+                  <p className="text-xs text-purple-200/80 mt-0.5">
+                    Criado automaticamente com os vídeos que mais repetes
+                  </p>
+                </div>
+                <button
+                  onClick={() => handlePlayVideo(mixVideos[0], mixVideos)}
+                  className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-purple-600 hover:bg-purple-500 text-white text-xs font-semibold transition-all"
+                >
+                  <Play size={14} />
+                  <span>Reproduzir Mix</span>
+                </button>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
+                {mixVideos.slice(0, 5).map((video) => (
+                  <VideoCard
+                    key={`mix-${video.id}`}
+                    video={video}
+                    badge={`Visto ${video.user_play_count}×`}
+                    onPlay={(v) => handlePlayVideo(v, mixVideos)}
+                  />
+                ))}
+              </div>
+            </section>
+          )}
 
           {loading && (
             <div className="flex justify-center py-20">
@@ -264,7 +368,11 @@ export default function VideosPage() {
           {!loading && !error && filteredVideos.length > 0 && (
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
               {filteredVideos.map((video) => (
-                <VideoCard key={video.id} video={video} onPlay={handlePlayVideo} />
+                <VideoCard
+                  key={video.id}
+                  video={video}
+                  onPlay={(v) => handlePlayVideo(v, filteredVideos)}
+                />
               ))}
             </div>
           )}
@@ -275,7 +383,17 @@ export default function VideosPage() {
 
       <VideoPlayerModal
         video={selectedVideo}
-        onClose={() => setSelectedVideo(null)}
+        videos={activeQueue || filteredVideos}
+        onSelectVideo={(v) => setSelectedVideo(v)}
+        onClose={handleClosePlayer}
+      />
+
+      <AddVideoModal
+        open={showAddModal}
+        onClose={() => setShowAddModal(false)}
+        onSuccess={() => {
+          loadVideos();
+        }}
       />
 
       <style jsx global>{`

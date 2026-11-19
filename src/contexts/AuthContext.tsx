@@ -1,9 +1,21 @@
 // src/contexts/AuthContext.tsx
 'use client';
 
-import { createContext, useContext, useEffect, useState, ReactNode, useCallback } from 'react';
+import { createContext, useContext, useEffect, useState, ReactNode, useCallback, useRef } from 'react';
 import Cookies from 'js-cookie';
-import { API_ENDPOINTS, getApiUrl } from '@/config/api';
+import { API_ENDPOINTS, fetchWithAuth, getApiUrl, refreshSessionToken } from '@/config/api';
+
+function getTokenExpirationMs(token: string | null | undefined): number | null {
+  if (!token) return null;
+  try {
+    const parts = token.split('.');
+    if (parts.length !== 3) return null;
+    const payload = JSON.parse(atob(parts[1].replace(/-/g, '+').replace(/_/g, '/')));
+    return typeof payload.exp === 'number' ? payload.exp * 1000 : null;
+  } catch {
+    return null;
+  }
+}
 
 export type Perfil = 'admin' | 'recepcao' | 'caixa' | 'optometrista';
 
@@ -13,10 +25,10 @@ export interface User {
   email?: string;
   phone?: string;
   fullName?: string;
-  nome?: string;       // 👈 adicionado (Sidebar usa user.nome)
-  perfil?: Perfil;     // 👈 adicionado (Sidebar usa user.perfil)
-  foto?: string | null; // 👈 adicionado (Sidebar usa user.foto)
-  role?: string;       // mantido para compatibilidade
+  nome?: string;      
+  perfil?: Perfil;     
+  foto?: string | null; 
+  role?: string;       
   churchId?: number;
   avatarUrl?: string;
   isVerified: boolean;
@@ -50,8 +62,13 @@ const AuthContext = createContext<AuthContextType>({} as AuthContextType);
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
+  const refreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const clearUserData = useCallback(() => {
+    if (refreshTimerRef.current) {
+      clearTimeout(refreshTimerRef.current);
+      refreshTimerRef.current = null;
+    }
     Cookies.remove('podplay_token', { path: '/' });
     Cookies.remove('podplay_refresh_token', { path: '/' });
     localStorage.removeItem('podplay_token');
@@ -60,15 +77,75 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     setUser(null);
   }, []);
 
+  const syncUserProfile = useCallback(async () => {
+    try {
+      const response = await fetchWithAuth(API_ENDPOINTS.PROFILE);
+      if (!response.ok) return;
+      const result = await response.json();
+      if (result?.success && result?.data) {
+        const profileData = result.data;
+        setUser((prev) => {
+          if (!prev) return prev;
+          const merged: User = {
+            ...prev,
+            username: profileData.username || prev.username,
+            email: profileData.email ?? prev.email,
+            phone: profileData.phone ?? prev.phone,
+            fullName: profileData.full_name ?? prev.fullName,
+            avatarUrl: profileData.avatar_url ?? prev.avatarUrl,
+            foto: profileData.avatar_url ?? prev.foto,
+          };
+          localStorage.setItem('podplay_user', JSON.stringify(merged));
+          return merged;
+        });
+      }
+    } catch {
+      // Silencioso: mantém dados em cache se offline
+    }
+  }, []);
+
+  const scheduleProactiveRefresh = useCallback((token: string | null) => {
+    if (refreshTimerRef.current) {
+      clearTimeout(refreshTimerRef.current);
+      refreshTimerRef.current = null;
+    }
+    const expMs = getTokenExpirationMs(token);
+    if (!expMs) return;
+
+    // Renovar 60 segundos antes de expirar (mínimo 5s)
+    const delayMs = Math.max(expMs - Date.now() - 60_000, 5_000);
+    refreshTimerRef.current = setTimeout(async () => {
+      const newToken = await refreshSessionToken();
+      if (newToken) {
+        scheduleProactiveRefresh(newToken);
+      }
+    }, delayMs);
+  }, []);
+
   useEffect(() => {
-    const loadUser = () => {
-      const token = Cookies.get('podplay_token') || localStorage.getItem('podplay_token');
+    const loadUser = async () => {
+      let token = Cookies.get('podplay_token') || localStorage.getItem('podplay_token');
+      const refreshToken = Cookies.get('podplay_refresh_token') || localStorage.getItem('podplay_refresh_token');
       const storedUser = localStorage.getItem('podplay_user');
 
-      if (token && storedUser) {
+      if (storedUser && (token || refreshToken)) {
         try {
           const parsedUser: User = JSON.parse(storedUser);
           setUser(parsedUser);
+
+          // Se o token está ausente, expirado ou a menos de 2 min de expirar, renova já
+          const expMs = getTokenExpirationMs(token);
+          if (!token || (expMs && expMs - Date.now() < 120_000)) {
+            const renewed = await refreshSessionToken();
+            if (renewed) {
+              token = renewed;
+            }
+          }
+
+          if (token) {
+            scheduleProactiveRefresh(token);
+            syncUserProfile();
+          }
         } catch (error) {
           console.error('Erro ao carregar usuário:', error);
           clearUserData();
@@ -78,7 +155,35 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     };
 
     loadUser();
-  }, [clearUserData]);
+
+    const handleTokenRefreshed = (e: Event) => {
+      const customEvent = e as CustomEvent<{ accessToken: string }>;
+      if (customEvent.detail?.accessToken) {
+        scheduleProactiveRefresh(customEvent.detail.accessToken);
+      }
+    };
+
+    const handleVisibilityChange = async () => {
+      if (document.visibilityState !== 'visible') return;
+      const token = localStorage.getItem('podplay_token') || Cookies.get('podplay_token');
+      const expMs = getTokenExpirationMs(token);
+      if (token && expMs && expMs - Date.now() < 120_000) {
+        const renewed = await refreshSessionToken();
+        if (renewed) {
+          scheduleProactiveRefresh(renewed);
+        }
+      }
+    };
+
+    window.addEventListener('podplay:token-refreshed', handleTokenRefreshed);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    return () => {
+      if (refreshTimerRef.current) clearTimeout(refreshTimerRef.current);
+      window.removeEventListener('podplay:token-refreshed', handleTokenRefreshed);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, [clearUserData, scheduleProactiveRefresh, syncUserProfile]);
 
   const login = async (identifier: string, password: string) => {
     const response = await fetch(getApiUrl(API_ENDPOINTS.LOGIN), {
@@ -102,6 +207,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     localStorage.setItem('podplay_user', JSON.stringify(userData));
 
     setUser(userData);
+    scheduleProactiveRefresh(accessToken);
+    syncUserProfile();
 
     return { user: userData, accessToken, refreshToken };
   };
@@ -180,44 +287,26 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       console.error('Erro no logout:', error);
     } finally {
       clearUserData();
-      window.location.replace('/login');
+      window.location.replace('/');
     }
   };
 
   const refreshAccessToken = async (): Promise<string | null> => {
-    const refreshToken = localStorage.getItem('podplay_refresh_token');
-    if (!refreshToken) return null;
-
-    try {
-      const response = await fetch(getApiUrl(API_ENDPOINTS.REFRESH_TOKEN), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ refreshToken }),
-      });
-      const result = await response.json();
-      if (!response.ok) throw new Error('Refresh token inválido');
-
-      const { accessToken, refreshToken: newRefreshToken } = result.data;
-
-      Cookies.set('podplay_token', accessToken, { expires: 7, path: '/' });
-      Cookies.set('podplay_refresh_token', newRefreshToken, { expires: 7, path: '/' });
-      localStorage.setItem('podplay_token', accessToken);
-      localStorage.setItem('podplay_refresh_token', newRefreshToken);
-
-      return accessToken;
-    } catch (error) {
-      console.error('Erro ao renovar token:', error);
-      await logout();
-      return null;
+    const newAccessToken = await refreshSessionToken();
+    if (newAccessToken) {
+      scheduleProactiveRefresh(newAccessToken);
+      return newAccessToken;
     }
+    return null;
   };
 
   const updateUser = (userData: Partial<User>) => {
-    if (user) {
-      const updatedUser = { ...user, ...userData };
-      setUser(updatedUser);
+    setUser((prev) => {
+      if (!prev) return prev;
+      const updatedUser = { ...prev, ...userData };
       localStorage.setItem('podplay_user', JSON.stringify(updatedUser));
-    }
+      return updatedUser;
+    });
   };
 
   return (

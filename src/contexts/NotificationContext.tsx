@@ -27,7 +27,7 @@ interface NotificationContextData {
 const NotificationContext = createContext<NotificationContextData | undefined>(undefined);
 
 export const NotificationProvider = ({ children }: { children: ReactNode }) => {
-  const { user } = useAuth(); // 👈 removido `socket` daqui
+  const { user } = useAuth(); // removido `socket` daqui
   const [notifications, setNotifications] = useState<Notificacao[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -57,13 +57,9 @@ export const NotificationProvider = ({ children }: { children: ReactNode }) => {
         localStorage.removeItem('podplay_token');
         Cookies.remove('podplay_token');
         localStorage.removeItem('podplay_user');
-        setError('Sessão expirada. Faça login novamente.');
+        setError('Sessão expirada.');
         setNotifications([]);
         setLoading(false);
-        
-        setTimeout(() => {
-          window.location.href = '/login';
-        }, 2000);
         return;
       }
       

@@ -438,7 +438,7 @@ function SearchPageContent() {
     <div className="min-h-screen bg-gradient-to-b from-slate-900 via-purple-900 to-slate-900">
       <PodPlaySidebar />
 
-      <main className="ml-64 min-h-screen pb-24 transition-all duration-300">
+      <main className="ml-0 md:ml-64 min-h-screen pb-24 transition-all duration-300">
         <Header />
 
         <div className="max-w-6xl mx-auto px-4 py-8">
@@ -660,7 +660,7 @@ export default function SearchPage() {
       fallback={
         <div className="min-h-screen bg-gradient-to-b from-slate-900 via-purple-900 to-slate-900">
           <PodPlaySidebar />
-          <main className="ml-64 min-h-screen flex items-center justify-center">
+          <main className="ml-0 md:ml-64 min-h-screen flex items-center justify-center">
             <Loader2 size={40} className="text-purple-500 animate-spin" />
           </main>
         </div>

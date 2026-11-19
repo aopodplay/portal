@@ -20,9 +20,19 @@ import {
   AlertCircle,
   Trash2,
   X,
+  WifiOff,
+  Video as VideoIcon,
 } from 'lucide-react';
 import { API_ENDPOINTS, getApiUrl, getAuthHeaders } from '@/config/api';
 import { historyApi, HistoryItem as HistoryRecord } from '@/lib/historyApi';
+import VideoPlayerModal from '@/components/VideoPlayerModal';
+import {
+  listOfflineDownloads,
+  removeOfflineMedia,
+  formatBytes,
+  type OfflineMediaRecord,
+} from '@/lib/offlineStorage';
+import { resolveThumbUrl } from '@/lib/media';
 
 // =====================================================================
 // TIPOS
@@ -226,6 +236,8 @@ export default function LibraryPage() {
 
   const [favorites, setFavorites] = useState<LibraryItem[]>([]);
   const [downloads, setDownloads] = useState<LibraryItem[]>([]);
+  const [offlineItems, setOfflineItems] = useState<OfflineMediaRecord[]>([]);
+  const [selectedOfflineVideo, setSelectedOfflineVideo] = useState<any | null>(null);
   const [history, setHistory] = useState<HistoryRecord[]>([]);
   const [summary, setSummary] = useState({
     counts: { favorites: 0, downloads: 0, history: 0 },
@@ -287,6 +299,47 @@ export default function LibraryPage() {
       setError(err?.message || 'Erro ao carregar dados');
     } finally {
       setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    listOfflineDownloads().then(setOfflineItems);
+  }, [activeTab]);
+
+  const handleRemoveOffline = async (item: OfflineMediaRecord) => {
+    await removeOfflineMedia(item.type, item.id);
+    setOfflineItems((prev) => prev.filter((x) => x.key !== item.key));
+  };
+
+  const handlePlayOffline = (item: OfflineMediaRecord) => {
+    if (item.type === 'video') {
+      setSelectedOfflineVideo({
+        id: item.id,
+        title: item.title,
+        description: item.subtitle,
+        duration: item.duration ?? null,
+        file_path: '',
+        thumbnail_path: item.coverUrl ?? null,
+        file_size: item.sizeBytes,
+        views: 0,
+        likes: 0,
+        created_at: item.savedAt,
+      });
+    } else {
+      play(
+        {
+          id: item.id,
+          title: item.title,
+          artist: item.subtitle,
+          album: null,
+          duration: item.duration ?? 0,
+          file_path: '',
+          file_size: item.sizeBytes,
+          cover_image: item.coverUrl ?? null,
+          created_at: item.savedAt,
+        },
+        true
+      );
     }
   };
 
@@ -391,7 +444,7 @@ export default function LibraryPage() {
     <div className="min-h-screen bg-gradient-to-b from-slate-900 via-purple-900 to-slate-900">
       <PodPlaySidebar />
 
-      <main className="ml-64 min-h-screen pb-24 transition-all duration-300">
+      <main className="ml-0 md:ml-64 min-h-screen pb-24 transition-all duration-300">
         <Header />
 
         <div className="max-w-6xl mx-auto px-4 py-8">
@@ -490,6 +543,64 @@ export default function LibraryPage() {
           </div>
 
           {/* Conteúdo */}
+          {activeTab === 'downloads' && offlineItems.length > 0 && (
+            <section className="mb-8">
+              <div className="flex items-center gap-2 mb-3">
+                <WifiOff size={18} className="text-emerald-400" />
+                <h2 className="text-base font-bold text-white">
+                  Guardados para Ver Offline ({offlineItems.length})
+                </h2>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                {offlineItems.map((item) => (
+                  <div
+                    key={item.key}
+                    className="flex items-center justify-between gap-3 p-3 rounded-xl bg-white/5 border border-emerald-500/20 hover:bg-white/10 transition-all"
+                  >
+                    <div
+                      onClick={() => handlePlayOffline(item)}
+                      className="flex items-center gap-3 min-w-0 flex-1 cursor-pointer"
+                    >
+                      <div className="relative w-14 h-14 rounded-lg overflow-hidden bg-slate-800 flex-shrink-0">
+                        <img
+                          src={resolveThumbUrl(item.coverUrl)}
+                          alt={item.title}
+                          className="w-full h-full object-cover"
+                        />
+                        <span className="absolute bottom-1 right-1 bg-black/75 text-white p-0.5 rounded">
+                          {item.type === 'video' ? <VideoIcon size={11} /> : <Music size={11} />}
+                        </span>
+                      </div>
+                      <div className="min-w-0">
+                        <p className="font-medium text-white text-sm truncate">{item.title}</p>
+                        <p className="text-xs text-emerald-300 truncate">
+                          {item.type === 'video' ? 'Vídeo Offline' : 'Música Offline'} ·{' '}
+                          {formatBytes(item.sizeBytes)}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-1.5 flex-shrink-0">
+                      <button
+                        onClick={() => handlePlayOffline(item)}
+                        className="w-8 h-8 rounded-full bg-purple-600 hover:bg-purple-500 flex items-center justify-center text-white"
+                        title="Reproduzir offline"
+                      >
+                        <Play size={14} className="ml-0.5" />
+                      </button>
+                      <button
+                        onClick={() => handleRemoveOffline(item)}
+                        className="w-8 h-8 rounded-full bg-red-500/20 hover:bg-red-500/40 flex items-center justify-center text-red-300"
+                        title="Remover do dispositivo"
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </section>
+          )}
+
           {loading ? (
             <div className="flex justify-center py-12">
               <Loader2 size={40} className="text-purple-500 animate-spin" />
@@ -588,6 +699,10 @@ export default function LibraryPage() {
 
       {/* 🔥 PlayerBar GLOBAL — substitui a "Now Playing Bar" local */}
       <PlayerBar />
+      <VideoPlayerModal
+        video={selectedOfflineVideo}
+        onClose={() => setSelectedOfflineVideo(null)}
+      />
     </div>
   );
 }

@@ -4,6 +4,9 @@
 import { useState, useEffect, useRef } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
+import { resolveMediaUrl } from '@/lib/media';
+import { API_ENDPOINTS, fetchWithAuth } from '@/config/api';
 import {
   Bell,
   Search,
@@ -15,6 +18,7 @@ import {
   Clock,
   Headphones,
   X,
+  Menu,
 } from 'lucide-react';
 
 interface Notification {
@@ -29,42 +33,53 @@ interface Notification {
 
 export default function Header() {
   const { user, logout } = useAuth();
+  const router = useRouter();
   const [showUserDropdown, setShowUserDropdown] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
-  const [notifications, setNotifications] = useState<Notification[]>([
-    {
-      id: 1,
-      title: 'Novo episódio disponível',
-      message: '"40 Dias de Oração - Episódio 25" já está disponível',
-      type: 'new_episode',
-      read: false,
-      createdAt: new Date().toISOString(),
-      link: '/series/40-dias-de-oracao/25',
-    },
-    {
-      id: 2,
-      title: 'Lembrete de transmissão ao vivo',
-      message: 'Transmissão ao vivo em 30 minutos: Culto de Domingo',
-      type: 'reminder',
-      read: false,
-      createdAt: new Date().toISOString(),
-      link: '/live',
-    },
-    {
-      id: 3,
-      title: 'Bem-vindo à PodFélay!',
-      message: 'Explore milhares de conteúdos cristãos',
-      type: 'success',
-      read: true,
-      createdAt: new Date(Date.now() - 86400000).toISOString(),
-    },
-  ]);
+  const [showMobileSearch, setShowMobileSearch] = useState(false);
+  const [avatarError, setAvatarError] = useState(false);
+  const [notifications, setNotifications] = useState<Notification[]>([]);
 
   const dropdownRef = useRef<HTMLDivElement>(null);
   const notificationRef = useRef<HTMLDivElement>(null);
 
   const unreadCount = notifications.filter((n) => !n.read).length;
+
+  useEffect(() => {
+    if (!user?.id) {
+      setNotifications([]);
+      return;
+    }
+
+    const loadNotifications = async () => {
+      try {
+        const res = await fetchWithAuth(API_ENDPOINTS.NOTIFICATIONS);
+        if (!res.ok) return;
+        const body = await res.json();
+        const rawList = Array.isArray(body?.data)
+          ? body.data
+          : Array.isArray(body?.data?.notifications)
+            ? body.data.notifications
+            : [];
+
+        const mapped: Notification[] = rawList.map((n: any) => ({
+          id: n.id,
+          title: n.title,
+          message: n.message,
+          type: n.type || 'info',
+          read: Boolean(n.is_read ?? n.read),
+          createdAt: n.created_at || n.createdAt || new Date().toISOString(),
+          link: n.link || undefined,
+        }));
+        setNotifications(mapped);
+      } catch {
+        // Silencioso
+      }
+    };
+
+    loadNotifications();
+  }, [user?.id]);
 
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
@@ -79,14 +94,27 @@ export default function Header() {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  const handleMarkAsRead = (id: number) => {
+  const handleMarkAsRead = async (id: number) => {
     setNotifications((prev) =>
       prev.map((n) => (n.id === id ? { ...n, read: true } : n))
     );
+    try {
+      await fetchWithAuth(API_ENDPOINTS.NOTIFICATION_READ, {
+        method: 'POST',
+        body: JSON.stringify({ notificationIds: [id] }),
+      });
+    } catch {
+      // Silencioso
+    }
   };
 
-  const handleMarkAllAsRead = () => {
+  const handleMarkAllAsRead = async () => {
     setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
+    try {
+      await fetchWithAuth(API_ENDPOINTS.NOTIFICATION_READ_ALL, { method: 'POST' });
+    } catch {
+      // Silencioso
+    }
   };
 
   const handleNotificationClick = (notification: Notification) => {
@@ -124,50 +152,83 @@ export default function Header() {
 
   const handleLogout = async () => {
     await logout();
-    window.location.href = '/login';
+    window.location.href = '/';
   };
 
-  const userInitial = user?.username?.charAt(0) || user?.username?.charAt(0) || 'U';
+  const displayName = user?.fullName || user?.nome || user?.username || 'Visitante';
+  const userInitial = displayName.charAt(0).toUpperCase() || 'U';
+  const avatarSrc = resolveMediaUrl(user?.avatarUrl || user?.foto);
+
+  useEffect(() => {
+    setAvatarError(false);
+  }, [avatarSrc]);
+
+  const handleSearchSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    const q = searchQuery.trim();
+    if (q) {
+      router.push(`/search?q=${encodeURIComponent(q)}`);
+    } else {
+      router.push('/search');
+    }
+  };
 
   return (
-    <header className="sticky top-0 z-40 bg-black/40 backdrop-blur-xl border-b border-white/10">
-      <div className="flex items-center justify-between px-6 py-3">
-        {/* Logo e Saudação */}
-        <div className="flex items-center gap-3">
-          <div className="flex items-center gap-2">
-            <div className="w-8 h-8 bg-gradient-to-r from-purple-500 to-pink-500 rounded-lg flex items-center justify-center">
-              <Headphones size={18} className="text-white" />
-            </div>
-            <h1 className="text-xl font-bold text-white hidden sm:block">PodFéPlay</h1>
-          </div>
-          <div className="hidden lg:block">
-            <h2 className="text-sm text-gray-300">
-              Olá, <span className="text-white font-medium">{user?.username?.split(' ')[0] || user?.username || 'Visitante'}</span>
-            </h2>
-          </div>
+    <header className="sticky top-0 z-40 bg-[#09090d]/85 backdrop-blur-xl border-b border-white/[0.07]">
+      <div className="flex items-center justify-between gap-4 px-4 sm:px-6 py-3">
+        {/* Botão Menu Mobile (sem saudação "PodFéPlay / Olá") */}
+        <div className="flex items-center">
+          <button
+            onClick={() => window.dispatchEvent(new CustomEvent('podplay:toggle-mobile-sidebar'))}
+            className="md:hidden p-2 -ml-1 rounded-lg text-gray-300 hover:text-white hover:bg-white/10 transition-colors"
+            aria-label="Abrir menu"
+          >
+            <Menu size={22} />
+          </button>
         </div>
 
         {/* Barra de Pesquisa */}
-        <div className="hidden md:flex items-center relative max-w-md w-full mx-4">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
+        <form onSubmit={handleSearchSubmit} className="hidden md:flex items-center relative max-w-md w-full">
+          <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400" size={17} />
           <input
             type="search"
-            placeholder="O que você quer ouvir hoje?"
+            placeholder="O que queres ouvir ou assistir?"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full pl-10 pr-4 py-2 rounded-full bg-white/10 border border-white/20 focus:outline-none focus:ring-2 focus:ring-purple-500 text-white placeholder:text-gray-400 transition-all"
+            className="w-full pl-10 pr-4 py-2 rounded-full bg-white/[0.06] border border-white/10 focus:outline-none focus:ring-2 focus:ring-purple-500/70 focus:bg-white/10 text-sm text-white placeholder:text-gray-400 transition-all"
           />
-        </div>
+        </form>
 
         {/* Ações */}
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2.5">
           {/* Botão de Pesquisa Mobile */}
-          <button className="md:hidden p-2 rounded-full text-gray-400 hover:text-white hover:bg-white/10 transition-all">
+          <button
+            onClick={() => setShowMobileSearch((prev) => !prev)}
+            className="md:hidden p-2 rounded-full text-gray-400 hover:text-white hover:bg-white/10 transition-all"
+            aria-label="Pesquisar"
+          >
             <Search size={20} />
           </button>
 
-          {/* Notificações */}
-          <div className="relative" ref={notificationRef}>
+          {!user ? (
+            <div className="flex items-center gap-2">
+              <Link
+                href="/register"
+                className="hidden sm:inline-flex px-4 py-2 rounded-full text-xs sm:text-sm font-semibold text-gray-300 hover:text-white transition-colors"
+              >
+                Inscrever-se
+              </Link>
+              <Link
+                href="/login"
+                className="px-4 py-2 rounded-full bg-white text-slate-950 hover:bg-gray-100 text-xs sm:text-sm font-bold transition-all shadow-sm"
+              >
+                Iniciar sessão
+              </Link>
+            </div>
+          ) : (
+            <>
+              {/* Notificações */}
+              <div className="relative" ref={notificationRef}>
             <button
               onClick={() => setShowNotifications(!showNotifications)}
               className="relative p-2 rounded-full text-gray-400 hover:text-white hover:bg-white/10 transition-all"
@@ -237,8 +298,17 @@ export default function Header() {
               className="flex items-center gap-2 pl-2"
               aria-label="Menu do usuário"
             >
-              <div className="w-8 h-8 rounded-full bg-gradient-to-r from-purple-500 to-pink-500 flex items-center justify-center shadow-lg">
-                <span className="text-white text-sm font-medium">{userInitial}</span>
+              <div className="w-8 h-8 rounded-full bg-gradient-to-r from-purple-500 to-pink-500 flex items-center justify-center shadow-lg overflow-hidden">
+                {avatarSrc && !avatarError ? (
+                  <img
+                    src={avatarSrc}
+                    alt={displayName}
+                    className="w-full h-full object-cover"
+                    onError={() => setAvatarError(true)}
+                  />
+                ) : (
+                  <span className="text-white text-sm font-medium">{userInitial}</span>
+                )}
               </div>
               <ChevronDown
                 size={16}
@@ -252,8 +322,8 @@ export default function Header() {
             {showUserDropdown && (
               <div className="absolute right-0 mt-2 w-56 bg-gray-900/95 backdrop-blur-xl rounded-xl shadow-2xl border border-white/10 z-50 overflow-hidden">
                 <div className="p-3 border-b border-white/10">
-                  <p className="text-white font-medium text-sm">{user?.username || user?.username}</p>
-                  <p className="text-gray-400 text-xs">{user?.email || user?.phone}</p>
+                  <p className="text-white font-medium text-sm truncate">{displayName}</p>
+                  <p className="text-gray-400 text-xs truncate">{user?.email || user?.phone || `@${user?.username}`}</p>
                   {user?.churchId && (
                     <p className="text-purple-400 text-xs mt-1">Igreja Vida Nova</p>
                   )}
@@ -283,14 +353,14 @@ export default function Header() {
                     <Clock size={16} />
                     <span>Histórico</span>
                   </Link>
-                  {(user?.role === 'admin' || user?.role === 'moderator') && (
+                  {String((user as any)?.role || (user as any)?.type || '').toLowerCase() === 'admin' && (
                     <Link
-                      href="/admin"
+                      href="/controle"
                       className="flex items-center gap-3 px-4 py-2.5 text-sm text-gray-300 hover:bg-white/10 transition-colors"
                       onClick={() => setShowUserDropdown(false)}
                     >
                       <Settings size={16} />
-                      <span>Administração</span>
+                      <span>Controlo Geral</span>
                     </Link>
                   )}
                   <div className="border-t border-white/10 my-1"></div>
@@ -305,32 +375,36 @@ export default function Header() {
               </div>
             )}
           </div>
+            </>
+          )}
         </div>
       </div>
 
       {/* Barra de Pesquisa Mobile Expandida */}
-      {searchQuery && (
-        <div className="md:hidden px-4 pb-3">
+      {(showMobileSearch || searchQuery) && (
+        <form onSubmit={handleSearchSubmit} className="md:hidden px-4 pb-3">
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
             <input
               type="search"
-              placeholder="O que você quer ouvir hoje?"
+              placeholder="O que você quer ouvir ou assistir hoje?"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="w-full pl-10 pr-10 py-2 rounded-full bg-white/10 border border-white/20 focus:outline-none focus:ring-2 focus:ring-purple-500 text-white placeholder:text-gray-400"
               autoFocus
             />
-            {searchQuery && (
-              <button
-                onClick={() => setSearchQuery('')}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-white"
-              >
-                <X size={16} />
-              </button>
-            )}
+            <button
+              type="button"
+              onClick={() => {
+                setSearchQuery('');
+                setShowMobileSearch(false);
+              }}
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-white"
+            >
+              <X size={16} />
+            </button>
           </div>
-        </div>
+        </form>
       )}
     </header>
   );

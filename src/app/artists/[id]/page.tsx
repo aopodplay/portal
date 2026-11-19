@@ -245,7 +245,7 @@ export default function ArtistPage() {
     return (
       <div className="min-h-screen bg-gradient-to-b from-slate-900 via-purple-900 to-slate-900">
         <PodPlaySidebar />
-        <main className="ml-64 min-h-screen flex items-center justify-center">
+        <main className="ml-0 md:ml-64 min-h-screen flex items-center justify-center">
           <Loader2 size={48} className="text-purple-500 animate-spin" />
         </main>
       </div>
@@ -260,7 +260,7 @@ export default function ArtistPage() {
     return (
       <div className="min-h-screen bg-gradient-to-b from-slate-900 via-purple-900 to-slate-900">
         <PodPlaySidebar />
-        <main className="ml-64 min-h-screen flex flex-col items-center justify-center gap-4">
+        <main className="ml-0 md:ml-64 min-h-screen flex flex-col items-center justify-center gap-4">
           <AlertCircle size={48} className="text-red-400" />
           <p className="text-red-300">{error || 'Artista não encontrado'}</p>
           <button
@@ -285,7 +285,7 @@ export default function ArtistPage() {
     <div className="min-h-screen bg-gradient-to-b from-slate-900 via-purple-900 to-slate-900">
       <PodPlaySidebar />
 
-      <main className="ml-64 min-h-screen pb-24 transition-all duration-300">
+      <main className="ml-0 md:ml-64 min-h-screen pb-24 transition-all duration-300">
         <Header />
 
         <div className="p-6">

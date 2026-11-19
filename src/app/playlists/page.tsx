@@ -17,9 +17,11 @@ import {
 } from 'lucide-react';
 import { playlistApi, Playlist } from '@/lib/playlistApi';
 import { resolveCoverUrl } from '@/lib/media';
+import { useAuth } from '@/contexts/AuthContext';
 
 export default function PlaylistsPage() {
   const router = useRouter();
+  const { user } = useAuth();
   const [playlists, setPlaylists] = useState<Playlist[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -29,6 +31,11 @@ export default function PlaylistsPage() {
   const [creating, setCreating] = useState(false);
 
   const load = async () => {
+    if (!user) {
+      setPlaylists([]);
+      setLoading(false);
+      return;
+    }
     try {
       setLoading(true);
       setError(null);
@@ -43,7 +50,7 @@ export default function PlaylistsPage() {
 
   useEffect(() => {
     load();
-  }, []);
+  }, [user?.id]);
 
   const handleCreate = async () => {
     if (!newTitle.trim()) return;
@@ -78,7 +85,7 @@ export default function PlaylistsPage() {
     <div className="min-h-screen bg-gradient-to-b from-slate-900 via-purple-900 to-slate-900">
       <PodPlaySidebar />
 
-      <main className="ml-64 min-h-screen pb-24 transition-all duration-300">
+      <main className="ml-0 md:ml-64 min-h-screen pb-24 transition-all duration-300">
         <Header />
 
         <div className="p-6 max-w-6xl mx-auto">

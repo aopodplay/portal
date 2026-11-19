@@ -43,7 +43,7 @@ export default function AlbumsPage() {
     <div className="min-h-screen bg-gradient-to-b from-slate-900 via-purple-900 to-slate-900">
       <PodPlaySidebar />
 
-      <main className="ml-64 min-h-screen pb-24 transition-all duration-300">
+      <main className="ml-0 md:ml-64 min-h-screen pb-24 transition-all duration-300">
         <Header />
 
         <div className="p-6 max-w-6xl mx-auto">

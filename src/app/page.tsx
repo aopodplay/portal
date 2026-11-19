@@ -29,10 +29,12 @@ import {
   Eye,
   Heart,
   Download,
+  Shuffle,
 } from 'lucide-react';
 import { getApiUrl, getAuthHeaders } from '@/config/api';
 import { resolveCoverUrl, resolveThumbUrl } from '@/lib/media';
 import { historyApi } from '@/lib/historyApi';
+import { catalogApi, type Artist, type Album } from '@/lib/catalogApi';
 import { favoritesApi, downloadsApi, ContentType } from '@/lib/favoritesApi';
 import { metricsApi } from '@/lib/metricsApi';
 import type { ContentMetrics } from '@/lib/metricsApi';
@@ -447,6 +449,17 @@ export default function HomePage() {
   const [videosLoading, setVideosLoading] = useState(true);
   const [selectedVideo, setSelectedVideo] = useState<VideoItem | null>(null);
 
+  const [artists, setArtists] = useState<Artist[]>([]);
+  const [albums, setAlbums] = useState<Album[]>([]);
+  const [catalogLoading, setCatalogLoading] = useState(true);
+  const [featuredSeries, setFeaturedSeries] = useState<
+    Array<{ id?: number; title: string; subtitle: string; badge: string; target_url?: string }>
+  >([
+    { title: '40 Dias de Oração', subtitle: 'Série Podfé Original', badge: '40 EP.', target_url: '/videos' },
+    { title: 'Bíblia Completa em Áudio', subtitle: 'Narração Integral', badge: '66 LIVROS', target_url: '/music' },
+    { title: 'Identidade em Cristo', subtitle: 'Pr. Lucinho Barreto', badge: '12 EP.', target_url: '/videos' },
+  ]);
+
   const [categories, setCategories] = useState<Category[]>([]);
   const [categoriesLoading, setCategoriesLoading] = useState(true);
 
@@ -468,12 +481,6 @@ export default function HomePage() {
     { title: 'Estudo Bíblico — Romanos', description: 'Célula de Quarta-feira', date: 'Quarta - Célula', icon: Book },
     { title: 'Louvor & Adoração', description: 'Equipa de Louvor', date: 'Ensaio semanal', icon: DiscAlbum },
     { title: 'Próximo directo', description: 'Transmissão ao vivo', date: 'Domingo 09:00', icon: Radio },
-  ];
-
-  const featuredSeries = [
-    { title: '40 Dias de Oração', subtitle: 'Série Podfé Original', badge: '40 EP.' },
-    { title: 'Bíblia Completa em Áudio', subtitle: 'Narração Integral', badge: '66 LIVROS' },
-    { title: 'Identidade em Cristo', subtitle: 'Pr. Lucinho Barreto', badge: '12 EP.' },
   ];
 
   const registrarReproducao = useCallback(
@@ -582,6 +589,29 @@ export default function HomePage() {
     },
     [user, downloadingSet]
   );
+
+  // Artistas e Álbuns
+  useEffect(() => {
+    (async () => {
+      try {
+        setCatalogLoading(true);
+        const [artistsRes, albumsRes, seriesRes] = await Promise.all([
+          catalogApi.listArtists(1, 20),
+          catalogApi.listAlbums(1, 20),
+          fetch(getApiUrl('/api/v1/series')).then((r) => r.json()).catch(() => null),
+        ]);
+        setArtists(Array.isArray(artistsRes?.artists) ? artistsRes.artists : []);
+        setAlbums(Array.isArray(albumsRes?.albums) ? albumsRes.albums : []);
+        if (seriesRes?.success && Array.isArray(seriesRes.data) && seriesRes.data.length > 0) {
+          setFeaturedSeries(seriesRes.data);
+        }
+      } catch (err) {
+        console.error('[HomePage] Catálogo:', err);
+      } finally {
+        setCatalogLoading(false);
+      }
+    })();
+  }, []);
 
   // Categorias
   useEffect(() => {
@@ -763,9 +793,33 @@ export default function HomePage() {
     return [];
   }, [videoList, activeCategory]);
 
-  const musicCards = useMemo(() => filteredMusic.slice(0, 6), [filteredMusic]);
+  const topPlayedMusic = useMemo(() => {
+    return [...filteredMusic].sort((a, b) => (b.plays ?? 0) - (a.plays ?? 0));
+  }, [filteredMusic]);
+
+  const singlesList = useMemo(() => {
+    return topPlayedMusic.filter((m) => !m.album_id && !m.album).slice(0, 6);
+  }, [topPlayedMusic]);
+
+  const topArtists = useMemo(() => {
+    return [...artists]
+      .sort((a, b) => (b.total_plays ?? 0) - (a.total_plays ?? 0))
+      .slice(0, 6);
+  }, [artists]);
+
+  const topAlbums = useMemo(() => {
+    return [...albums]
+      .sort((a, b) => (b.total_plays ?? 0) - (a.total_plays ?? 0))
+      .slice(0, 6);
+  }, [albums]);
+
+  const musicCards = useMemo(() => topPlayedMusic.slice(0, 6), [topPlayedMusic]);
   const recentMusic = useMemo(() => allMusic.slice(0, 5), [allMusic]);
-  const featuredVideos = useMemo(() => filteredVideos.slice(0, 4), [filteredVideos]);
+  const featuredVideos = useMemo(() => {
+    return [...filteredVideos]
+      .sort((a, b) => (b.views ?? 0) - (a.views ?? 0))
+      .slice(0, 4);
+  }, [filteredVideos]);
 
   const handlePlayMusic = (music: MusicItem) => {
     registrarReproducao(music.id, 'music');
@@ -813,38 +867,197 @@ export default function HomePage() {
   // =====================================================================
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-slate-900 via-purple-900 to-slate-900">
+    <div className="min-h-screen bg-[#09090d] text-white bg-[radial-gradient(ellipse_at_top,_rgba(126,34,206,0.16),_transparent_55%)]">
       <PodPlaySidebar />
 
-      <main className="ml-64 min-h-screen pb-24 transition-all duration-300">
+      <main className="ml-0 md:ml-60 min-h-screen pb-28 transition-all duration-300">
         <Header />
 
-        <div className="p-6">
+        <div className="p-6 max-w-[1440px] mx-auto">
           <div className="mb-6">
-            <h1 className="text-2xl font-bold text-white">
-              {getGreeting()}, {user?.fullName?.split(' ')[0] || 'João'}
+            <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-white">
+              {user
+                ? `${getGreeting()}, ${user.fullName?.split(' ')[0] || user.username}`
+                : 'Descubra louvores, pregações e vídeos'}
             </h1>
-            <p className="text-purple-200 text-sm">Igreja Vida Nova - Angola</p>
+            <p className="text-gray-400 text-sm mt-1">
+              {user ? 'Igreja Vida Nova · Angola' : 'Explore o catálogo completo da PodFéPlay'}
+            </p>
           </div>
 
-          {/* HERO */}
-          <div className="relative rounded-xl overflow-hidden mb-8 bg-gradient-to-r from-purple-700 via-pink-700 to-purple-700">
-            <div className="absolute inset-0 bg-black/30" />
-            <div className="relative p-6 md:p-8">
-              <span className="text-xs font-semibold text-purple-200 uppercase tracking-wider">
-                + SÉRIE ORIGINAL
-              </span>
-              <h2 className="text-2xl md:text-3xl font-bold text-white mt-2">
-                40 Dias de Oração
-              </h2>
-              <p className="text-purple-100 text-sm mt-1">
-                Série Podfé Original · 40 episódios · Temporada 2
-              </p>
-              <button className="mt-4 px-6 py-2 bg-purple-600 hover:bg-purple-500 text-white rounded-full font-medium text-sm transition-all flex items-center gap-2">
-                <Play size={16} /> Reproduzir
-              </button>
+          {/* HERO DINÂMICO (SPOTLIGHT) */}
+          <div className="relative rounded-2xl overflow-hidden mb-8 bg-gradient-to-br from-[#2a124c] via-[#1c1033] to-[#11111a] border border-white/10 shadow-2xl">
+            <div className="relative p-6 md:p-8 flex flex-col md:flex-row md:items-center justify-between gap-6">
+              <div>
+                <span className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-purple-200 uppercase tracking-wider bg-white/10 px-3 py-1 rounded-full">
+                  <Flame size={13} className="text-amber-400" />
+                  {topPlayedMusic[0] ? 'Destaque Mais Tocado' : 'Em Destaque'}
+                </span>
+                <h2 className="text-2xl md:text-3xl font-bold text-white mt-3 tracking-tight">
+                  {topPlayedMusic[0]?.title || 'Louvor, Palavra & Adoração'}
+                </h2>
+                <p className="text-gray-300 text-sm mt-1.5">
+                  {topPlayedMusic[0]
+                    ? `${(topPlayedMusic[0] as any).artist_name || topPlayedMusic[0].artist} · ${(topPlayedMusic[0].plays ?? 0).toLocaleString('pt-PT')} reproduções`
+                    : 'Músicas, mensagens e vídeos edificantes num só lugar'}
+                </p>
+                <div className="flex flex-wrap items-center gap-3 mt-5">
+                  <button
+                    onClick={() => topPlayedMusic[0] && handlePlayMusic(topPlayedMusic[0])}
+                    className="px-6 py-2.5 bg-white text-slate-950 hover:bg-gray-100 rounded-full font-bold text-sm transition-all flex items-center gap-2 shadow-lg"
+                  >
+                    <Play size={16} fill="currentColor" /> Reproduzir Agora
+                  </button>
+                  {allMusic.length > 1 && (
+                    <button
+                      onClick={() => {
+                        const shuffledList = [...allMusic].sort(() => Math.random() - 0.5);
+                        play(shuffledList[0], true, shuffledList);
+                      }}
+                      className="px-5 py-2.5 bg-purple-600/30 hover:bg-purple-600/50 border border-purple-400/30 text-white rounded-full font-semibold text-sm transition-all flex items-center gap-2"
+                    >
+                      <Shuffle size={15} /> Misturar Tudo
+                    </button>
+                  )}
+                  {topArtists[0] && (
+                    <Link
+                      href={`/artists/${topArtists[0].id}`}
+                      className="px-4 py-2.5 bg-white/10 hover:bg-white/15 border border-white/10 text-white rounded-full font-medium text-sm transition-all"
+                    >
+                      {topArtists[0].name}
+                    </Link>
+                  )}
+                </div>
+              </div>
+
+              {topPlayedMusic[0] && (
+                <div className="w-28 h-28 md:w-36 md:h-36 rounded-xl overflow-hidden shadow-2xl border border-white/15 flex-shrink-0">
+                  <img
+                    src={resolveCoverUrl(topPlayedMusic[0].cover_image)}
+                    alt={topPlayedMusic[0].title}
+                    className="w-full h-full object-cover"
+                  />
+                </div>
+              )}
             </div>
           </div>
+
+          {/* CONTINUE A OUVIR (cards horizontais estilo Spotify) */}
+          {activeCategory === 'all' && user && recentMusic.length > 0 && (
+            <section className="mb-8">
+              <div className="flex items-center justify-between mb-3.5">
+                <div>
+                  <h3 className="text-lg font-bold text-white">Continue a Ouvir</h3>
+                  <p className="text-xs text-gray-400">Retoma exatamente de onde paraste</p>
+                </div>
+                <Link href="/history" className="text-xs text-purple-300 hover:text-white flex items-center gap-1">
+                  Histórico <ChevronRight size={14} />
+                </Link>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5">
+                {recentMusic.slice(0, 6).map((music, idx) => {
+                  const playingThis = isCurrentMusicPlaying(music);
+                  const pct = Math.min(92, 35 + ((idx * 17) % 55));
+                  return (
+                    <div
+                      key={`continue-${music.id}`}
+                      onClick={() => handlePlayMusic(music)}
+                      className="group relative bg-white/[0.05] hover:bg-white/[0.09] border border-white/[0.08] rounded-xl overflow-hidden cursor-pointer transition-all"
+                    >
+                      <div className="flex items-center justify-between gap-3 p-3">
+                        <div className="flex items-center gap-3.5 min-w-0">
+                          <div className="relative w-14 h-14 rounded-lg overflow-hidden bg-slate-800 flex-shrink-0 shadow-md">
+                            <img
+                              src={resolveCoverUrl(music.cover_image)}
+                              alt={music.title}
+                              className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                              onError={(e) => {
+                                (e.currentTarget as HTMLImageElement).src = '/default-cover.svg';
+                              }}
+                            />
+                          </div>
+                          <div className="min-w-0">
+                            <p className="text-sm font-semibold text-white truncate group-hover:text-purple-300 transition-colors">
+                              {music.title}
+                            </p>
+                            <p className="text-xs text-gray-400 truncate mt-0.5">
+                              {(music as any).artist_name || music.artist}
+                            </p>
+                            <span className="inline-block text-[10px] font-medium text-purple-300/90 mt-1">
+                              {playingThis ? 'A reproduzir agora' : 'Retomar faixa'}
+                            </span>
+                          </div>
+                        </div>
+                        <div className="w-10 h-10 rounded-full bg-purple-600 group-hover:bg-purple-500 flex items-center justify-center flex-shrink-0 shadow-lg group-hover:scale-105 transition-all">
+                          {playingThis ? (
+                            <Pause size={16} className="text-white" />
+                          ) : (
+                            <Play size={16} className="text-white ml-0.5" />
+                          )}
+                        </div>
+                      </div>
+                      <div className="h-0.5 w-full bg-white/10">
+                        <div
+                          className="h-full bg-purple-500"
+                          style={{ width: `${playingThis ? 100 : pct}%` }}
+                        />
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </section>
+          )}
+
+          {/* SUGESTÕES RÁPIDAS ESTILO SPOTIFY (MAIS TOCADAS) */}
+          {activeCategory === 'all' && topPlayedMusic.length > 0 && (
+            <section className="mb-8">
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="text-lg font-bold text-white flex items-center gap-2">
+                  <Flame size={18} className="text-amber-400" />
+                  Sugestões Mais Tocadas
+                </h3>
+                <Link href="/trending" className="text-xs text-purple-300 hover:text-white flex items-center gap-1">
+                  Em Alta <ChevronRight size={14} />
+                </Link>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                {topPlayedMusic.slice(0, 6).map((track, idx) => (
+                  <div
+                    key={`quick-${track.id}`}
+                    onClick={() => handlePlayMusic(track)}
+                    className="group flex items-center justify-between gap-3 bg-white/10 hover:bg-white/15 border border-white/10 rounded-xl overflow-hidden pr-3 cursor-pointer transition-all"
+                  >
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div className="relative w-14 h-14 flex-shrink-0 bg-slate-800">
+                        <img
+                          src={resolveCoverUrl(track.cover_image)}
+                          alt={track.title}
+                          className="w-full h-full object-cover"
+                        />
+                        <span className="absolute top-1 left-1 text-[10px] font-bold bg-black/70 text-amber-300 px-1.5 rounded">
+                          #{idx + 1}
+                        </span>
+                      </div>
+                      <div className="min-w-0">
+                        <p className="text-sm font-semibold text-white truncate">{track.title}</p>
+                        <p className="text-xs text-gray-300 truncate">
+                          {track.artist} · {(track.plays ?? 0).toLocaleString('pt-PT')} plays
+                        </p>
+                      </div>
+                    </div>
+                    <div className="w-9 h-9 rounded-full bg-purple-600 group-hover:bg-purple-500 flex items-center justify-center flex-shrink-0 shadow-md opacity-90 group-hover:scale-105 transition-all">
+                      {isCurrentMusicPlaying(track) ? (
+                        <Pause size={15} className="text-white" />
+                      ) : (
+                        <Play size={15} className="text-white ml-0.5" />
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </section>
+          )}
 
           {/* CATEGORIAS */}
           <div className="mb-8">
@@ -883,11 +1096,88 @@ export default function HomePage() {
             </section>
           ) : (
             <>
+              {/* CANTORES / ARTISTAS MAIS OUVIDOS */}
+              {activeCategory === 'all' && !catalogLoading && topArtists.length > 0 && (
+                <section className="mb-10">
+                  <div className="flex items-center justify-between mb-4">
+                    <div className="flex items-center gap-2">
+                      <Mic size={20} className="text-pink-400" />
+                      <h3 className="text-xl font-bold text-white">Cantores Mais Ouvidos</h3>
+                    </div>
+                    <Link href="/artists" className="text-sm text-purple-300 hover:text-white flex items-center gap-1">
+                      Ver todos <ChevronRight size={16} />
+                    </Link>
+                  </div>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4">
+                    {topArtists.map((artist, idx) => (
+                      <Link
+                        key={artist.id}
+                        href={`/artists/${artist.id}`}
+                        className="group bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl p-4 text-center transition-all"
+                      >
+                        <div className="relative w-24 h-24 mx-auto rounded-full overflow-hidden bg-gradient-to-br from-purple-500/30 to-pink-500/30 mb-3 shadow-lg">
+                          <img
+                            src={resolveCoverUrl(artist.image_url)}
+                            alt={artist.name}
+                            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                          />
+                          {idx === 0 && (
+                            <span className="absolute bottom-1 left-1/2 -translate-x-1/2 text-[10px] font-bold bg-amber-500 text-slate-950 px-2 py-0.5 rounded-full whitespace-nowrap">
+                              #1 Mais Ouvido
+                            </span>
+                          )}
+                        </div>
+                        <h4 className="font-semibold text-white text-sm truncate">{artist.name}</h4>
+                        <p className="text-xs text-gray-400 mt-0.5">
+                          {(artist.total_plays ?? 0).toLocaleString('pt-PT')} plays
+                        </p>
+                      </Link>
+                    ))}
+                  </div>
+                </section>
+              )}
+
+              {/* ÁLBUNS EM DESTAQUE */}
+              {activeCategory === 'all' && !catalogLoading && topAlbums.length > 0 && (
+                <section className="mb-10">
+                  <div className="flex items-center justify-between mb-4">
+                    <div className="flex items-center gap-2">
+                      <DiscAlbum size={20} className="text-amber-400" />
+                      <h3 className="text-xl font-bold text-white">Álbuns</h3>
+                    </div>
+                    <Link href="/albums" className="text-sm text-purple-300 hover:text-white flex items-center gap-1">
+                      Ver todos <ChevronRight size={16} />
+                    </Link>
+                  </div>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4">
+                    {topAlbums.map((album) => (
+                      <Link
+                        key={album.id}
+                        href={`/albums/${album.id}`}
+                        className="group bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl p-3 transition-all"
+                      >
+                        <div className="aspect-square rounded-lg overflow-hidden bg-slate-800 mb-3">
+                          <img
+                            src={resolveCoverUrl(album.cover_url)}
+                            alt={album.title}
+                            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                          />
+                        </div>
+                        <h4 className="font-semibold text-white text-sm truncate">{album.title}</h4>
+                        <p className="text-xs text-gray-400 truncate mt-0.5">
+                          {album.artist_name || 'Álbum'} · {album.tracks_count ?? 0} faixas
+                        </p>
+                      </Link>
+                    ))}
+                  </div>
+                </section>
+              )}
+
               {/* MÚSICAS */}
               {(activeCategory === 'all' || activeCategory === 'musicas') && (
                 <section className="mb-10">
                   <div className="flex items-center justify-between mb-4">
-                    <h3 className="text-xl font-bold text-white">Músicas em Destaque</h3>
+                    <h3 className="text-xl font-bold text-white">Músicas Mais Tocadas</h3>
                     <Link href="/music" className="text-sm text-purple-300 hover:text-white flex items-center gap-1">
                       Ver todas <ChevronRight size={16} />
                     </Link>
@@ -918,6 +1208,36 @@ export default function HomePage() {
                       ))}
                     </div>
                   )}
+                </section>
+              )}
+
+              {/* SINGLES */}
+              {activeCategory === 'all' && singlesList.length > 0 && (
+                <section className="mb-10">
+                  <div className="flex items-center justify-between mb-4">
+                    <div className="flex items-center gap-2">
+                      <MusicIcon size={20} className="text-purple-400" />
+                      <h3 className="text-xl font-bold text-white">Singles & Lançamentos</h3>
+                    </div>
+                    <Link href="/music" className="text-sm text-purple-300 hover:text-white flex items-center gap-1">
+                      Ver todos <ChevronRight size={16} />
+                    </Link>
+                  </div>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4">
+                    {singlesList.map((music) => (
+                      <MusicCard
+                        key={`single-${music.id}`}
+                        music={music}
+                        metrics={metricsMap[`music:${music.id}`]}
+                        onPlay={handlePlayMusic}
+                        isCurrentMusicPlaying={isCurrentMusicPlaying}
+                        isFavorited={favoritesSet.has(favKey('music', music.id))}
+                        onToggleFavorite={(m) => handleToggleFavorite(m, 'music')}
+                        onDownload={(m) => handleDownload(m, 'music')}
+                        isDownloading={downloadingSet.has(favKey('music', music.id))}
+                      />
+                    ))}
+                  </div>
                 </section>
               )}
 
@@ -961,129 +1281,120 @@ export default function HomePage() {
                 </section>
               )}
 
-              {/* CONTINUE A OUVIR */}
-              {activeCategory === 'all' && recentMusic.length > 0 && (
-                <section className="mb-10">
-                  <div className="flex items-center justify-between mb-4">
-                    <h3 className="text-xl font-bold text-white">Continue a Ouvir</h3>
-                    <p className="text-sm text-gray-400">Onde paraste</p>
-                  </div>
-                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
-                    {recentMusic.map((music) => (
-                      <MusicCard
-                        key={`recent-${music.id}`}
-                        music={music}
-                        metrics={metricsMap[`music:${music.id}`]}
-                        onPlay={handlePlayMusic}
-                        isCurrentMusicPlaying={isCurrentMusicPlaying}
-                        isFavorited={favoritesSet.has(favKey('music', music.id))}
-                        onToggleFavorite={(m) => handleToggleFavorite(m, 'music')}
-                        onDownload={(m) => handleDownload(m, 'music')}
-                        isDownloading={downloadingSet.has(favKey('music', music.id))}
-                      />
-                    ))}
-                  </div>
-                </section>
-              )}
-
-              {/* MINHA IGREJA + SÉRIES */}
-              {activeCategory === 'all' && (
+              {/* PARA TI (VÍDEOS & DESCOBERTAS) + EM ALTA ESTA SEMANA (sem Minha Igreja) */}
+              {activeCategory === 'all' && (featuredVideos.length > 0 || allMusic.length > 0) && (
                 <div className="grid lg:grid-cols-2 gap-8 mb-8">
-                  <section>
-                    <div className="flex items-center gap-2 mb-4">
-                      <Church size={20} className="text-purple-400" />
-                      <h3 className="text-xl font-bold text-white">Minha Igreja</h3>
-                    </div>
-                    <div className="bg-white/5 rounded-xl p-4 backdrop-blur-sm">
-                      <div className="mb-4 pb-3 border-b border-white/10">
-                        <h4 className="text-lg font-bold text-white">Igreja Vida Nova</h4>
-                        <p className="text-gray-400 text-sm">Luanda, Angola</p>
+                  {featuredVideos.length > 0 && (
+                    <section>
+                      <div className="flex items-center justify-between mb-4">
+                        <div className="flex items-center gap-2">
+                          <VideoIcon size={20} className="text-purple-400" />
+                          <h3 className="text-xl font-bold text-white">
+                            {user ? 'Para Ti · Vídeos' : 'Descobertas em Vídeo'}
+                          </h3>
+                        </div>
+                        <Link href="/videos" className="text-sm text-purple-300 hover:text-white flex items-center gap-1">
+                          Ver tudo <ChevronRight size={16} />
+                        </Link>
                       </div>
-                      <div className="space-y-2">
-                        {churchEvents.map((event, index) => (
-                          <ChurchEvent
-                            key={index}
-                            title={event.title}
-                            description={event.description}
-                            date={event.date}
-                            icon={event.icon}
-                          />
+                      <div className="bg-white/[0.04] border border-white/[0.07] rounded-2xl p-5 backdrop-blur-sm space-y-3.5">
+                        {featuredVideos.slice(0, 4).map((video) => (
+                          <div
+                            key={`discover-vid-${video.id}`}
+                            onClick={() => handlePlayVideo(video)}
+                            className="group flex items-center justify-between gap-3 cursor-pointer rounded-xl p-1.5 -mx-1.5 hover:bg-white/[0.05] transition-colors"
+                          >
+                            <div className="flex items-center gap-3 min-w-0">
+                              <div className="relative w-20 aspect-video bg-slate-800 rounded-lg flex-shrink-0 overflow-hidden">
+                                <img
+                                  src={resolveThumbUrl(video.thumbnail_path)}
+                                  alt={video.title}
+                                  className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                                  onError={(e) => {
+                                    (e.currentTarget as HTMLImageElement).src = '/default-video-thumb.svg';
+                                  }}
+                                />
+                              </div>
+                              <div className="min-w-0">
+                                <h4 className="font-medium text-white text-sm truncate group-hover:text-purple-300 transition-colors">
+                                  {video.title}
+                                </h4>
+                                <p className="text-xs text-gray-400 truncate mt-0.5">
+                                  {(video.views ?? 0).toLocaleString('pt-PT')} visualizações · {video.likes ?? 0} gostos
+                                </p>
+                              </div>
+                            </div>
+                            <button
+                              type="button"
+                              className="w-9 h-9 rounded-full bg-white/10 group-hover:bg-purple-600 text-white flex items-center justify-center flex-shrink-0 transition-all"
+                              aria-label={`Assistir ${video.title}`}
+                            >
+                              <Play size={15} className="ml-0.5" />
+                            </button>
+                          </div>
                         ))}
                       </div>
-                      <button className="w-full mt-4 py-2 text-center text-sm text-purple-400 hover:text-purple-300 transition-colors">
-                        Ver todos os eventos →
-                      </button>
-                    </div>
-                  </section>
+                    </section>
+                  )}
 
-                  <section>
-                    <div className="flex items-center justify-between mb-4">
-                      <div className="flex items-center gap-2">
-                        <TrendingUp size={20} className="text-purple-400" />
-                        <h3 className="text-xl font-bold text-white">Séries em Destaque</h3>
-                      </div>
-                    </div>
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                      {featuredSeries.map((series, index) => (
-                        <SeriesCard
-                          key={index}
-                          title={series.title}
-                          subtitle={series.subtitle}
-                          badge={series.badge}
-                        />
-                      ))}
-                    </div>
-                  </section>
-                </div>
-              )}
-
-              {/* EM ALTA */}
-              {activeCategory === 'all' && allMusic.length > 0 && (
-                <section className="mb-10">
-                  <div className="flex items-center justify-between mb-4">
-                    <div className="flex items-center gap-2">
-                      <Flame size={20} className="text-orange-500" />
-                      <h3 className="text-xl font-bold text-white">Em Alta Esta Semana</h3>
-                    </div>
-                  </div>
-                  <div className="bg-white/5 rounded-xl p-4 backdrop-blur-sm space-y-3">
-                    {allMusic.slice(0, 3).map((music) => (
-                      <div key={`trend-${music.id}`} className="flex items-center justify-between">
-                        <div className="flex items-center gap-3 min-w-0">
-                          <div className="w-12 h-12 bg-gradient-to-br from-purple-500 to-pink-500 rounded-lg flex items-center justify-center flex-shrink-0 overflow-hidden">
-                            <img
-                              src={resolveCoverUrl(music.cover_image)}
-                              alt={music.title}
-                              className="w-full h-full object-cover"
-                              onError={(e) => {
-                                (e.currentTarget as HTMLImageElement).src = '/default-cover.svg';
-                              }}
-                            />
-                          </div>
-                          <div className="min-w-0">
-                            <h4 className="font-medium text-white text-sm truncate">{music.title}</h4>
-                            {music.artist_id ? (
-                              <Link
-                                href={`/artists/${music.artist_id}`}
-                                className="text-gray-400 text-xs truncate block hover:text-purple-300"
-                              >
-                                {music.artist}
-                              </Link>
-                            ) : (
-                              <p className="text-gray-400 text-xs truncate">{music.artist}</p>
-                            )}
-                          </div>
+                  {allMusic.length > 0 && (
+                    <section>
+                      <div className="flex items-center justify-between mb-4">
+                        <div className="flex items-center gap-2">
+                          <Flame size={20} className="text-orange-500" />
+                          <h3 className="text-xl font-bold text-white">Em Alta Esta Semana</h3>
                         </div>
-                        <button
-                          onClick={() => handlePlayMusic(music)}
-                          className="w-10 h-10 bg-purple-600 rounded-full flex items-center justify-center hover:bg-purple-500 transition-all flex-shrink-0"
-                        >
-                          <Play size={18} className="text-white ml-0.5" />
-                        </button>
+                        <Link href="/trending" className="text-sm text-purple-300 hover:text-white flex items-center gap-1">
+                          Ver tudo <ChevronRight size={16} />
+                        </Link>
                       </div>
-                    ))}
-                  </div>
-                </section>
+                      <div className="bg-white/[0.04] border border-white/[0.07] rounded-2xl p-5 backdrop-blur-sm space-y-3.5">
+                        {allMusic.slice(0, 4).map((music) => (
+                          <div key={`trend-${music.id}`} className="flex items-center justify-between gap-3">
+                            <div className="flex items-center gap-3 min-w-0">
+                              <div className="w-12 h-12 bg-slate-800 rounded-lg flex items-center justify-center flex-shrink-0 overflow-hidden">
+                                <img
+                                  src={resolveCoverUrl(music.cover_image)}
+                                  alt={music.title}
+                                  className="w-full h-full object-cover"
+                                  onError={(e) => {
+                                    (e.currentTarget as HTMLImageElement).src = '/default-cover.svg';
+                                  }}
+                                />
+                              </div>
+                              <div className="min-w-0">
+                                <h4 className="font-medium text-white text-sm truncate">{music.title}</h4>
+                                {music.artist_id ? (
+                                  <Link
+                                    href={`/artists/${music.artist_id}`}
+                                    className="text-xs text-gray-400 hover:text-purple-300 transition-colors truncate block"
+                                  >
+                                    {(music as any).artist_name || music.artist}
+                                  </Link>
+                                ) : (
+                                  <p className="text-xs text-gray-400 truncate">
+                                    {(music as any).artist_name || music.artist}
+                                  </p>
+                                )}
+                              </div>
+                            </div>
+                            <button
+                              onClick={() => handlePlayMusic(music)}
+                              className="w-9 h-9 rounded-full bg-white/10 hover:bg-purple-600 text-white flex items-center justify-center flex-shrink-0 transition-all"
+                              aria-label={`Reproduzir ${music.title}`}
+                            >
+                              {isCurrentMusicPlaying(music) ? (
+                                <Pause size={15} />
+                              ) : (
+                                <Play size={15} className="ml-0.5" />
+                              )}
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    </section>
+                  )}
+                </div>
               )}
             </>
           )}
@@ -1092,7 +1403,12 @@ export default function HomePage() {
 
       <PlayerBar />
 
-      <VideoPlayerModal video={selectedVideo} onClose={() => setSelectedVideo(null)} />
+      <VideoPlayerModal
+        video={selectedVideo}
+        videos={featuredVideos}
+        onSelectVideo={handlePlayVideo}
+        onClose={() => setSelectedVideo(null)}
+      />
 
       {toast && (
         <div

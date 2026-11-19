@@ -11,6 +11,7 @@ import {
 } from 'react';
 import { getApiUrl } from '@/config/api';
 import { musicApi } from '@/lib/musicApi';
+import { cacheAudioInBackground, getOfflineBlobUrl } from '@/lib/offlineStorage';
 
 // ============================================================
 // TIPOS
@@ -136,6 +137,8 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const indexRef = useRef(0);
   const repeatRef = useRef<RepeatMode>('off');
   const shuffleRef = useRef(false);
+  const isPlayingRef = useRef(false);
+  const loadedMusicIdRef = useRef<number | null>(null);
   const hydratedRef = useRef(false);
   const playReportedRef = useRef<Set<string>>(new Set());
   const failedPlayRef = useRef<Set<string>>(new Set()); // 🔥 backoff
@@ -157,6 +160,9 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     shuffleRef.current = shuffle;
   }, [shuffle]);
+  useEffect(() => {
+    isPlayingRef.current = isPlaying;
+  }, [isPlaying]);
 
   // ---------- hidratação inicial (uma vez) ----------
   useEffect(() => {
@@ -304,17 +310,63 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     if (!audio) return;
 
     if (!currentMusic) {
+      loadedMusicIdRef.current = null;
       audio.pause();
       audio.src = '';
       return;
     }
 
     const newSrc = getApiUrl(`/api/v1/music/stream/${currentMusic.id}`);
-    if (!audio.src.endsWith(`/music/stream/${currentMusic.id}`)) {
-      setIsLoading(true);
-      audio.src = newSrc;
-      audio.load();
-    }
+    let cancelled = false;
+    loadedMusicIdRef.current = null;
+
+    const startPlaybackIfNeeded = () => {
+      if (isPlayingRef.current && !cancelled) {
+        const p = audio.play();
+        if (p && typeof p.catch === 'function') {
+          p.catch((err) => {
+            if (err?.name !== 'AbortError') {
+              console.warn('[Player] autoplay bloqueado:', err?.message);
+              setIsPlaying(false);
+            }
+          });
+        }
+      }
+    };
+
+    const loadAudioSource = async () => {
+      const offlineUrl = await getOfflineBlobUrl('music', currentMusic.id);
+      if (cancelled) return;
+
+      if (offlineUrl) {
+        if (audio.src !== offlineUrl) {
+          setIsLoading(true);
+          audio.src = offlineUrl;
+          audio.load();
+        }
+        loadedMusicIdRef.current = currentMusic.id;
+        startPlaybackIfNeeded();
+        return;
+      }
+
+      if (!audio.src.endsWith(`/music/stream/${currentMusic.id}`)) {
+        setIsLoading(true);
+        audio.src = newSrc;
+        audio.load();
+      }
+      loadedMusicIdRef.current = currentMusic.id;
+      startPlaybackIfNeeded();
+
+      if (typeof navigator !== 'undefined' && navigator.onLine) {
+        cacheAudioInBackground(currentMusic, newSrc);
+      }
+    };
+
+    loadAudioSource();
+
+    return () => {
+      cancelled = true;
+    };
   }, [currentMusic]);
 
   // ---------- play/pause ----------
@@ -322,12 +374,19 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     const audio = audioRef.current;
     if (!audio || !currentMusic) return;
 
+    // Aguarda loadAudioSource definir o src desta música antes de chamar play()
+    if (loadedMusicIdRef.current !== currentMusic.id) {
+      return;
+    }
+
     if (isPlaying) {
       const p = audio.play();
       if (p && typeof p.catch === 'function') {
         p.catch((err) => {
-          console.warn('[Player] autoplay bloqueado:', err?.message);
-          setIsPlaying(false);
+          if (err?.name !== 'AbortError') {
+            console.warn('[Player] autoplay bloqueado:', err?.message);
+            setIsPlaying(false);
+          }
         });
       }
     } else {
@@ -429,6 +488,20 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
 
   const play = useCallback(
     (music: MusicItem, autoPlay = true, newQueue?: MusicItem[]) => {
+      if (typeof window !== 'undefined') {
+        const hasToken =
+          Boolean(localStorage.getItem('podplay_token')) ||
+          document.cookie.includes('podplay_token=');
+        if (!hasToken) {
+          window.dispatchEvent(
+            new CustomEvent('podplay:require-auth', {
+              detail: { action: 'ouvir esta música', title: music.title },
+            })
+          );
+          return;
+        }
+      }
+
       if (currentMusicRef.current?.id === music.id) {
         if (!isPlaying) setIsPlaying(true);
         return;

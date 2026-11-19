@@ -2,7 +2,7 @@
 import Cookies from "js-cookie";
 
 // URL da API PodPlay (removida a barra final para evitar // no final)
-export const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "https://api-3e0j.onrender.com";
+export const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3000";
 
 // Endpoints da API
 export const API_ENDPOINTS = {
@@ -216,50 +216,94 @@ export const getUploadHeaders = (): HeadersInit => {
 
 // ============ FUNÇÕES DE API ============
 
+let refreshPromise: Promise<string | null> | null = null;
+
+/**
+ * Renova o accessToken usando o refreshToken com lock single-flight
+ * para evitar chamadas concorrentes que invalidem o refreshToken rotacionado.
+ */
+export async function refreshSessionToken(): Promise<string | null> {
+  if (typeof window === "undefined") return null;
+  if (refreshPromise) return refreshPromise;
+
+  const refreshToken =
+    localStorage.getItem("podplay_refresh_token") ||
+    Cookies.get("podplay_refresh_token");
+
+  if (!refreshToken) return null;
+
+  refreshPromise = (async () => {
+    try {
+      const refreshResponse = await fetch(getApiUrl(API_ENDPOINTS.REFRESH_TOKEN), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ refreshToken }),
+      });
+
+      if (!refreshResponse.ok) {
+        return null;
+      }
+
+      const result = await refreshResponse.json();
+      const accessToken = result?.data?.accessToken;
+      const newRefreshToken = result?.data?.refreshToken;
+
+      if (!accessToken || !newRefreshToken) {
+        return null;
+      }
+
+      localStorage.setItem("podplay_token", accessToken);
+      localStorage.setItem("podplay_refresh_token", newRefreshToken);
+      Cookies.set("podplay_token", accessToken, { expires: 7, path: "/" });
+      Cookies.set("podplay_refresh_token", newRefreshToken, { expires: 7, path: "/" });
+
+      window.dispatchEvent(new CustomEvent("podplay:token-refreshed", { detail: { accessToken } }));
+      return accessToken;
+    } catch (error) {
+      console.error("Erro ao renovar token:", error);
+      return null;
+    } finally {
+      refreshPromise = null;
+    }
+  })();
+
+  return refreshPromise;
+}
+
 // Função para fazer requisições autenticadas com tratamento de refresh token
 export async function fetchWithAuth(
   endpoint: string,
   options: RequestInit = {}
 ): Promise<Response> {
-  const token = localStorage.getItem("podplay_token");
+  const token =
+    (typeof window !== "undefined" ? localStorage.getItem("podplay_token") : null) ||
+    Cookies.get("podplay_token") ||
+    null;
 
   const makeRequest = async (tokenValue: string | null) => {
-    const headers = {
-      ...options.headers,
-      Authorization: tokenValue ? `Bearer ${tokenValue}` : "",
+    const isFormData = typeof FormData !== "undefined" && options.body instanceof FormData;
+    const baseHeaders: Record<string, string> = {
+      ...(options.headers as Record<string, string> | undefined),
     };
 
-    return fetch(getApiUrl(endpoint), { ...options, headers });
+    if (!isFormData && !baseHeaders["Content-Type"] && options.body) {
+      baseHeaders["Content-Type"] = "application/json";
+    }
+
+    if (tokenValue) {
+      baseHeaders.Authorization = `Bearer ${tokenValue}`;
+    }
+
+    return fetch(getApiUrl(endpoint), { ...options, headers: baseHeaders });
   };
 
   let response = await makeRequest(token);
 
-  // Se token expirou (401), tentar renovar
+  // Se token expirou (401), tentar renovar com single-flight lock
   if (response.status === 401) {
-    const refreshToken = localStorage.getItem("podplay_refresh_token");
-
-    if (refreshToken) {
-      try {
-        const refreshResponse = await fetch(getApiUrl(API_ENDPOINTS.REFRESH_TOKEN), {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ refreshToken }),
-        });
-
-        if (refreshResponse.ok) {
-          const { data } = await refreshResponse.json();
-          const { accessToken, refreshToken: newRefreshToken } = data;
-
-          localStorage.setItem("podplay_token", accessToken);
-          localStorage.setItem("podplay_refresh_token", newRefreshToken);
-          Cookies.set("podplay_token", accessToken, { expires: 7 });
-          Cookies.set("podplay_refresh_token", newRefreshToken, { expires: 7 });
-
-          response = await makeRequest(accessToken);
-        }
-      } catch (error) {
-        console.error("Erro ao renovar token:", error);
-      }
+    const newAccessToken = await refreshSessionToken();
+    if (newAccessToken) {
+      response = await makeRequest(newAccessToken);
     }
   }
 

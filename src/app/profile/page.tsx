@@ -28,7 +28,7 @@ import {
   CheckCircle,
   AlertCircle,
 } from 'lucide-react';
-import { API_ENDPOINTS, getApiUrl, getAuthHeaders } from '@/config/api';
+import { API_ENDPOINTS, fetchWithAuth, getApiUrl } from '@/config/api';
 
 // =====================================================================
 // TIPOS
@@ -149,18 +149,22 @@ export default function ProfilePage() {
     const loadProfile = async () => {
       try {
         const token = localStorage.getItem('podplay_token');
-        if (!token) {
+        const refreshToken = localStorage.getItem('podplay_refresh_token');
+        if (!token && !refreshToken) {
           router.push('/login');
           return;
         }
 
-        const profileResponse = await fetch(getApiUrl(API_ENDPOINTS.PROFILE), {
-          headers: getAuthHeaders(),
-        });
+        const profileResponse = await fetchWithAuth(API_ENDPOINTS.PROFILE);
         const profileResult = await profileResponse.json();
 
         if (profileResult.success) {
           setProfile(profileResult.data);
+          updateUser({
+            fullName: profileResult.data.full_name,
+            avatarUrl: profileResult.data.avatar_url,
+            foto: profileResult.data.avatar_url,
+          });
           setEditForm({
             full_name: profileResult.data.full_name || '',
             bio: profileResult.data.bio || '',
@@ -169,9 +173,7 @@ export default function ProfilePage() {
           });
         }
 
-        const statsResponse = await fetch(getApiUrl(API_ENDPOINTS.PROFILE_STATS), {
-          headers: getAuthHeaders(),
-        });
+        const statsResponse = await fetchWithAuth(API_ENDPOINTS.PROFILE_STATS);
         const statsResult = await statsResponse.json();
 
         if (statsResult.success) {
@@ -195,9 +197,8 @@ export default function ProfilePage() {
     setSuccess('');
 
     try {
-      const response = await fetch(getApiUrl(API_ENDPOINTS.PROFILE), {
+      const response = await fetchWithAuth(API_ENDPOINTS.PROFILE, {
         method: 'PUT',
-        headers: getAuthHeaders(),
         body: JSON.stringify({
           full_name: editForm.full_name,
           bio: editForm.bio,
@@ -231,10 +232,8 @@ export default function ProfilePage() {
     setUploadingAvatar(true);
 
     try {
-      const token = localStorage.getItem('podplay_token');
-      const response = await fetch(getApiUrl(API_ENDPOINTS.PROFILE_AVATAR), {
+      const response = await fetchWithAuth(API_ENDPOINTS.PROFILE_AVATAR, {
         method: 'POST',
-        headers: { Authorization: `Bearer ${token}` },
         body: formData,
       });
 
@@ -243,6 +242,7 @@ export default function ProfilePage() {
       if (result.success) {
         const avatarUrl = result.data.avatar_url;
         setProfile((prev) => (prev ? { ...prev, avatar_url: avatarUrl } : null));
+        updateUser({ avatarUrl, foto: avatarUrl });
         setAvatarKey(Date.now());
         setSuccess('Foto atualizada com sucesso!');
         setTimeout(() => setSuccess(''), 3000);
@@ -300,7 +300,7 @@ export default function ProfilePage() {
     return (
       <div className="min-h-screen bg-gradient-to-b from-slate-900 via-purple-900 to-slate-900">
         <PodPlaySidebar />
-        <main className="ml-64 min-h-screen flex items-center justify-center">
+        <main className="ml-0 md:ml-64 min-h-screen flex items-center justify-center">
           <Loader2 size={40} className="text-purple-500 animate-spin" />
         </main>
       </div>
@@ -311,7 +311,7 @@ export default function ProfilePage() {
     <div className="min-h-screen bg-gradient-to-b from-slate-900 via-purple-900 to-slate-900">
       <PodPlaySidebar />
 
-      <main className="ml-64 min-h-screen pb-24 transition-all duration-300">
+      <main className="ml-0 md:ml-64 min-h-screen pb-24 transition-all duration-300">
         <Header />
 
         <div className="max-w-4xl mx-auto px-4 py-8">
