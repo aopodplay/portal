@@ -22,10 +22,13 @@ import {
   X,
   WifiOff,
   Video as VideoIcon,
+  Search,
 } from 'lucide-react';
 import { API_ENDPOINTS, getApiUrl, getAuthHeaders } from '@/config/api';
 import { historyApi, HistoryItem as HistoryRecord } from '@/lib/historyApi';
 import VideoPlayerModal from '@/components/VideoPlayerModal';
+import ActionModal, { ActionModalConfig } from '@/components/ActionModal';
+import { getFriendlyErrorMessage } from '@/lib/errorHandler';
 import {
   listOfflineDownloads,
   removeOfflineMedia,
@@ -86,22 +89,44 @@ const ContentCard = ({
   onRemove?: () => void;
   showRemove?: boolean;
 }) => {
+  const isVideo = String(item.type || '').toLowerCase() === 'video';
   return (
-    <div className="group cursor-pointer">
-      <div className="relative rounded-lg overflow-hidden aspect-square mb-2 bg-gradient-to-br from-purple-500/20 to-pink-500/20">
+    <div
+      onClick={onPlay}
+      className="group cursor-pointer bg-white/[0.04] hover:bg-white/[0.08] border border-white/10 hover:border-purple-500/35 rounded-2xl p-3 transition-all"
+    >
+      <div
+        className={`relative rounded-xl overflow-hidden ${
+          isVideo ? 'aspect-video' : 'aspect-square'
+        } mb-2.5 bg-gradient-to-br from-purple-500/20 to-pink-500/20`}
+      >
         {item.cover_url ? (
           <img
             src={item.cover_url}
             alt={item.title}
+            loading="lazy"
+            decoding="async"
             className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
           />
         ) : (
           <div className="w-full h-full flex items-center justify-center">
-            <Music size={48} className="text-purple-400/50" />
+            {isVideo ? (
+              <VideoIcon size={44} className="text-purple-400/50" />
+            ) : (
+              <Music size={44} className="text-purple-400/50" />
+            )}
           </div>
         )}
+        <span className="absolute top-2 left-2 text-[10px] font-semibold px-2 py-0.5 rounded-full bg-black/65 backdrop-blur-sm text-purple-200 flex items-center gap-1">
+          {isVideo ? <VideoIcon size={10} /> : <Music size={10} />}
+          {isVideo ? 'Vídeo' : 'Música'}
+        </span>
         <button
-          onClick={onPlay}
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            onPlay?.();
+          }}
           className="absolute bottom-2 right-2 w-10 h-10 bg-purple-600 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all duration-300 transform translate-y-2 group-hover:translate-y-0 shadow-lg hover:scale-110 hover:bg-purple-500"
         >
           {isPlaying ? (
@@ -112,6 +137,7 @@ const ContentCard = ({
         </button>
         {showRemove && (
           <button
+            type="button"
             onClick={(e) => {
               e.stopPropagation();
               onRemove?.();
@@ -128,9 +154,11 @@ const ContentCard = ({
           </span>
         )}
       </div>
-      <h4 className="font-medium text-white text-sm truncate">{item.title}</h4>
+      <h4 className="font-semibold text-white text-sm truncate group-hover:text-purple-300 transition-colors">
+        {item.title}
+      </h4>
       <p className="text-gray-400 text-xs truncate">
-        {item.full_name || item.username || 'Artista'}
+        {item.full_name || item.username || (isVideo ? 'Vídeo' : 'Artista')}
       </p>
     </div>
   );
@@ -160,30 +188,40 @@ const HistoryItemRow = ({
 
   const pct = Math.min(100, Math.max(0, item.progress ?? 0));
   const isDone = !!item.completed;
+  const isVideo = String((item as any).type || (item as any).content_type || '').toLowerCase() === 'video';
 
   return (
-    <div className="flex items-center gap-3 p-3 rounded-lg bg-white/5 hover:bg-white/10 transition-all cursor-pointer group">
-      <div className="w-12 h-12 rounded-lg bg-gradient-to-br from-purple-500/20 to-pink-500/20 flex items-center justify-center flex-shrink-0 overflow-hidden">
+    <div
+      onClick={onPlay}
+      className="flex items-center gap-3 p-3 rounded-xl bg-white/[0.04] hover:bg-white/[0.08] border border-white/10 transition-all cursor-pointer group"
+    >
+      <div className="relative w-12 h-12 rounded-lg bg-gradient-to-br from-purple-500/20 to-pink-500/20 flex items-center justify-center flex-shrink-0 overflow-hidden">
         {item.cover_url ? (
           <img
             src={item.cover_url}
             alt={item.title}
+            loading="lazy"
+            decoding="async"
             className="w-full h-full object-cover"
           />
+        ) : isVideo ? (
+          <VideoIcon size={22} className="text-purple-400" />
         ) : (
-          <Music size={24} className="text-purple-400" />
+          <Music size={22} className="text-purple-400" />
         )}
       </div>
 
       <div className="flex-1 min-w-0">
-        <Link
-          href={`/player/${item.content_id}`}
-          className="font-medium text-white text-sm truncate block hover:text-purple-300 transition-colors"
-        >
-          {item.title || `Conteúdo #${item.content_id}`}
-        </Link>
+        <div className="flex items-center gap-2">
+          <span className="font-semibold text-white text-sm truncate group-hover:text-purple-300 transition-colors">
+            {item.title || `Conteúdo #${item.content_id}`}
+          </span>
+          <span className="text-[10px] px-2 py-0.5 rounded-full bg-white/10 text-purple-200 shrink-0">
+            {isVideo ? 'Vídeo' : 'Música'}
+          </span>
+        </div>
         <p className="text-gray-400 text-xs truncate">
-          {item.full_name || item.username || 'Artista'}
+          {item.full_name || item.username || (isVideo ? 'Vídeo' : 'Artista')}
           {item.total_duration
             ? ` · ${formatTime(item.last_position)} / ${formatTime(item.total_duration)}`
             : ` · ${formatTime(item.last_position)}`}
@@ -197,8 +235,9 @@ const HistoryItemRow = ({
         </div>
       </div>
 
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
         <button
+          type="button"
           onClick={onPlay}
           className="w-8 h-8 bg-purple-600 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all hover:bg-purple-500"
         >
@@ -209,6 +248,7 @@ const HistoryItemRow = ({
           )}
         </button>
         <button
+          type="button"
           onClick={onRemove}
           className="w-8 h-8 bg-red-500/20 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all hover:bg-red-500"
         >
@@ -238,6 +278,9 @@ export default function LibraryPage() {
   const [downloads, setDownloads] = useState<LibraryItem[]>([]);
   const [offlineItems, setOfflineItems] = useState<OfflineMediaRecord[]>([]);
   const [selectedOfflineVideo, setSelectedOfflineVideo] = useState<any | null>(null);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [typeFilter, setTypeFilter] = useState<'all' | 'music' | 'video'>('all');
+  const [modalConfig, setModalConfig] = useState<ActionModalConfig | null>(null);
   const [history, setHistory] = useState<HistoryRecord[]>([]);
   const [summary, setSummary] = useState({
     counts: { favorites: 0, downloads: 0, history: 0 },
@@ -389,43 +432,118 @@ export default function LibraryPage() {
     }
   };
 
-  const handleClearHistory = async () => {
-    if (!confirm('Tem certeza que deseja limpar todo o histórico?')) return;
-    try {
-      await historyApi.clearAll();
-      setHistory([]);
-      setSuccess('Histórico limpo com sucesso');
-      setTimeout(() => setSuccess(''), 3000);
-    } catch (err: any) {
-      setError(err?.message || 'Erro ao limpar histórico');
-    }
+  const handleClearHistory = () => {
+    setModalConfig({
+      mode: 'confirm',
+      title: 'Limpar todo o histórico',
+      message: 'Tens a certeza que desejas limpar todo o teu histórico de reprodução?',
+      confirmLabel: 'Limpar histórico',
+      danger: true,
+      onConfirm: async () => {
+        try {
+          await historyApi.clearAll();
+          setHistory([]);
+          setSuccess('Histórico limpo com sucesso');
+          setTimeout(() => setSuccess(''), 3000);
+        } catch (err: any) {
+          setError(getFriendlyErrorMessage(err, 'Não foi possível limpar o histórico.'));
+        }
+      },
+    });
   };
 
-  // ---------- Play REAL via PlayerContext ----------
+  // ---------- Play REAL via PlayerContext / VideoPlayerModal ----------
   const getCurrentItems = () => {
+    let raw: any[] = [];
     switch (activeTab) {
       case 'favorites':
-        return favorites;
+        raw = favorites;
+        break;
       case 'downloads':
-        return downloads;
+        raw = downloads;
+        break;
       case 'history':
-        return history;
+        raw = history;
+        break;
       default:
-        return [];
+        raw = [];
     }
+    const q = searchQuery.trim().toLowerCase();
+    return raw.filter((item) => {
+      const isVid = String(item.type || item.content_type || '').toLowerCase() === 'video';
+      if (typeFilter === 'video' && !isVid) return false;
+      if (typeFilter === 'music' && isVid) return false;
+      if (!q) return true;
+      return (
+        String(item.title || '').toLowerCase().includes(q) ||
+        String(item.full_name || item.username || '').toLowerCase().includes(q)
+      );
+    });
   };
 
   const currentItems = getCurrentItems();
 
-  const handlePlay = (item: LibraryItem | HistoryRecord) => {
-    // Enfileira a partir do item clicado + os seguintes
-    const itemsArray = currentItems as any[];
-    const startIdx = itemsArray.findIndex(
-      (i) => (i.content_id ?? i.id) === ((item as any).content_id ?? (item as any).id)
+  const handlePlay = async (item: LibraryItem | HistoryRecord) => {
+    const anyItem = item as any;
+    const isVideo = String(anyItem.type || anyItem.content_type || '').toLowerCase() === 'video';
+    const contentId = Number(anyItem.content_id ?? anyItem.id);
+
+    if (isVideo) {
+      setSelectedOfflineVideo({
+        id: contentId,
+        title: anyItem.title || `Vídeo #${contentId}`,
+        description: null,
+        duration: anyItem.duration ?? null,
+        file_path: '',
+        thumbnail_path: anyItem.cover_url ?? null,
+        file_size: 0,
+        views: 0,
+        likes: 0,
+        created_at: anyItem.created_at || new Date().toISOString(),
+      });
+      try {
+        const res = await fetch(getApiUrl(`/api/v1/videos/${contentId}`), {
+          headers: getAuthHeaders(),
+        });
+        const body = await res.json().catch(() => null);
+        if (res.ok && body?.success && body.data?.file_path) {
+          setSelectedOfflineVideo(body.data);
+          return;
+        }
+        const contentRes = await fetch(getApiUrl(`/api/v1/contents/${contentId}`), {
+          headers: getAuthHeaders(),
+        });
+        const contentBody = await contentRes.json().catch(() => null);
+        const c = contentBody?.data;
+        if (contentRes.ok && c && (c.video_url || c.hls_url || c.file_path)) {
+          setSelectedOfflineVideo({
+            id: contentId,
+            title: c.title || anyItem.title || `Vídeo #${contentId}`,
+            description: c.description || null,
+            duration: c.duration ?? anyItem.duration ?? null,
+            file_path: c.video_url || c.hls_url || c.file_path,
+            thumbnail_path: c.cover_url || anyItem.cover_url || null,
+            file_size: c.size || 0,
+            views: c.views || 0,
+            likes: c.likes || 0,
+            created_at: c.created_at || anyItem.created_at || new Date().toISOString(),
+          });
+        }
+      } catch {
+        // Mantém fallback já aberto
+      }
+      return;
+    }
+
+    const audioItems = (currentItems as any[]).filter(
+      (i) => String(i.type || i.content_type || '').toLowerCase() !== 'video'
+    );
+    const startIdx = audioItems.findIndex(
+      (i) => (i.content_id ?? i.id) === contentId
     );
 
     const queueFromIdx =
-      startIdx >= 0 ? itemsArray.slice(startIdx) : [item];
+      startIdx >= 0 ? audioItems.slice(startIdx) : [item];
 
     const queue = queueFromIdx.map(toPlayerMusic);
     play(toPlayerMusic(item), true, queue);
@@ -444,40 +562,94 @@ export default function LibraryPage() {
     <div className="min-h-screen bg-gradient-to-b from-slate-900 via-purple-900 to-slate-900">
       <PodPlaySidebar />
 
-      <main className="ml-0 md:ml-64 min-h-screen pb-24 transition-all duration-300">
+      <main className="ml-0 md:ml-60 min-h-screen pb-24 transition-all duration-300">
         <Header />
 
-        <div className="max-w-6xl mx-auto px-4 py-8">
-          <div className="mb-6">
-            <h1 className="text-2xl font-bold text-white">Biblioteca</h1>
-            <p className="text-gray-400 text-sm">
-              Seus conteúdos favoritos, downloads e histórico
-            </p>
+        <div className="max-w-[1600px] mx-auto px-6 py-6">
+          <div className="mb-6 flex flex-wrap items-center justify-between gap-4">
+            <div>
+              <h1 className="text-3xl font-bold text-white">Biblioteca</h1>
+              <p className="text-purple-200 text-sm mt-0.5">
+                Os teus conteúdos favoritos, downloads e histórico de reprodução
+              </p>
+            </div>
+
+            {!loading &&
+              (currentItems as any[]).some(
+                (i) => String(i.type || i.content_type || '').toLowerCase() !== 'video'
+              ) && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    const firstAudio = (currentItems as any[]).find(
+                      (i) => String(i.type || i.content_type || '').toLowerCase() !== 'video'
+                    );
+                    if (firstAudio) handlePlay(firstAudio);
+                  }}
+                  className="inline-flex items-center gap-2 px-5 py-2.5 rounded-full bg-purple-600 hover:bg-purple-500 text-white text-xs font-semibold shadow-lg shadow-purple-600/25 transition-all"
+                >
+                  <Play size={14} className="ml-0.5" />
+                  <span>Reproduzir Músicas</span>
+                </button>
+              )}
           </div>
 
-          {/* Resumo */}
+          {/* Resumo interativo */}
           <div className="grid grid-cols-3 gap-4 mb-8">
-            <div className="bg-white/5 rounded-xl p-4 text-center">
+            <button
+              type="button"
+              onClick={() => {
+                setActiveTab('favorites');
+                setPage(1);
+              }}
+              className={`rounded-2xl p-4 text-center border transition-all ${
+                activeTab === 'favorites'
+                  ? 'bg-pink-500/15 border-pink-400/50 shadow-lg'
+                  : 'bg-white/5 border-white/10 hover:bg-white/10'
+              }`}
+            >
               <Heart size={24} className="text-pink-400 mx-auto mb-2" />
               <p className="text-2xl font-bold text-white">
                 {summary.counts.favorites}
               </p>
-              <p className="text-xs text-gray-400">Favoritos</p>
-            </div>
-            <div className="bg-white/5 rounded-xl p-4 text-center">
+              <p className="text-xs text-gray-300">Favoritos</p>
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setActiveTab('downloads');
+                setPage(1);
+              }}
+              className={`rounded-2xl p-4 text-center border transition-all ${
+                activeTab === 'downloads'
+                  ? 'bg-blue-500/15 border-blue-400/50 shadow-lg'
+                  : 'bg-white/5 border-white/10 hover:bg-white/10'
+              }`}
+            >
               <Download size={24} className="text-blue-400 mx-auto mb-2" />
               <p className="text-2xl font-bold text-white">
                 {summary.counts.downloads}
               </p>
-              <p className="text-xs text-gray-400">Downloads</p>
-            </div>
-            <div className="bg-white/5 rounded-xl p-4 text-center">
-              <Clock size={24} className="text-green-400 mx-auto mb-2" />
+              <p className="text-xs text-gray-300">Downloads</p>
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setActiveTab('history');
+                setPage(1);
+              }}
+              className={`rounded-2xl p-4 text-center border transition-all ${
+                activeTab === 'history'
+                  ? 'bg-emerald-500/15 border-emerald-400/50 shadow-lg'
+                  : 'bg-white/5 border-white/10 hover:bg-white/10'
+              }`}
+            >
+              <Clock size={24} className="text-emerald-400 mx-auto mb-2" />
               <p className="text-2xl font-bold text-white">
                 {summary.counts.history}
               </p>
-              <p className="text-xs text-gray-400">Histórico</p>
-            </div>
+              <p className="text-xs text-gray-300">Histórico</p>
+            </button>
           </div>
 
           {error && (
@@ -542,6 +714,52 @@ export default function LibraryPage() {
             </button>
           </div>
 
+          {/* Pesquisa e filtro por tipo */}
+          <div className="mb-6 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div className="relative max-w-sm w-full">
+              <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400" />
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Pesquisar na biblioteca..."
+                className="w-full pl-9 pr-9 py-2 rounded-full bg-white/10 border border-white/10 text-xs text-white placeholder-gray-400 focus:outline-none focus:border-purple-500"
+              />
+              {searchQuery && (
+                <button
+                  type="button"
+                  onClick={() => setSearchQuery('')}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-white"
+                >
+                  <X size={14} />
+                </button>
+              )}
+            </div>
+
+            <div className="flex items-center gap-1.5">
+              {(
+                [
+                  { key: 'all', label: 'Todos' },
+                  { key: 'music', label: 'Músicas' },
+                  { key: 'video', label: 'Vídeos' },
+                ] as const
+              ).map((f) => (
+                <button
+                  key={f.key}
+                  type="button"
+                  onClick={() => setTypeFilter(f.key)}
+                  className={`px-3.5 py-1.5 rounded-full text-xs font-medium transition-colors ${
+                    typeFilter === f.key
+                      ? 'bg-purple-600 text-white'
+                      : 'bg-white/10 text-gray-300 hover:bg-white/15'
+                  }`}
+                >
+                  {f.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
           {/* Conteúdo */}
           {activeTab === 'downloads' && offlineItems.length > 0 && (
             <section className="mb-8">
@@ -602,8 +820,14 @@ export default function LibraryPage() {
           )}
 
           {loading ? (
-            <div className="flex justify-center py-12">
-              <Loader2 size={40} className="text-purple-500 animate-spin" />
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
+              {Array.from({ length: 10 }).map((_, i) => (
+                <div key={i} className="bg-white/5 rounded-2xl p-3 animate-pulse">
+                  <div className="aspect-square rounded-xl bg-white/10 mb-3" />
+                  <div className="h-3.5 bg-white/10 rounded w-3/4 mb-2" />
+                  <div className="h-3 bg-white/10 rounded w-1/2" />
+                </div>
+              ))}
             </div>
           ) : currentItems.length === 0 ? (
             <div className="text-center py-12">
@@ -703,6 +927,7 @@ export default function LibraryPage() {
         video={selectedOfflineVideo}
         onClose={() => setSelectedOfflineVideo(null)}
       />
+      <ActionModal config={modalConfig} onClose={() => setModalConfig(null)} />
     </div>
   );
 }

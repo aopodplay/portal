@@ -20,7 +20,6 @@ import {
   Shield,
   AtSign,
   Loader2,
-  Sparkles,
   Mail,
 } from 'lucide-react';
 

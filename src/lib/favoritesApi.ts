@@ -1,5 +1,6 @@
 // src/lib/favoritesApi.ts
 import { getApiUrl, getAuthHeaders } from '@/config/api';
+import { apiJsonFetch, parseApiError } from '@/lib/errorHandler';
 
 // TIPOS
 export type ContentType = 'content' | 'music' | 'video';
@@ -24,27 +25,7 @@ export interface DownloadInfo {
 
 // HELPER
 async function jsonFetch<T>(url: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(url, {
-    ...init,
-    headers: {
-      'Content-Type': 'application/json',
-      ...getAuthHeaders(),
-      ...(init?.headers ?? {}),
-    },
-  });
-
-  let body: any = null;
-  try {
-    body = await res.json();
-  } catch {
-    throw new Error(`Erro ${res.status} (resposta não-JSON)`);
-  }
-
-  if (!res.ok || !body?.success) {
-    throw new Error(body?.message || `Erro ${res.status}`);
-  }
-
-  return body.data as T;
+  return apiJsonFetch<T>(url, init);
 }
 
 // FAVORITOS
@@ -86,12 +67,11 @@ export const downloadsApi = {
     });
 
     if (!res.ok) {
-      let msg = `Erro ${res.status}`;
+      let body: any = null;
       try {
-        const j = await res.json();
-        msg = j?.message || msg;
+        body = await res.json();
       } catch { /* resposta não-JSON */ }
-      throw new Error(msg);
+      throw new Error(parseApiError(res, body, 'Não foi possível descarregar o ficheiro.'));
     }
 
     const disposition = res.headers.get('Content-Disposition') || '';

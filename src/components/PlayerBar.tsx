@@ -19,6 +19,7 @@ import {
 import { useState } from 'react';
 import Link from 'next/link';
 import { resolveCoverUrl } from '@/lib/media';
+import { getArtistHref } from '@/lib/catalogApi';
 import QueuePanel from './QueuePanel';
 
 export default function PlayerBar() {
@@ -70,8 +71,8 @@ export default function PlayerBar() {
     <>
       {queueOpen && <QueuePanel onClose={() => setQueueOpen(false)} />}
 
-      <div className="fixed bottom-0 left-0 right-0 bg-black/95 backdrop-blur-xl border-t border-white/10 z-50">
-        <div className="max-w-7xl mx-auto px-4 py-3">
+      <div className="fixed bottom-14 md:bottom-0 left-0 right-0 bg-black/95 backdrop-blur-xl border-t border-white/10 z-50">
+        <div className="max-w-7xl mx-auto px-3 sm:px-4 py-2 sm:py-3">
           <div className="flex items-center gap-3 mb-2">
             <span className="text-xs text-gray-400 w-12 tabular-nums">
               {formatTime(currentTime)}
@@ -116,7 +117,7 @@ export default function PlayerBar() {
                 <div className="flex items-center gap-1 text-xs truncate">
                   {currentMusic.artist_id ? (
                     <Link
-                      href={`/artists/${currentMusic.artist_id}`}
+                      href={getArtistHref(currentMusic.artist_id, currentMusic.artist)}
                       className="text-gray-400 truncate hover:text-purple-300 transition-colors"
                     >
                       {currentMusic.artist}
@@ -211,7 +212,7 @@ export default function PlayerBar() {
 
               <button
                 onClick={toggleMute}
-                className="text-gray-400 hover:text-white transition-colors p-1"
+                className="text-gray-400 hover:text-white transition-colors p-1 hidden sm:block"
               >
                 {isMuted || volume === 0 ? (
                   <VolumeX size={18} />

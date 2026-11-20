@@ -27,7 +27,8 @@ import { usePlayer } from '@/contexts/PlayerContext';
 import { getApiUrl, getAuthHeaders } from '@/config/api';
 import { resolveCoverUrl } from '@/lib/media';
 import { favoritesApi, downloadsApi, ContentType } from '@/lib/favoritesApi';
-import { formatDurationOrDash, playsLabel } from '@/lib/catalogApi';
+import { formatDurationOrDash, playsLabel, getArtistHref } from '@/lib/catalogApi';
+import { getFriendlyErrorMessage, parseApiError } from '@/lib/errorHandler';
 
 // =====================================================================
 // TIPO
@@ -75,7 +76,7 @@ export default function PlayerPage() {
   // ---------- Carregar detalhe da música ----------
   useEffect(() => {
     if (!musicId || isNaN(musicId)) {
-      setError('ID inválido');
+      setError('Conteúdo indisponível.');
       setLoading(false);
       return;
     }
@@ -91,10 +92,10 @@ export default function PlayerPage() {
         const res = await fetch(getApiUrl(`/api/v1/music/${musicId}`), {
           headers: getAuthHeaders(),
         });
-        const body = await res.json();
+        const body = await res.json().catch(() => null);
 
         if (!res.ok || !body?.success) {
-          throw new Error(body?.message || 'Música não encontrada');
+          throw new Error(parseApiError(res, body, 'Este conteúdo não está disponível neste momento.'));
         }
 
         if (cancelled) return;
@@ -111,7 +112,7 @@ export default function PlayerPage() {
         }
       } catch (err: any) {
         if (cancelled) return;
-        setError(err?.message || 'Erro ao carregar');
+        setError(getFriendlyErrorMessage(err, 'Não foi possível carregar este conteúdo.'));
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -273,7 +274,7 @@ export default function PlayerPage() {
               {/* Artista */}
               {music.artist_id ? (
                 <Link
-                  href={`/artists/${music.artist_id}`}
+                  href={getArtistHref(music.artist_id, music.artist)}
                   className="text-purple-300 hover:text-white text-base mt-2 inline-flex items-center gap-1"
                 >
                   <UserIcon size={16} />

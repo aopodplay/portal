@@ -97,8 +97,8 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         if (savedPlaying) {
           setIsPlaying(true);
         }
-      } catch (e) {
-        console.error('Erro ao carregar música salva:', e);
+      } catch {
+        // Ignora estado inválido no localStorage
       }
     }
   }, []);

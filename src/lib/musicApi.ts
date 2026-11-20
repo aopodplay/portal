@@ -1,5 +1,6 @@
 // src/lib/musicApi.ts
-import { getApiUrl, getAuthHeaders } from '@/config/api';
+import { getApiUrl } from '@/config/api';
+import { apiJsonFetch } from '@/lib/errorHandler';
 
 export interface RecordPlayPayload {
   duration_listened: number;
@@ -21,29 +22,21 @@ export const musicApi = {
    * Autenticação opcional — se houver token, grava user_id.
    */
   recordPlay: async (musicId: number, payload: RecordPlayPayload): Promise<RecordPlayResponse> => {
-    const res = await fetch(getApiUrl(`/api/v1/music/${musicId}/play`), {
+    return apiJsonFetch<RecordPlayResponse>(getApiUrl(`/api/v1/music/${musicId}/play`), {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        ...getAuthHeaders(),
-      },
       body: JSON.stringify(payload),
     });
-
-    const body = await res.json();
-    if (!res.ok || !body?.success) {
-      throw new Error(body?.message || `Erro ${res.status}`);
-    }
-    return body.data as RecordPlayResponse;
   },
 
   /** GET /api/v1/music/:id/plays */
   getPlays: async (musicId: number): Promise<number> => {
-    const res = await fetch(getApiUrl(`/api/v1/music/${musicId}/plays`), {
-      headers: getAuthHeaders(),
-    });
-    const body = await res.json();
-    if (!res.ok || !body?.success) return 0;
-    return body.data.plays ?? 0;
+    try {
+      const data = await apiJsonFetch<{ plays?: number }>(
+        getApiUrl(`/api/v1/music/${musicId}/plays`)
+      );
+      return data?.plays ?? 0;
+    } catch {
+      return 0;
+    }
   },
 };

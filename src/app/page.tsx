@@ -8,6 +8,7 @@ import Header from '@/components/layout/Header';
 import PlayerBar from '@/components/PlayerBar';
 import VideoPlayerModal from '@/components/VideoPlayerModal';
 import PodPlaySidebar from '@/components/PodPlaySidebar';
+import PodPlayFooter from '@/components/PodPlayFooter';
 import AddToPlaylistButton from '@/components/AddToPlaylistButton';
 import {
   Play,
@@ -38,7 +39,8 @@ import { catalogApi, type Artist, type Album } from '@/lib/catalogApi';
 import { favoritesApi, downloadsApi, ContentType } from '@/lib/favoritesApi';
 import { metricsApi } from '@/lib/metricsApi';
 import type { ContentMetrics } from '@/lib/metricsApi';
-import { formatDurationOrDash, playsLabel } from '@/lib/catalogApi';
+import { formatDurationOrDash, playsLabel, getArtistHref } from '@/lib/catalogApi';
+import { getFriendlyErrorMessage, parseApiError } from '@/lib/errorHandler';
 
 // =====================================================================
 // TIPOS
@@ -51,6 +53,7 @@ interface MusicItem {
   artist_id?: number | null;
   album: string | null;
   album_id?: number | null;
+  category?: string | null;
   duration: number | null;
   file_path: string;
   file_size: number;
@@ -63,6 +66,7 @@ interface VideoItem {
   id: number;
   title: string;
   description: string | null;
+  category?: string | null;
   duration: number | null;
   resolution: string | null;
   file_path: string;
@@ -211,7 +215,7 @@ const MusicCard = ({
 
         {music.artist_id ? (
           <Link
-            href={`/artists/${music.artist_id}`}
+            href={getArtistHref(music.artist_id, music.artist)}
             className="text-gray-400 text-xs truncate block hover:text-purple-300 transition-colors"
             title={music.artist}
           >
@@ -462,12 +466,15 @@ export default function HomePage() {
 
   const [categories, setCategories] = useState<Category[]>([]);
   const [categoriesLoading, setCategoriesLoading] = useState(true);
+  const [categoryContents, setCategoryContents] = useState<any[]>([]);
+  const [categoryContentLoading, setCategoryContentLoading] = useState(false);
 
   const [favoritesSet, setFavoritesSet] = useState<Set<string>>(new Set());
   const [downloadingSet, setDownloadingSet] = useState<Set<string>>(new Set());
   const [metricsMap, setMetricsMap] = useState<Record<string, ContentMetrics>>({});
 
   const [toast, setToast] = useState<{ type: 'success' | 'error'; msg: string } | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   const showToast = (type: 'success' | 'error', msg: string) => {
     setToast({ type, msg });
@@ -603,7 +610,7 @@ export default function HomePage() {
         URL.revokeObjectURL(url);
         showToast('success', `Download iniciado: ${fileName}`);
       } catch (err: any) {
-        showToast('error', err?.message || 'Erro ao descarregar');
+        showToast('error', getFriendlyErrorMessage(err, 'Não foi possível descarregar o ficheiro.'));
       } finally {
         setDownloadingSet((prev) => {
           const next = new Set(prev);
@@ -620,18 +627,36 @@ export default function HomePage() {
     (async () => {
       try {
         setCatalogLoading(true);
-        const [artistsRes, albumsRes, seriesRes] = await Promise.all([
+        const [artistsResult, albumsResult, seriesResult] = await Promise.allSettled([
           catalogApi.listArtists(1, 20),
           catalogApi.listAlbums(1, 20),
-          fetch(getApiUrl('/api/v1/series')).then((r) => r.json()).catch(() => null),
+          fetch(getApiUrl('/api/v1/series')).then((r) => (r.ok ? r.json() : null)).catch(() => null),
         ]);
-        setArtists(Array.isArray(artistsRes?.artists) ? artistsRes.artists : []);
-        setAlbums(Array.isArray(albumsRes?.albums) ? albumsRes.albums : []);
-        if (seriesRes?.success && Array.isArray(seriesRes.data) && seriesRes.data.length > 0) {
-          setFeaturedSeries(seriesRes.data);
+
+        if (artistsResult.status === 'fulfilled') {
+          setArtists(Array.isArray(artistsResult.value?.artists) ? artistsResult.value.artists : []);
+        }
+        if (albumsResult.status === 'fulfilled') {
+          setAlbums(Array.isArray(albumsResult.value?.albums) ? albumsResult.value.albums : []);
+        }
+        if (
+          seriesResult.status === 'fulfilled' &&
+          seriesResult.value?.success &&
+          Array.isArray(seriesResult.value.data) &&
+          seriesResult.value.data.length > 0
+        ) {
+          setFeaturedSeries(seriesResult.value.data);
+        }
+
+        if (artistsResult.status === 'rejected' && albumsResult.status === 'rejected') {
+          setLoadError((prev) =>
+            prev || getFriendlyErrorMessage(artistsResult.reason, 'Não foi possível carregar o catálogo neste momento.')
+          );
         }
       } catch (err) {
-        console.error('[HomePage] Catálogo:', err);
+        setLoadError((prev) =>
+          prev || getFriendlyErrorMessage(err, 'Não foi possível carregar o catálogo neste momento.')
+        );
       } finally {
         setCatalogLoading(false);
       }
@@ -646,10 +671,14 @@ export default function HomePage() {
         const res = await fetch(getApiUrl('/api/v1/categories'), {
           headers: getAuthHeaders(),
         });
-        const json = await res.json();
-        if (json.success && json.data) setCategories(json.data);
+        const json = await res.json().catch(() => null);
+        if (res.ok && json?.success && json.data) {
+          setCategories(json.data);
+        } else if (!res.ok) {
+          setLoadError((prev) => prev || parseApiError(res, json, 'Não foi possível carregar as categorias.'));
+        }
       } catch (err) {
-        console.error('[HomePage] Categorias:', err);
+        setLoadError((prev) => prev || getFriendlyErrorMessage(err, 'Não foi possível carregar as categorias.'));
       } finally {
         setCategoriesLoading(false);
       }
@@ -664,17 +693,19 @@ export default function HomePage() {
         const response = await fetch(getApiUrl('/api/v1/music'), {
           headers: getAuthHeaders(),
         });
-        const result = await response.json();
-        if (result.success && result.data) {
+        const result = await response.json().catch(() => null);
+        if (response.ok && result?.success && result.data) {
           const items: MusicItem[] = Array.isArray(result.data)
             ? result.data
             : Array.isArray(result.data.items)
               ? result.data.items
               : [];
           setAllMusic(items);
+        } else if (!response.ok) {
+          setLoadError((prev) => prev || parseApiError(response, result, 'Não foi possível carregar as músicas.'));
         }
       } catch (err) {
-        console.error('[HomePage] Músicas:', err);
+        setLoadError((prev) => prev || getFriendlyErrorMessage(err, 'Não foi possível carregar as músicas.'));
       } finally {
         setMusicLoading(false);
       }
@@ -689,17 +720,19 @@ export default function HomePage() {
         const response = await fetch(getApiUrl('/api/v1/videos'), {
           headers: getAuthHeaders(),
         });
-        const result = await response.json();
-        if (result.success && result.data) {
+        const result = await response.json().catch(() => null);
+        if (response.ok && result?.success && result.data) {
           const items: VideoItem[] = Array.isArray(result.data)
             ? result.data
             : Array.isArray(result.data.items)
               ? result.data.items
               : [];
           setVideoList(items);
+        } else if (!response.ok) {
+          setLoadError((prev) => prev || parseApiError(response, result, 'Não foi possível carregar os vídeos.'));
         }
       } catch (err) {
-        console.error('[HomePage] Vídeos:', err);
+        setLoadError((prev) => prev || getFriendlyErrorMessage(err, 'Não foi possível carregar os vídeos.'));
       } finally {
         setVideosLoading(false);
       }
@@ -715,14 +748,15 @@ export default function HomePage() {
 
     (async () => {
       const toCheck: { contentType: ContentType; id: number }[] = [
-        ...allMusic.map((m) => ({ contentType: 'music' as const, id: m.id })),
-        ...videoList.map((v) => ({ contentType: 'video' as const, id: v.id })),
+        ...allMusic.slice(0, 12).map((m) => ({ contentType: 'music' as const, id: m.id })),
+        ...videoList.slice(0, 12).map((v) => ({ contentType: 'video' as const, id: v.id })),
       ];
 
       const chunkSize = 5;
       const results: { key: string; isFavorited: boolean }[] = [];
+      let shouldStop = false;
 
-      for (let i = 0; i < toCheck.length; i += chunkSize) {
+      for (let i = 0; i < toCheck.length && !shouldStop; i += chunkSize) {
         const chunk = toCheck.slice(i, i + chunkSize);
         const chunkResults = await Promise.all(
           chunk.map(async ({ contentType, id }) => {
@@ -730,6 +764,7 @@ export default function HomePage() {
               const res = await favoritesApi.checkFavorite(id, contentType);
               return { key: favKey(contentType, id), isFavorited: res.isFavorited };
             } catch {
+              shouldStop = true;
               return { key: favKey(contentType, id), isFavorited: false };
             }
           })
@@ -801,22 +836,102 @@ export default function HomePage() {
   }, [user, allMusic.length, videoList.length]);
 
   // Filtros
+  const normalizeCat = useCallback((val?: string | null) => {
+    return String(val || '')
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .toLowerCase()
+      .trim();
+  }, []);
+
+  const matchesCategory = useCallback(
+    (itemCategory: string | null | undefined, slug: string, name?: string) => {
+      const itemNorm = normalizeCat(itemCategory);
+      if (!itemNorm) return false;
+      const slugNorm = normalizeCat(slug);
+      const nameNorm = normalizeCat(name);
+      const itemStem = itemNorm.replace(/s$/, '');
+      const slugStem = slugNorm.replace(/s$/, '');
+      const nameStem = nameNorm.replace(/s$/, '');
+
+      if (
+        itemNorm === slugNorm ||
+        itemNorm === nameNorm ||
+        itemStem === slugStem ||
+        (nameStem && itemStem === nameStem)
+      ) {
+        return true;
+      }
+
+      if (slugNorm.includes('testemunh') || nameNorm.includes('testemunh')) {
+        return itemNorm.includes('testemunh') || itemNorm === 'testimony' || itemNorm === 'outro';
+      }
+      if (slugNorm.includes('serm') || nameNorm.includes('serm')) {
+        return itemNorm.includes('serm');
+      }
+      if (slugNorm.includes('estud') || nameNorm.includes('estud')) {
+        return itemNorm.includes('estud');
+      }
+      if (slugNorm.includes('podcast') || nameNorm.includes('podcast')) {
+        return itemNorm.includes('podcast');
+      }
+      if (slugNorm.includes('cult') || nameNorm.includes('cult')) {
+        return itemNorm.includes('cult');
+      }
+      return false;
+    },
+    [normalizeCat]
+  );
+
+  // Carregar conteúdos da categoria selecionada via endpoint de categorias
+  useEffect(() => {
+    if (activeCategory === 'all' || activeCategory === 'musicas' || activeCategory === 'videos') {
+      setCategoryContents([]);
+      setCategoryContentLoading(false);
+      return;
+    }
+
+    let cancelled = false;
+    (async () => {
+      try {
+        setCategoryContentLoading(true);
+        const res = await fetch(
+          getApiUrl(`/api/v1/categories/${encodeURIComponent(activeCategory)}?limit=24`),
+          { headers: getAuthHeaders() }
+        );
+        const json = await res.json().catch(() => null);
+        if (!cancelled && res.ok && json?.success && Array.isArray(json.data?.contents)) {
+          setCategoryContents(json.data.contents);
+        } else if (!cancelled) {
+          setCategoryContents([]);
+        }
+      } catch {
+        if (!cancelled) setCategoryContents([]);
+      } finally {
+        if (!cancelled) setCategoryContentLoading(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [activeCategory]);
+
   const filteredMusic = useMemo(() => {
     if (activeCategory === 'all') return allMusic;
     const cat = categories.find((c) => c.slug === activeCategory);
-    if (!cat) return allMusic;
-    switch (cat.slug) {
-      case 'musicas': return allMusic;
-      case 'videos': return [];
-      default: return [];
-    }
-  }, [allMusic, activeCategory, categories]);
+    if (activeCategory === 'musicas') return allMusic;
+    if (activeCategory === 'videos') return [];
+    return allMusic.filter((m) => matchesCategory(m.category, activeCategory, cat?.name));
+  }, [allMusic, activeCategory, categories, matchesCategory]);
 
   const filteredVideos = useMemo(() => {
     if (activeCategory === 'all') return videoList;
     if (activeCategory === 'videos') return videoList;
-    return [];
-  }, [videoList, activeCategory]);
+    if (activeCategory === 'musicas') return [];
+    const cat = categories.find((c) => c.slug === activeCategory);
+    return videoList.filter((v) => matchesCategory(v.category, activeCategory, cat?.name));
+  }, [videoList, activeCategory, categories, matchesCategory]);
 
   const topPlayedMusic = useMemo(() => {
     return [...filteredMusic].sort((a, b) => (b.plays ?? 0) - (a.plays ?? 0));
@@ -1001,7 +1116,7 @@ export default function HomePage() {
                   )}
                   {topArtists[0] && (
                     <Link
-                      href={`/artists/${topArtists[0].id}`}
+                      href={getArtistHref(topArtists[0].id, topArtists[0].name)}
                       className="px-4 py-2.5 bg-white/10 hover:bg-white/15 border border-white/10 text-white rounded-full font-medium text-sm transition-all"
                     >
                       {topArtists[0].name}
@@ -1034,7 +1149,7 @@ export default function HomePage() {
                   Histórico <ChevronRight size={14} />
                 </Link>
               </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5">
+              <div className="flex overflow-x-auto snap-x snap-mandatory no-scrollbar gap-3.5 pb-1 -mx-4 px-4 md:mx-0 md:px-0 md:grid md:grid-cols-2 lg:grid-cols-3">
                 {continueListening.slice(0, 6).map(({ music, progressPct }) => {
                   const playingThis = isCurrentMusicPlaying(music);
                   const pct = progressPct;
@@ -1042,7 +1157,7 @@ export default function HomePage() {
                     <div
                       key={`continue-${music.id}`}
                       onClick={() => handlePlayMusic(music)}
-                      className="group relative bg-white/[0.05] hover:bg-white/[0.09] border border-white/[0.08] rounded-xl overflow-hidden cursor-pointer transition-all"
+                      className="w-[78vw] max-w-[300px] shrink-0 snap-start md:w-auto md:max-w-none group relative bg-white/[0.05] hover:bg-white/[0.09] border border-white/[0.08] rounded-xl overflow-hidden cursor-pointer transition-all"
                     >
                       <div className="flex items-center justify-between gap-3 p-3">
                         <div className="flex items-center gap-3.5 min-w-0">
@@ -1101,12 +1216,12 @@ export default function HomePage() {
                   Em Alta <ChevronRight size={14} />
                 </Link>
               </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+              <div className="flex overflow-x-auto snap-x snap-mandatory no-scrollbar gap-3 pb-1 -mx-4 px-4 md:mx-0 md:px-0 md:grid md:grid-cols-2 lg:grid-cols-3">
                 {topPlayedMusic.slice(0, 6).map((track, idx) => (
                   <div
                     key={`quick-${track.id}`}
                     onClick={() => handlePlayMusic(track)}
-                    className="group flex items-center justify-between gap-3 bg-white/10 hover:bg-white/15 border border-white/10 rounded-xl overflow-hidden pr-3 cursor-pointer transition-all"
+                    className="w-[78vw] max-w-[300px] shrink-0 snap-start md:w-auto md:max-w-none group flex items-center justify-between gap-3 bg-white/10 hover:bg-white/15 border border-white/10 rounded-xl overflow-hidden pr-3 cursor-pointer transition-all"
                   >
                     <div className="flex items-center gap-3 min-w-0">
                       <div className="relative w-14 h-14 flex-shrink-0 bg-slate-800">
@@ -1139,6 +1254,26 @@ export default function HomePage() {
             </section>
           )}
 
+          {loadError && (
+            <div className="mb-6 rounded-2xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 flex flex-wrap items-center justify-between gap-3">
+              <p className="text-sm text-amber-200">{loadError}</p>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => window.location.reload()}
+                  className="px-3 py-1.5 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 text-xs font-semibold text-amber-100 transition"
+                >
+                  Tentar novamente
+                </button>
+                <button
+                  onClick={() => setLoadError(null)}
+                  className="px-2 py-1.5 text-xs text-amber-300/80 hover:text-amber-100 transition"
+                >
+                  Fechar
+                </button>
+              </div>
+            </div>
+          )}
+
           {/* CATEGORIAS */}
           <div className="mb-8">
             <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-hide">
@@ -1166,13 +1301,130 @@ export default function HomePage() {
           </div>
 
           {activeCategory !== 'all' && activeCategory !== 'musicas' && activeCategory !== 'videos' ? (
-            <section className="mb-10">
-              <div className="flex items-center justify-between mb-4">
+            <section className="mb-10 space-y-8">
+              <div className="flex items-center justify-between">
                 <h3 className="text-xl font-bold text-white">{activeCategoryName}</h3>
               </div>
-              <div className="text-center py-12 text-gray-400">
-                Ainda não há conteúdo nesta categoria.
-              </div>
+
+              {categoryContentLoading || musicLoading || videosLoading ? (
+                <div className="flex justify-center py-12">
+                  <Loader2 size={32} className="text-purple-500 animate-spin" />
+                </div>
+              ) : filteredMusic.length === 0 &&
+                filteredVideos.length === 0 &&
+                categoryContents.length === 0 ? (
+                <div className="text-center py-12 text-gray-400">
+                  Ainda não há conteúdo nesta categoria.
+                </div>
+              ) : (
+                <>
+                  {filteredMusic.length > 0 && (
+                    <div>
+                      <h4 className="text-base font-semibold text-gray-200 mb-3">Áudios & Louvores</h4>
+                      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3.5">
+                        {filteredMusic.map((music) => (
+                          <MusicCard
+                            key={`cat-music-${music.id}`}
+                            music={music}
+                            metrics={metricsMap[`music:${music.id}`]}
+                            onPlay={handlePlayMusic}
+                            isCurrentMusicPlaying={isCurrentMusicPlaying}
+                            isFavorited={favoritesSet.has(favKey('music', music.id))}
+                            onToggleFavorite={(m) => handleToggleFavorite(m, 'music')}
+                            onDownload={(m) => handleDownload(m, 'music')}
+                            isDownloading={downloadingSet.has(favKey('music', music.id))}
+                          />
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {filteredVideos.length > 0 && (
+                    <div>
+                      <h4 className="text-base font-semibold text-gray-200 mb-3">Vídeos</h4>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                        {filteredVideos.map((video) => (
+                          <VideoCard
+                            key={`cat-video-${video.id}`}
+                            video={video}
+                            metrics={metricsMap[`video:${video.id}`]}
+                            onPlay={setSelectedVideo}
+                            isFavorited={favoritesSet.has(favKey('video', video.id))}
+                            onToggleFavorite={(v) => handleToggleFavorite(v, 'video')}
+                            onDownload={(v) => handleDownload(v, 'video')}
+                            isDownloading={downloadingSet.has(favKey('video', video.id))}
+                          />
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {categoryContents.length > 0 && (
+                    <div>
+                      <h4 className="text-base font-semibold text-gray-200 mb-3">Conteúdos da Categoria</h4>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                        {categoryContents.map((item: any) => {
+                          const isVideo =
+                            String(item.type || item.source || '').toUpperCase() === 'VIDEO' ||
+                            Boolean(item.video_url && !item.audio_url);
+                          return (
+                            <div
+                              key={`cat-content-${item.id}`}
+                              onClick={() => {
+                                if (isVideo) {
+                                  setSelectedVideo({
+                                    id: item.source_id || item.id,
+                                    title: item.title,
+                                    description: item.description || null,
+                                    duration: item.duration || 0,
+                                    resolution: null,
+                                    file_path: item.video_url || '',
+                                    thumbnail_path: item.cover_url || null,
+                                    file_size: 0,
+                                    views: item.views || 0,
+                                    likes: item.likes || 0,
+                                    created_at: item.created_at || new Date().toISOString(),
+                                  });
+                                } else {
+                                  handlePlayMusic({
+                                    id: item.source_id || item.id,
+                                    title: item.title,
+                                    artist: item.full_name || item.username || 'PodféPlay',
+                                    album: null,
+                                    duration: item.duration || 0,
+                                    file_path: item.audio_url || '',
+                                    file_size: 0,
+                                    cover_image: item.cover_url || null,
+                                    created_at: item.created_at || new Date().toISOString(),
+                                  });
+                                }
+                              }}
+                              className="group cursor-pointer bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl p-3 transition-all"
+                            >
+                              <div className="relative aspect-video rounded-lg overflow-hidden bg-slate-800 mb-2.5">
+                                <img
+                                  src={resolveCoverUrl(item.cover_url)}
+                                  alt={item.title}
+                                  className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                                />
+                                <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
+                                  <div className="w-10 h-10 rounded-full bg-purple-600 flex items-center justify-center shadow-lg">
+                                    <Play size={18} className="text-white ml-0.5" />
+                                  </div>
+                                </div>
+                              </div>
+                              <h5 className="font-semibold text-white text-sm truncate">{item.title}</h5>
+                              <p className="text-xs text-gray-400 truncate mt-0.5">
+                                {item.full_name || item.username || activeCategoryName}
+                              </p>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+                </>
+              )}
             </section>
           ) : (
             <>
@@ -1188,12 +1440,12 @@ export default function HomePage() {
                       Ver todos <ChevronRight size={16} />
                     </Link>
                   </div>
-                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4">
+                  <div className="flex overflow-x-auto snap-x snap-mandatory no-scrollbar gap-3.5 pb-1 -mx-4 px-4 md:mx-0 md:px-0 md:grid md:grid-cols-4 lg:grid-cols-6">
                     {topArtists.map((artist, idx) => (
                       <Link
                         key={artist.id}
-                        href={`/artists/${artist.id}`}
-                        className="group bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl p-4 text-center transition-all"
+                        href={getArtistHref(artist.id, artist.name)}
+                        className="w-[40vw] max-w-[160px] shrink-0 snap-start md:w-auto md:max-w-none group bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl p-4 text-center transition-all"
                       >
                         <div className="relative w-24 h-24 mx-auto rounded-full overflow-hidden bg-gradient-to-br from-purple-500/30 to-pink-500/30 mb-3 shadow-lg">
                           <img
@@ -1229,12 +1481,12 @@ export default function HomePage() {
                       Ver todos <ChevronRight size={16} />
                     </Link>
                   </div>
-                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4">
+                  <div className="flex overflow-x-auto snap-x snap-mandatory no-scrollbar gap-3.5 pb-1 -mx-4 px-4 md:mx-0 md:px-0 md:grid md:grid-cols-4 lg:grid-cols-6">
                     {topAlbums.map((album) => (
                       <Link
                         key={album.id}
                         href={`/albums/${album.id}`}
-                        className="group bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl p-3 transition-all"
+                        className="w-[42vw] max-w-[175px] shrink-0 snap-start md:w-auto md:max-w-none group bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl p-3 transition-all"
                       >
                         <div className="aspect-square rounded-lg overflow-hidden bg-slate-800 mb-3">
                           <img
@@ -1272,19 +1524,20 @@ export default function HomePage() {
                       Nenhuma música disponível no momento
                     </div>
                   ) : (
-                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4">
+                    <div className="flex overflow-x-auto snap-x snap-mandatory no-scrollbar gap-3.5 pb-1 -mx-4 px-4 md:mx-0 md:px-0 md:grid md:grid-cols-4 lg:grid-cols-6">
                       {musicCards.map((music) => (
-                        <MusicCard
-                          key={music.id}
-                          music={music}
-                          metrics={metricsMap[`music:${music.id}`]}
-                          onPlay={handlePlayMusic}
-                          isCurrentMusicPlaying={isCurrentMusicPlaying}
-                          isFavorited={favoritesSet.has(favKey('music', music.id))}
-                          onToggleFavorite={(m) => handleToggleFavorite(m, 'music')}
-                          onDownload={(m) => handleDownload(m, 'music')}
-                          isDownloading={downloadingSet.has(favKey('music', music.id))}
-                        />
+                        <div key={music.id} className="w-[42vw] max-w-[175px] shrink-0 snap-start md:w-auto md:max-w-none">
+                          <MusicCard
+                            music={music}
+                            metrics={metricsMap[`music:${music.id}`]}
+                            onPlay={handlePlayMusic}
+                            isCurrentMusicPlaying={isCurrentMusicPlaying}
+                            isFavorited={favoritesSet.has(favKey('music', music.id))}
+                            onToggleFavorite={(m) => handleToggleFavorite(m, 'music')}
+                            onDownload={(m) => handleDownload(m, 'music')}
+                            isDownloading={downloadingSet.has(favKey('music', music.id))}
+                          />
+                        </div>
                       ))}
                     </div>
                   )}
@@ -1303,19 +1556,20 @@ export default function HomePage() {
                       Ver todos <ChevronRight size={16} />
                     </Link>
                   </div>
-                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4">
+                  <div className="flex overflow-x-auto snap-x snap-mandatory no-scrollbar gap-3.5 pb-1 -mx-4 px-4 md:mx-0 md:px-0 md:grid md:grid-cols-4 lg:grid-cols-6">
                     {singlesList.map((music) => (
-                      <MusicCard
-                        key={`single-${music.id}`}
-                        music={music}
-                        metrics={metricsMap[`music:${music.id}`]}
-                        onPlay={handlePlayMusic}
-                        isCurrentMusicPlaying={isCurrentMusicPlaying}
-                        isFavorited={favoritesSet.has(favKey('music', music.id))}
-                        onToggleFavorite={(m) => handleToggleFavorite(m, 'music')}
-                        onDownload={(m) => handleDownload(m, 'music')}
-                        isDownloading={downloadingSet.has(favKey('music', music.id))}
-                      />
+                      <div key={`single-${music.id}`} className="w-[42vw] max-w-[175px] shrink-0 snap-start md:w-auto md:max-w-none">
+                        <MusicCard
+                          music={music}
+                          metrics={metricsMap[`music:${music.id}`]}
+                          onPlay={handlePlayMusic}
+                          isCurrentMusicPlaying={isCurrentMusicPlaying}
+                          isFavorited={favoritesSet.has(favKey('music', music.id))}
+                          onToggleFavorite={(m) => handleToggleFavorite(m, 'music')}
+                          onDownload={(m) => handleDownload(m, 'music')}
+                          isDownloading={downloadingSet.has(favKey('music', music.id))}
+                        />
+                      </div>
                     ))}
                   </div>
                 </section>
@@ -1343,18 +1597,19 @@ export default function HomePage() {
                       Nenhum vídeo disponível no momento
                     </div>
                   ) : (
-                    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                    <div className="flex overflow-x-auto snap-x snap-mandatory no-scrollbar gap-3.5 pb-1 -mx-4 px-4 md:mx-0 md:px-0 md:grid md:grid-cols-3 lg:grid-cols-4">
                       {featuredVideos.map((video) => (
-                        <VideoCard
-                          key={video.id}
-                          video={video}
-                          metrics={metricsMap[`video:${video.id}`]}
-                          onPlay={handlePlayVideo}
-                          isFavorited={favoritesSet.has(favKey('video', video.id))}
-                          onToggleFavorite={(v) => handleToggleFavorite(v, 'video')}
-                          onDownload={(v) => handleDownload(v, 'video')}
-                          isDownloading={downloadingSet.has(favKey('video', video.id))}
-                        />
+                        <div key={video.id} className="w-[76vw] max-w-[300px] shrink-0 snap-start md:w-auto md:max-w-none">
+                          <VideoCard
+                            video={video}
+                            metrics={metricsMap[`video:${video.id}`]}
+                            onPlay={handlePlayVideo}
+                            isFavorited={favoritesSet.has(favKey('video', video.id))}
+                            onToggleFavorite={(v) => handleToggleFavorite(v, 'video')}
+                            onDownload={(v) => handleDownload(v, 'video')}
+                            isDownloading={downloadingSet.has(favKey('video', video.id))}
+                          />
+                        </div>
                       ))}
                     </div>
                   )}
@@ -1435,124 +1690,10 @@ export default function HomePage() {
                   </div>
                 </section>
               )}
-
-              {/* PARA TI (VÍDEOS & DESCOBERTAS) + EM ALTA ESTA SEMANA (sem Minha Igreja) */}
-              {activeCategory === 'all' && (featuredVideos.length > 0 || allMusic.length > 0) && (
-                <div className="grid lg:grid-cols-2 gap-8 mb-8">
-                  {featuredVideos.length > 0 && (
-                    <section>
-                      <div className="flex items-center justify-between mb-4">
-                        <div className="flex items-center gap-2">
-                          <VideoIcon size={20} className="text-purple-400" />
-                          <h3 className="text-xl font-bold text-white">
-                            {user ? 'Para Ti · Vídeos' : 'Descobertas em Vídeo'}
-                          </h3>
-                        </div>
-                        <Link href="/videos" className="text-sm text-purple-300 hover:text-white flex items-center gap-1">
-                          Ver tudo <ChevronRight size={16} />
-                        </Link>
-                      </div>
-                      <div className="bg-white/[0.04] border border-white/[0.07] rounded-2xl p-5 backdrop-blur-sm space-y-3.5">
-                        {featuredVideos.slice(0, 4).map((video) => (
-                          <div
-                            key={`discover-vid-${video.id}`}
-                            onClick={() => handlePlayVideo(video)}
-                            className="group flex items-center justify-between gap-3 cursor-pointer rounded-xl p-1.5 -mx-1.5 hover:bg-white/[0.05] transition-colors"
-                          >
-                            <div className="flex items-center gap-3 min-w-0">
-                              <div className="relative w-20 aspect-video bg-slate-800 rounded-lg flex-shrink-0 overflow-hidden">
-                                <img
-                                  src={resolveThumbUrl(video.thumbnail_path)}
-                                  alt={video.title}
-                                  className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                                  onError={(e) => {
-                                    (e.currentTarget as HTMLImageElement).src = '/default-video-thumb.svg';
-                                  }}
-                                />
-                              </div>
-                              <div className="min-w-0">
-                                <h4 className="font-medium text-white text-sm truncate group-hover:text-purple-300 transition-colors">
-                                  {video.title}
-                                </h4>
-                                <p className="text-xs text-gray-400 truncate mt-0.5">
-                                  {(video.views ?? 0).toLocaleString('pt-PT')} visualizações · {video.likes ?? 0} gostos
-                                </p>
-                              </div>
-                            </div>
-                            <button
-                              type="button"
-                              className="w-9 h-9 rounded-full bg-white/10 group-hover:bg-purple-600 text-white flex items-center justify-center flex-shrink-0 transition-all"
-                              aria-label={`Assistir ${video.title}`}
-                            >
-                              <Play size={15} className="ml-0.5" />
-                            </button>
-                          </div>
-                        ))}
-                      </div>
-                    </section>
-                  )}
-
-                  {allMusic.length > 0 && (
-                    <section>
-                      <div className="flex items-center justify-between mb-4">
-                        <div className="flex items-center gap-2">
-                          <Flame size={20} className="text-orange-500" />
-                          <h3 className="text-xl font-bold text-white">Em Alta Esta Semana</h3>
-                        </div>
-                        <Link href="/trending" className="text-sm text-purple-300 hover:text-white flex items-center gap-1">
-                          Ver tudo <ChevronRight size={16} />
-                        </Link>
-                      </div>
-                      <div className="bg-white/[0.04] border border-white/[0.07] rounded-2xl p-5 backdrop-blur-sm space-y-3.5">
-                        {allMusic.slice(0, 4).map((music) => (
-                          <div key={`trend-${music.id}`} className="flex items-center justify-between gap-3">
-                            <div className="flex items-center gap-3 min-w-0">
-                              <div className="w-12 h-12 bg-slate-800 rounded-lg flex items-center justify-center flex-shrink-0 overflow-hidden">
-                                <img
-                                  src={resolveCoverUrl(music.cover_image)}
-                                  alt={music.title}
-                                  className="w-full h-full object-cover"
-                                  onError={(e) => {
-                                    (e.currentTarget as HTMLImageElement).src = '/default-cover.svg';
-                                  }}
-                                />
-                              </div>
-                              <div className="min-w-0">
-                                <h4 className="font-medium text-white text-sm truncate">{music.title}</h4>
-                                {music.artist_id ? (
-                                  <Link
-                                    href={`/artists/${music.artist_id}`}
-                                    className="text-xs text-gray-400 hover:text-purple-300 transition-colors truncate block"
-                                  >
-                                    {(music as any).artist_name || music.artist}
-                                  </Link>
-                                ) : (
-                                  <p className="text-xs text-gray-400 truncate">
-                                    {(music as any).artist_name || music.artist}
-                                  </p>
-                                )}
-                              </div>
-                            </div>
-                            <button
-                              onClick={() => handlePlayMusic(music)}
-                              className="w-9 h-9 rounded-full bg-white/10 hover:bg-purple-600 text-white flex items-center justify-center flex-shrink-0 transition-all"
-                              aria-label={`Reproduzir ${music.title}`}
-                            >
-                              {isCurrentMusicPlaying(music) ? (
-                                <Pause size={15} />
-                              ) : (
-                                <Play size={15} className="ml-0.5" />
-                              )}
-                            </button>
-                          </div>
-                        ))}
-                      </div>
-                    </section>
-                  )}
-                </div>
-              )}
             </>
           )}
+
+          <PodPlayFooter />
         </div>
       </main>
 

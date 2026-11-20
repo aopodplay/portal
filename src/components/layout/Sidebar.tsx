@@ -82,8 +82,8 @@ export default function Sidebar() {
       const data = await res.json();
       setConfig(data);
       setImageVersion(Date.now());
-    } catch (err) {
-      console.error('Erro ao carregar config:', err);
+    } catch {
+      // Silencioso: mantém configuração padrão
     }
   }, []);
 

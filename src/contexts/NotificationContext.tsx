@@ -3,6 +3,7 @@
 import { createContext, useContext, useEffect, useState, ReactNode, useCallback } from 'react';
 import Cookies from 'js-cookie';
 import { getApiUrl, getAuthHeaders } from '@/config/api';
+import { getFriendlyErrorMessage, parseApiError } from '@/lib/errorHandler';
 import { useAuth } from './AuthContext';
 
 interface Notificacao {
@@ -53,7 +54,6 @@ export const NotificationProvider = ({ children }: { children: ReactNode }) => {
       });
       
       if (res.status === 401) {
-        console.error('Token inválido ou expirado');
         localStorage.removeItem('podplay_token');
         Cookies.remove('podplay_token');
         localStorage.removeItem('podplay_user');
@@ -65,16 +65,16 @@ export const NotificationProvider = ({ children }: { children: ReactNode }) => {
       
       if (!res.ok) {
         const errorData = await res.json().catch(() => ({}));
-        throw new Error(errorData.error || `Erro ${res.status}: Falha ao buscar notificações`);
+        throw new Error(parseApiError(res, errorData, 'Não foi possível carregar as notificações.'));
       }
       
       const data = await res.json();
       const notificationsArray = Array.isArray(data) ? data : [];
       setNotifications(notificationsArray);
     } catch (err: any) {
-      console.error('Erro detalhado ao buscar notificações:', err);
-      if (!err.message?.includes('Failed to fetch')) {
-        setError(err.message || 'Erro ao carregar notificações.');
+      const msg = getFriendlyErrorMessage(err, 'Não foi possível carregar as notificações.');
+      if (!err?.message?.includes('Failed to fetch')) {
+        setError(msg);
       }
       setNotifications([]);
     } finally {
@@ -112,10 +112,9 @@ export const NotificationProvider = ({ children }: { children: ReactNode }) => {
       
       if (!res.ok) {
         const errorData = await res.json().catch(() => ({}));
-        throw new Error(errorData.error || 'Erro ao marcar como lida');
+        throw new Error(parseApiError(res, errorData, 'Não foi possível marcar como lida.'));
       }
-    } catch (err) {
-      console.error('Erro ao marcar como lida:', err);
+    } catch {
       setNotifications(prev =>
         prev.map(n => (n.id === id ? { ...n, lida: false } : n))
       );
@@ -144,10 +143,9 @@ export const NotificationProvider = ({ children }: { children: ReactNode }) => {
       
       if (!res.ok) {
         const errorData = await res.json().catch(() => ({}));
-        throw new Error(errorData.error || 'Erro ao marcar todas como lidas');
+        throw new Error(parseApiError(res, errorData, 'Não foi possível marcar todas como lidas.'));
       }
-    } catch (err) {
-      console.error('Erro ao marcar todas como lidas:', err);
+    } catch {
       setNotifications(previousNotifications);
     }
   };

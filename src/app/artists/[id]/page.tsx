@@ -6,6 +6,8 @@ import Link from 'next/link';
 import Header from '@/components/layout/Header';
 import PlayerBar from '@/components/PlayerBar';
 import PodPlaySidebar from '@/components/PodPlaySidebar';
+import ActionModal, { ActionModalConfig } from '@/components/ActionModal';
+import AddToPlaylistButton from '@/components/AddToPlaylistButton';
 import {
   Play,
   Pause,
@@ -18,19 +20,26 @@ import {
   Users,
   Heart,
   UserCheck,
+  BadgeCheck,
+  Share2,
+  ListPlus,
+  Check,
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { usePlayer } from '@/contexts/PlayerContext';
+import { fetchWithAuth } from '@/config/api';
 import { resolveCoverUrl } from '@/lib/media';
 import {
   catalogApi,
   formatDurationOrDash,
   playsLabel,
   followersLabel,
+  getArtistHref,
   type Artist,
   type Album,
   type MusicTrack,
 } from '@/lib/catalogApi';
+import { getFriendlyErrorMessage } from '@/lib/errorHandler';
 
 // Importamos o tipo MusicItem do seu Context
 import type { MusicItem } from '@/contexts/PlayerContext';
@@ -45,12 +54,14 @@ function TrackRow({
   isCurrent,
   isPlaying,
   onPlay,
+  onAddToQueue,
 }: {
   index: number;
   track: MusicTrack;
   isCurrent: boolean;
   isPlaying: boolean;
   onPlay: () => void;
+  onAddToQueue?: () => void;
 }) {
   const cover = resolveCoverUrl(track.cover_image ?? undefined);
 
@@ -106,9 +117,27 @@ function TrackRow({
         {playsLabel(track.plays ?? 0)}
       </p>
 
-      <p className="text-gray-400 text-xs tabular-nums text-right">
-        {formatDurationOrDash(track.duration)}
-      </p>
+      <div className="flex items-center justify-end gap-2">
+        <span className="text-gray-400 text-xs tabular-nums">
+          {formatDurationOrDash(track.duration)}
+        </span>
+        <div
+          className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity"
+          onClick={(e) => e.stopPropagation()}
+        >
+          {onAddToQueue && (
+            <button
+              type="button"
+              onClick={onAddToQueue}
+              title="Adicionar à fila"
+              className="p-1.5 rounded-lg text-gray-300 hover:text-white hover:bg-white/10"
+            >
+              <ListPlus size={14} />
+            </button>
+          )}
+          <AddToPlaylistButton musicId={track.id} />
+        </div>
+      </div>
     </div>
   );
 }
@@ -120,9 +149,16 @@ function TrackRow({
 export default function ArtistPage() {
   const params = useParams();
   const router = useRouter();
-  const artistId = Number(params?.id);
+  const rawArtistParam = String(params?.id || '').trim();
   const { user } = useAuth();
-  const { play, isPlaying, currentMusic } = usePlayer();
+  const { play, addToQueue, isPlaying, currentMusic } = usePlayer();
+  const [toast, setToast] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!toast) return;
+    const t = setTimeout(() => setToast(null), 2800);
+    return () => clearTimeout(t);
+  }, [toast]);
 
   const [artist, setArtist] = useState<Artist | null>(null);
   const [top, setTop] = useState<MusicTrack[]>([]);
@@ -135,13 +171,18 @@ export default function ArtistPage() {
   const [isFollowing, setIsFollowing] = useState(false);
   const [followersCount, setFollowersCount] = useState(0);
   const [followLoading, setFollowLoading] = useState(false);
+  const [modalConfig, setModalConfig] = useState<ActionModalConfig | null>(null);
+  const [showDonateModal, setShowDonateModal] = useState(false);
+  const [donateAmount, setDonateAmount] = useState('1000');
+  const [donateMessage, setDonateMessage] = useState('');
+  const [donating, setDonating] = useState(false);
 
   // =====================================================================
   // Carregar dados
   // =====================================================================
   useEffect(() => {
-    if (!artistId || isNaN(artistId)) {
-      setError('ID de artista inválido');
+    if (!rawArtistParam) {
+      setError('Artista não encontrado.');
       setLoading(false);
       return;
     }
@@ -153,11 +194,21 @@ export default function ArtistPage() {
         setLoading(true);
         setError(null);
 
-        const [a, t, al, music] = await Promise.all([
-          catalogApi.getArtist(artistId),
-          catalogApi.getArtistTop(artistId, 5),
-          catalogApi.getArtistAlbums(artistId),
-          catalogApi.getArtistMusic(artistId),
+        const a = await catalogApi.getArtist(rawArtistParam);
+        if (cancelled) return;
+
+        // Se acedeu por ID numérico, atualiza a URL para o slug amigável
+        if (/^\d+$/.test(rawArtistParam) && a?.name) {
+          const prettyHref = getArtistHref(a.id, a.name);
+          if (prettyHref !== `/artists/${rawArtistParam}`) {
+            router.replace(prettyHref);
+          }
+        }
+
+        const [t, al, music] = await Promise.all([
+          catalogApi.getArtistTop(a.id, 5),
+          catalogApi.getArtistAlbums(a.id),
+          catalogApi.getArtistMusic(a.id),
         ]);
 
         if (cancelled) return;
@@ -171,7 +222,7 @@ export default function ArtistPage() {
         // Verifica se o user segue este artista
         if (user) {
           try {
-            const res = await catalogApi.checkFollowing(artistId);
+            const res = await catalogApi.checkFollowing(a.id);
             if (!cancelled) setIsFollowing(res.following);
           } catch {
             /* silencioso */
@@ -179,7 +230,7 @@ export default function ArtistPage() {
         }
       } catch (err: any) {
         if (cancelled) return;
-        setError(err?.message || 'Erro ao carregar artista');
+        setError(getFriendlyErrorMessage(err, 'Não foi possível carregar este artista.'));
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -188,23 +239,24 @@ export default function ArtistPage() {
     return () => {
       cancelled = true;
     };
-  }, [artistId, user]);
+  }, [rawArtistParam, user, router]);
 
   // =====================================================================
   // Toggle Follow
   // =====================================================================
   const handleToggleFollow = async () => {
+    if (!artist) return;
     if (!user) {
       alert('Precisas de estar logado para seguir artistas');
       return;
     }
     try {
       setFollowLoading(true);
-      const res = await catalogApi.toggleFollow(artistId);
+      const res = await catalogApi.toggleFollow(artist.id);
       setIsFollowing(res.following);
       setFollowersCount(res.followers_count);
     } catch (e: any) {
-      alert(e?.message || 'Erro ao seguir artista');
+      alert(getFriendlyErrorMessage(e, 'Não foi possível atualizar o estado de seguidor.'));
     } finally {
       setFollowLoading(false);
     }
@@ -270,7 +322,14 @@ export default function ArtistPage() {
             Voltar aos artistas
           </button>
         </main>
-        <PlayerBar />
+        {toast && (
+        <div className="fixed bottom-24 left-1/2 -translate-x-1/2 z-[90] px-4 py-2 rounded-full bg-slate-900/95 border border-purple-500/40 text-white text-xs font-medium shadow-2xl flex items-center gap-2 backdrop-blur-md">
+          <Check size={14} className="text-emerald-400" />
+          <span>{toast}</span>
+        </div>
+      )}
+
+      <PlayerBar />
       </div>
     );
   }
@@ -285,7 +344,7 @@ export default function ArtistPage() {
     <div className="min-h-screen bg-gradient-to-b from-slate-900 via-purple-900 to-slate-900">
       <PodPlaySidebar />
 
-      <main className="ml-0 md:ml-64 min-h-screen pb-24 transition-all duration-300">
+      <main className="ml-0 md:ml-60 min-h-screen pb-24 transition-all duration-300">
         <Header />
 
         <div className="p-6">
@@ -319,9 +378,14 @@ export default function ArtistPage() {
                 <span className="text-xs font-semibold text-purple-200 uppercase tracking-wider">
                   Artista
                 </span>
-                <h1 className="text-3xl md:text-6xl font-bold text-white mt-2 truncate">
-                  {artist.name}
-                </h1>
+                <div className="flex items-center gap-2.5 mt-2">
+                  <h1 className="text-3xl md:text-6xl font-bold text-white truncate">
+                    {artist.name}
+                  </h1>
+                  {Boolean((artist as any).is_verified) && (
+                    <BadgeCheck size={28} className="text-sky-400 shrink-0" />
+                  )}
+                </div>
 
                 {/* Contadores */}
                 <p className="text-purple-100 text-sm mt-3">
@@ -384,6 +448,33 @@ export default function ArtistPage() {
                   >
                     <Shuffle size={16} /> Aleatório
                   </button>
+
+                  <button
+                    onClick={() => setShowDonateModal(true)}
+                    className="px-4 py-2.5 bg-pink-600/80 hover:bg-pink-500 text-white rounded-full font-medium text-sm flex items-center gap-2"
+                  >
+                    <Heart size={15} /> Apoiar Criador
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      const shareUrl = `${window.location.origin}${getArtistHref(artist.id, artist.name)}`;
+                      try {
+                        if (navigator.share) {
+                          await navigator.share({ title: artist.name, url: shareUrl });
+                          return;
+                        }
+                        await navigator.clipboard.writeText(shareUrl);
+                        setToast('Link do artista copiado!');
+                      } catch {
+                        setToast('Link pronto a partilhar.');
+                      }
+                    }}
+                    className="px-4 py-2.5 bg-white/10 hover:bg-white/20 text-white rounded-full font-medium text-sm flex items-center gap-2"
+                  >
+                    <Share2 size={15} /> Partilhar
+                  </button>
                 </div>
               </div>
             </div>
@@ -412,6 +503,20 @@ export default function ArtistPage() {
                     isCurrent={currentMusic?.id === track.id}
                     isPlaying={isPlaying}
                     onPlay={() => playTrack(track, top)}
+                    onAddToQueue={() => {
+                      addToQueue({
+                        id: track.id,
+                        title: track.title,
+                        artist: track.artist || artist?.name || 'Artista',
+                        album: track.album || null,
+                        duration: track.duration || 0,
+                        file_path: track.file_path || '',
+                        file_size: track.file_size || 0,
+                        cover_image: track.cover_image || null,
+                        created_at: track.created_at || new Date().toISOString(),
+                      });
+                      setToast(`"${track.title}" adicionada à fila`);
+                    }}
                   />
                 ))}
               </div>
@@ -495,7 +600,114 @@ export default function ArtistPage() {
         </div>
       </main>
 
+      {toast && (
+        <div className="fixed bottom-24 left-1/2 -translate-x-1/2 z-[90] px-4 py-2 rounded-full bg-slate-900/95 border border-purple-500/40 text-white text-xs font-medium shadow-2xl flex items-center gap-2 backdrop-blur-md">
+          <Check size={14} className="text-emerald-400" />
+          <span>{toast}</span>
+        </div>
+      )}
+
       <PlayerBar />
+      <ActionModal config={modalConfig} onClose={() => setModalConfig(null)} />
+
+      {showDonateModal && artist && (
+        <div
+          className="fixed inset-0 z-[120] bg-black/75 backdrop-blur-sm flex items-center justify-center p-4"
+          onClick={() => !donating && setShowDonateModal(false)}
+        >
+          <div
+            className="w-full max-w-md bg-slate-900 border border-white/15 rounded-2xl p-6 shadow-2xl space-y-4"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 className="text-lg font-bold text-white flex items-center gap-2">
+              <Heart size={18} className="text-pink-400" />
+              Apoiar {artist.name}
+            </h3>
+            <p className="text-xs text-gray-400">
+              90% do valor vai diretamente para o criador (mínimo AOA 500).
+            </p>
+            <div>
+              <label className="block text-xs text-gray-300 mb-1">Valor (AOA)</label>
+              <input
+                type="number"
+                min={500}
+                value={donateAmount}
+                onChange={(e) => setDonateAmount(e.target.value)}
+                className="w-full px-3.5 py-2.5 rounded-xl bg-white/10 border border-white/15 text-sm text-white"
+              />
+            </div>
+            <div>
+              <label className="block text-xs text-gray-300 mb-1">Mensagem (opcional)</label>
+              <textarea
+                rows={2}
+                value={donateMessage}
+                onChange={(e) => setDonateMessage(e.target.value)}
+                placeholder="Deixa uma palavra de encorajamento..."
+                className="w-full px-3.5 py-2.5 rounded-xl bg-white/10 border border-white/15 text-sm text-white"
+              />
+            </div>
+            <div className="flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setShowDonateModal(false)}
+                className="px-4 py-2 rounded-full bg-white/10 hover:bg-white/20 text-xs font-medium text-gray-200"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                disabled={donating}
+                onClick={async () => {
+                  const amount = Number(donateAmount);
+                  if (!Number.isFinite(amount) || amount < 500) {
+                    setModalConfig({
+                      mode: 'alert',
+                      title: 'Valor inválido',
+                      message: 'O valor mínimo de apoio é AOA 500.',
+                      danger: true,
+                    });
+                    return;
+                  }
+                  try {
+                    setDonating(true);
+                    const res = await fetchWithAuth(`/api/v1/studio/donate/${artist.id}`, {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({
+                        amount_aoa: amount,
+                        donor_name: user?.fullName || user?.username || 'Ouvinte PodFéPlay',
+                        message: donateMessage.trim(),
+                        payment_method: 'multicaixa',
+                      }),
+                    });
+                    const b = await res.json();
+                    if (!res.ok || !b?.success) throw new Error(b?.message || 'Erro ao enviar apoio');
+                    setShowDonateModal(false);
+                    setDonateMessage('');
+                    setModalConfig({
+                      mode: 'alert',
+                      title: 'Apoio registado!',
+                      message: 'Obrigado! O teu apoio foi registado (90% vai diretamente para o criador).',
+                    });
+                  } catch (e: any) {
+                    setModalConfig({
+                      mode: 'alert',
+                      title: 'Erro ao enviar apoio',
+                      message: e?.message || 'Erro ao enviar apoio',
+                      danger: true,
+                    });
+                  } finally {
+                    setDonating(false);
+                  }
+                }}
+                className="px-5 py-2 rounded-full bg-pink-600 hover:bg-pink-500 text-xs font-semibold text-white disabled:opacity-50"
+              >
+                {donating ? 'A enviar...' : 'Confirmar Apoio'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

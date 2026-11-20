@@ -1,5 +1,6 @@
 // src/lib/playlistApi.ts
 import { fetchWithAuth } from '@/config/api';
+import { apiJsonFetch } from '@/lib/errorHandler';
 import type { MusicTrack } from './catalogApi';
 
 export interface Playlist {
@@ -16,26 +17,10 @@ export interface Playlist {
 }
 
 async function jsonFetch<T>(endpoint: string, init?: RequestInit): Promise<T> {
-  const res = await fetchWithAuth(endpoint, {
-    ...init,
-    headers: {
-      'Content-Type': 'application/json',
-      ...(init?.headers ?? {}),
-    },
+  return apiJsonFetch<T>(endpoint, init, {
+    fetcher: fetchWithAuth,
+    useAuthHeaders: false,
   });
-
-  let body: any = null;
-  try {
-    body = await res.json();
-  } catch {
-    throw new Error(`Erro ${res.status} (resposta não-JSON)`);
-  }
-
-  if (!res.ok || !body?.success) {
-    throw new Error(body?.message || `Erro ${res.status}`);
-  }
-
-  return body.data as T;
 }
 
 export const playlistApi = {

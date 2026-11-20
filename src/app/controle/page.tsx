@@ -22,7 +22,6 @@ import {
   Mic,
   Bell,
   Send,
-  Sparkles,
   Plus,
   Lock,
   Unlock,
@@ -35,12 +34,18 @@ import {
   Download,
   FileText,
   RefreshCw,
+  Globe,
+  MessageSquare,
+  CreditCard,
 } from 'lucide-react';
 import Header from '@/components/layout/Header';
 import PodPlaySidebar from '@/components/PodPlaySidebar';
 import PlayerBar from '@/components/PlayerBar';
 import AddVideoModal from '@/components/AddVideoModal';
+import ActionModal, { ActionModalConfig } from '@/components/ActionModal';
+import PaymentManagementTab from '@/components/PaymentManagementTab';
 import { useAuth } from '@/contexts/AuthContext';
+import { useVideoUpload } from '@/contexts/VideoUploadContext';
 import { fetchWithAuth } from '@/config/api';
 import { resolveCoverUrl, resolveThumbUrl } from '@/lib/media';
 import {
@@ -58,7 +63,7 @@ import {
   Tooltip,
 } from 'recharts';
 
-type TabKey = 'overview' | 'users' | 'artist-requests' | 'music' | 'videos' | 'events' | 'catalog' | 'series' | 'notifications' | 'branding' | 'backups' | 'logs';
+type TabKey = 'overview' | 'users' | 'artist-requests' | 'reports' | 'pitches' | 'support' | 'music' | 'videos' | 'comments' | 'events' | 'catalog' | 'series' | 'notifications' | 'payments' | 'branding' | 'footer' | 'backups' | 'logs';
 
 interface AdminStats {
   totalUsers: number;
@@ -93,6 +98,7 @@ interface AdminUser {
 
 export default function PlatformControlPage() {
   const { user, loading: authLoading } = useAuth();
+  const { reopenModalPath, clearReopenModal, lastCompletedAt } = useVideoUpload();
   const userType = String(
     (user as any)?.role || (user as any)?.type || (user as any)?.perfil || ''
   ).toLowerCase();
@@ -117,6 +123,17 @@ export default function PlatformControlPage() {
   const [periodDays, setPeriodDays] = useState<7 | 14 | 30>(14);
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [artistRequests, setArtistRequests] = useState<any[]>([]);
+  const [docPreviewModal, setDocPreviewModal] = useState<{
+    artistName: string;
+    loading: boolean;
+    selfie?: string;
+    biFront?: string;
+    biBack?: string;
+    error?: string;
+  } | null>(null);
+  const [reportsList, setReportsList] = useState<any[]>([]);
+  const [pitchesList, setPitchesList] = useState<any[]>([]);
+  const [supportList, setSupportList] = useState<any[]>([]);
   const [eventsList, setEventsList] = useState<any[]>([]);
   const [eventTitle, setEventTitle] = useState('');
   const [eventDesc, setEventDesc] = useState('');
@@ -167,12 +184,39 @@ export default function PlatformControlPage() {
   const [logLevel, setLogLevel] = useState<'all' | 'error' | 'warn' | 'success' | 'info'>('all');
   const [logSearch, setLogSearch] = useState('');
   const [loadingLogs, setLoadingLogs] = useState(false);
+  const [modalConfig, setModalConfig] = useState<ActionModalConfig | null>(null);
+
+  // Rodapé gerenciável
+  const [footerConfig, setFooterConfig] = useState<{
+    columns: Array<{ title: string; links: Array<{ label: string; href: string }> }>;
+    social: { instagram?: string; facebook?: string; youtube?: string; tiktok?: string; whatsapp?: string };
+    copyright: string;
+    tagline?: string;
+  }>({
+    columns: [],
+    social: {},
+    copyright: '',
+    tagline: '',
+  });
+  const [savingFooter, setSavingFooter] = useState(false);
 
   const [userSearch, setUserSearch] = useState('');
+  const [usersPage, setUsersPage] = useState(1);
   const [musicList, setMusicList] = useState<any[]>([]);
   const [videoList, setVideoList] = useState<any[]>([]);
+  const [videoSearch, setVideoSearch] = useState('');
+  const [videosPage, setVideosPage] = useState(1);
+  const [videoComments, setVideoComments] = useState<any[]>([]);
+  const [commentSearch, setCommentSearch] = useState('');
+  const [onlyFlaggedComments, setOnlyFlaggedComments] = useState(false);
+  const [commentsPage, setCommentsPage] = useState(1);
+  const [moderatingOffensive, setModeratingOffensive] = useState(false);
   const [artists, setArtists] = useState<any[]>([]);
+  const [artistSearch, setArtistSearch] = useState('');
+  const [artistsPage, setArtistsPage] = useState(1);
   const [albums, setAlbums] = useState<any[]>([]);
+  const [albumSearch, setAlbumSearch] = useState('');
+  const [albumsPage, setAlbumsPage] = useState(1);
   const [seriesList, setSeriesList] = useState<any[]>([]);
   const [seriesTitle, setSeriesTitle] = useState('');
   const [seriesSubtitle, setSeriesSubtitle] = useState('');
@@ -202,7 +246,7 @@ export default function PlatformControlPage() {
       setError(null);
 
       const q = userSearch.trim() ? `&search=${encodeURIComponent(userSearch.trim())}` : '';
-      const [statsRes, overviewRes, usersRes, mediaRes, artistsRes, albumsRes, seriesRes, requestsRes, eventsRes] =
+      const [statsRes, overviewRes, usersRes, mediaRes, artistsRes, albumsRes, seriesRes, requestsRes, eventsRes, reportsRes, pitchesRes, supportRes, commentsRes] =
         await Promise.all([
           fetchWithAuth('/api/v1/admin/stats'),
           fetchWithAuth('/api/v1/admin/stats/overview'),
@@ -213,9 +257,13 @@ export default function PlatformControlPage() {
           fetchWithAuth('/api/v1/series?all=true'),
           fetchWithAuth('/api/v1/admin/artist-requests'),
           fetchWithAuth('/api/v1/admin/events'),
+          fetchWithAuth('/api/v1/admin/reports'),
+          fetchWithAuth('/api/v1/admin/pitches'),
+          fetchWithAuth('/api/v1/admin/support'),
+          fetchWithAuth('/api/v1/admin/video-comments'),
         ]);
 
-      const [statsBody, overviewBody, usersBody, mediaBody, artistsBody, albumsBody, seriesBody, requestsBody, eventsBody] =
+      const [statsBody, overviewBody, usersBody, mediaBody, artistsBody, albumsBody, seriesBody, requestsBody, eventsBody, reportsBody, pitchesBody, supportBody, commentsBody] =
         await Promise.all([
           statsRes.json().catch(() => null),
           overviewRes.json().catch(() => null),
@@ -226,9 +274,15 @@ export default function PlatformControlPage() {
           seriesRes.json().catch(() => null),
           requestsRes.json().catch(() => null),
           eventsRes.json().catch(() => null),
+          reportsRes.json().catch(() => null),
+          pitchesRes.json().catch(() => null),
+          supportRes.json().catch(() => null),
+          commentsRes.json().catch(() => null),
         ]);
 
-      if (statsRes.ok && statsBody?.success) setStats(statsBody.data);
+      if (statsRes.ok && statsBody?.success) {
+        setStats(statsBody.data);
+      }
       if (overviewRes.ok && overviewBody?.success) {
         setOverview(overviewBody.data?.totals || null);
         setTopMusicStats(Array.isArray(overviewBody.data?.topMusic) ? overviewBody.data.topMusic : []);
@@ -237,6 +291,10 @@ export default function PlatformControlPage() {
       if (usersRes.ok && usersBody?.success) setUsers(usersBody.data?.users || []);
       if (requestsRes.ok && requestsBody?.success) setArtistRequests(Array.isArray(requestsBody.data) ? requestsBody.data : []);
       if (eventsRes.ok && eventsBody?.success) setEventsList(Array.isArray(eventsBody.data) ? eventsBody.data : []);
+      if (reportsRes.ok && reportsBody?.success) setReportsList(Array.isArray(reportsBody.data) ? reportsBody.data : []);
+      if (pitchesRes.ok && pitchesBody?.success) setPitchesList(Array.isArray(pitchesBody.data) ? pitchesBody.data : []);
+      if (supportRes.ok && supportBody?.success) setSupportList(Array.isArray(supportBody.data) ? supportBody.data : []);
+      if (commentsRes.ok && commentsBody?.success) setVideoComments(Array.isArray(commentsBody.data?.comments) ? commentsBody.data.comments : []);
       if (mediaRes.ok && mediaBody?.success) {
         setMusicList(Array.isArray(mediaBody.data?.music) ? mediaBody.data.music : []);
         setVideoList(Array.isArray(mediaBody.data?.videos) ? mediaBody.data.videos : []);
@@ -262,6 +320,20 @@ export default function PlatformControlPage() {
       loadAll();
     }
   }, [authLoading, loadAll]);
+
+  useEffect(() => {
+    if (reopenModalPath === '/controle') {
+      setTab('videos');
+      setShowAddVideoModal(true);
+      clearReopenModal();
+    }
+  }, [reopenModalPath, clearReopenModal]);
+
+  useEffect(() => {
+    if (lastCompletedAt && isOwner) {
+      loadAll();
+    }
+  }, [lastCompletedAt, isOwner, loadAll]);
 
   useEffect(() => {
     if (!isOwner) return;
@@ -322,7 +394,37 @@ export default function PlatformControlPage() {
   useEffect(() => {
     if (tab === 'backups') loadBackups();
     if (tab === 'logs') loadLogs();
+    if (tab === 'footer') {
+      fetchWithAuth('/api/v1/footer')
+        .then((r) => r.json())
+        .then((b) => {
+          if (b?.success && b?.data) setFooterConfig(b.data);
+        })
+        .catch(() => {});
+    }
   }, [tab, loadBackups, loadLogs]);
+
+  const handleSaveFooter = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      setSavingFooter(true);
+      setError(null);
+      const res = await fetchWithAuth('/api/v1/admin/footer', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(footerConfig),
+      });
+      const body = await res.json();
+      if (!res.ok || !body?.success) throw new Error(body?.message || 'Erro ao guardar rodapé');
+      if (body.data) setFooterConfig(body.data);
+      window.dispatchEvent(new CustomEvent('podplay:footer-updated', { detail: body.data }));
+      notify('Rodapé atualizado com sucesso!');
+    } catch (e: any) {
+      setError(e?.message || 'Erro ao guardar rodapé');
+    } finally {
+      setSavingFooter(false);
+    }
+  };
 
   const handleRunBackupNow = async () => {
     try {
@@ -379,32 +481,48 @@ export default function PlatformControlPage() {
     }
   };
 
-  const handleDeleteBackup = async (filename: string) => {
-    if (!confirm(`Remover o backup "${filename}"?`)) return;
-    try {
-      const res = await fetchWithAuth(`/api/v1/admin/backups/${encodeURIComponent(filename)}`, {
-        method: 'DELETE',
-      });
-      const body = await res.json();
-      if (!res.ok || !body?.success) throw new Error(body?.message || 'Erro ao remover backup');
-      notify('Backup removido.');
-      await loadBackups();
-    } catch (e: any) {
-      setError(e?.message || 'Erro ao remover backup');
-    }
+  const handleDeleteBackup = (filename: string) => {
+    setModalConfig({
+      mode: 'confirm',
+      title: 'Remover backup',
+      message: `Tens a certeza que queres remover o backup "${filename}"?`,
+      confirmLabel: 'Remover',
+      danger: true,
+      onConfirm: async () => {
+        try {
+          const res = await fetchWithAuth(`/api/v1/admin/backups/${encodeURIComponent(filename)}`, {
+            method: 'DELETE',
+          });
+          const body = await res.json();
+          if (!res.ok || !body?.success) throw new Error(body?.message || 'Erro ao remover backup');
+          notify('Backup removido.');
+          await loadBackups();
+        } catch (e: any) {
+          setError(e?.message || 'Erro ao remover backup');
+        }
+      },
+    });
   };
 
-  const handleClearLogs = async () => {
-    if (!confirm('Limpar todos os logs da plataforma?')) return;
-    try {
-      const res = await fetchWithAuth('/api/v1/admin/logs', { method: 'DELETE' });
-      const body = await res.json();
-      if (!res.ok || !body?.success) throw new Error(body?.message || 'Erro ao limpar logs');
-      notify('Logs limpos com sucesso.');
-      await loadLogs();
-    } catch (e: any) {
-      setError(e?.message || 'Erro ao limpar logs');
-    }
+  const handleClearLogs = () => {
+    setModalConfig({
+      mode: 'confirm',
+      title: 'Limpar logs da plataforma',
+      message: 'Tens a certeza que queres apagar todos os registos de logs atuais?',
+      confirmLabel: 'Limpar logs',
+      danger: true,
+      onConfirm: async () => {
+        try {
+          const res = await fetchWithAuth('/api/v1/admin/logs', { method: 'DELETE' });
+          const body = await res.json();
+          if (!res.ok || !body?.success) throw new Error(body?.message || 'Erro ao limpar logs');
+          notify('Logs limpos com sucesso.');
+          await loadLogs();
+        } catch (e: any) {
+          setError(e?.message || 'Erro ao limpar logs');
+        }
+      },
+    });
   };
 
   const handleToggleUser = async (u: AdminUser) => {
@@ -426,67 +544,99 @@ export default function PlatformControlPage() {
     }
   };
 
-  const handleDeleteUser = async (u: AdminUser) => {
-    if (!confirm(`Apagar permanentemente o utilizador "${u.username}"?`)) return;
-    try {
-      setBusyId(`user-del-${u.id}`);
-      const res = await fetchWithAuth(`/api/v1/admin/users/${u.id}`, { method: 'DELETE' });
-      const body = await res.json();
-      if (!res.ok || !body?.success) throw new Error(body?.message || 'Erro ao apagar utilizador');
-      notify(`Utilizador "${u.username}" removido.`);
-      await loadAll();
-    } catch (e: any) {
-      setError(e?.message || 'Erro ao apagar utilizador');
-    } finally {
-      setBusyId(null);
-    }
+  const handleDeleteUser = (u: AdminUser) => {
+    setModalConfig({
+      mode: 'confirm',
+      title: 'Apagar utilizador',
+      message: `Apagar permanentemente o utilizador "${u.username}"? Esta ação não pode ser desfeita.`,
+      confirmLabel: 'Apagar permanentemente',
+      danger: true,
+      onConfirm: async () => {
+        try {
+          setBusyId(`user-del-${u.id}`);
+          const res = await fetchWithAuth(`/api/v1/admin/users/${u.id}`, { method: 'DELETE' });
+          const body = await res.json();
+          if (!res.ok || !body?.success) throw new Error(body?.message || 'Erro ao apagar utilizador');
+          notify(`Utilizador "${u.username}" removido.`);
+          await loadAll();
+        } catch (e: any) {
+          setError(e?.message || 'Erro ao apagar utilizador');
+        } finally {
+          setBusyId(null);
+        }
+      },
+    });
   };
 
-  const handleDeleteMusic = async (id: number, title: string) => {
-    if (!confirm(`Remover a música "${title}" da plataforma?`)) return;
-    try {
-      setBusyId(`music-${id}`);
-      const res = await fetchWithAuth(`/api/v1/admin/content/music/${id}`, { method: 'DELETE' });
-      const body = await res.json();
-      if (!res.ok || !body?.success) throw new Error(body?.message || 'Erro ao remover música');
-      notify(`Música "${title}" removida.`);
-      await loadAll();
-    } catch (e: any) {
-      setError(e?.message || 'Erro ao remover música');
-    } finally {
-      setBusyId(null);
-    }
+  const handleDeleteMusic = (id: number, title: string) => {
+    setModalConfig({
+      mode: 'confirm',
+      title: 'Remover música',
+      message: `Remover a música "${title}" da plataforma?`,
+      confirmLabel: 'Remover',
+      danger: true,
+      onConfirm: async () => {
+        try {
+          setBusyId(`music-${id}`);
+          const res = await fetchWithAuth(`/api/v1/admin/content/music/${id}`, { method: 'DELETE' });
+          const body = await res.json();
+          if (!res.ok || !body?.success) throw new Error(body?.message || 'Erro ao remover música');
+          notify(`Música "${title}" removida.`);
+          await loadAll();
+        } catch (e: any) {
+          setError(e?.message || 'Erro ao remover música');
+        } finally {
+          setBusyId(null);
+        }
+      },
+    });
   };
 
-  const handleModerateMedia = async (
+  const handleModerateMedia = (
     type: 'music' | 'video',
     id: number,
     action: 'approve' | 'block' | 'unblock'
   ) => {
-    const reason =
-      action === 'block' ? window.prompt('Motivo do bloqueio (opcional):') || '' : undefined;
-    try {
-      setBusyId(`mod-${type}-${id}`);
-      const res = await fetchWithAuth(`/api/v1/admin/content/${type}/${id}/moderation`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action, reason }),
+    const runModeration = async (reason?: string) => {
+      try {
+        setBusyId(`mod-${type}-${id}`);
+        const res = await fetchWithAuth(`/api/v1/admin/content/${type}/${id}/moderation`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action, reason }),
+        });
+        const body = await res.json();
+        if (!res.ok || !body?.success) throw new Error(body?.message || 'Erro ao moderar conteúdo');
+        notify(
+          action === 'block'
+            ? 'Conteúdo bloqueado.'
+            : action === 'approve'
+              ? 'Conteúdo aprovado!'
+              : 'Conteúdo desbloqueado.'
+        );
+        await loadAll();
+      } catch (e: any) {
+        setError(e?.message || 'Erro ao moderar conteúdo');
+      } finally {
+        setBusyId(null);
+      }
+    };
+
+    if (action === 'block') {
+      setModalConfig({
+        mode: 'prompt',
+        title: 'Bloquear conteúdo',
+        message: 'Indica o motivo do bloqueio (opcional):',
+        inputLabel: 'Motivo',
+        inputPlaceholder: 'Ex: Violação das diretrizes de conteúdo...',
+        confirmLabel: 'Bloquear',
+        danger: true,
+        onConfirm: (val) => runModeration(val || ''),
       });
-      const body = await res.json();
-      if (!res.ok || !body?.success) throw new Error(body?.message || 'Erro ao moderar conteúdo');
-      notify(
-        action === 'block'
-          ? 'Conteúdo bloqueado.'
-          : action === 'approve'
-            ? 'Conteúdo aprovado!'
-            : 'Conteúdo desbloqueado.'
-      );
-      await loadAll();
-    } catch (e: any) {
-      setError(e?.message || 'Erro ao moderar conteúdo');
-    } finally {
-      setBusyId(null);
+      return;
     }
+
+    runModeration(undefined);
   };
 
   const handleSetUserRole = async (u: AdminUser, role: 'user' | 'creator' | 'moderator' | 'admin') => {
@@ -620,20 +770,90 @@ export default function PlatformControlPage() {
     }
   };
 
-  const handleDeleteEvent = async (id: number) => {
-    if (!confirm('Remover este evento da plataforma?')) return;
-    try {
-      setBusyId(`event-${id}`);
-      const res = await fetchWithAuth(`/api/v1/admin/events/${id}`, { method: 'DELETE' });
-      const body = await res.json();
-      if (!res.ok || !body?.success) throw new Error(body?.message || 'Erro ao remover evento');
-      notify('Evento removido.');
-      await loadAll();
-    } catch (e: any) {
-      setError(e?.message || 'Erro ao remover evento');
-    } finally {
-      setBusyId(null);
-    }
+  const handleDeleteAdminComment = (comment: any) => {
+    setModalConfig({
+      mode: 'prompt',
+      title: 'Remover comentário',
+      message: `Remover o comentário de ${comment.full_name || comment.username || 'Utilizador'}? O autor será notificado na plataforma.`,
+      inputLabel: 'Motivo (opcional)',
+      inputPlaceholder: 'Ex: Linguagem imprópria ou fora de contexto',
+      confirmLabel: 'Remover comentário',
+      danger: true,
+      onConfirm: async (reason) => {
+        try {
+          setBusyId(`comment-${comment.id}`);
+          const res = await fetchWithAuth(`/api/v1/admin/video-comments/${comment.id}`, {
+            method: 'DELETE',
+            body: JSON.stringify({ reason: reason?.trim() || undefined }),
+          });
+          const body = await res.json().catch(() => null);
+          if (!res.ok || !body?.success) {
+            throw new Error(body?.message || 'Erro ao remover comentário');
+          }
+          setVideoComments((prev) =>
+            prev.filter((c) => c.id !== comment.id && Number(c.parent_id) !== Number(comment.id))
+          );
+          notify('Comentário removido e utilizador notificado!');
+        } catch (e: any) {
+          setError(e?.message || 'Erro ao remover comentário');
+        } finally {
+          setBusyId(null);
+        }
+      },
+    });
+  };
+
+  const handleRunOffensiveModeration = () => {
+    setModalConfig({
+      mode: 'confirm',
+      title: 'Avaliar e remover comentários ofensivos',
+      message:
+        'O sistema irá analisar todos os comentários de vídeos, remover automaticamente os que contiverem linguagem ofensiva e notificar os respetivos autores.',
+      confirmLabel: 'Executar avaliação',
+      danger: true,
+      onConfirm: async () => {
+        try {
+          setModeratingOffensive(true);
+          const res = await fetchWithAuth('/api/v1/admin/video-comments/moderate-offensive', {
+            method: 'POST',
+          });
+          const body = await res.json().catch(() => null);
+          if (!res.ok || !body?.success) {
+            throw new Error(body?.message || 'Erro ao avaliar comentários');
+          }
+          notify(body.message || 'Avaliação concluída!');
+          await loadAll();
+        } catch (e: any) {
+          setError(e?.message || 'Erro ao avaliar comentários');
+        } finally {
+          setModeratingOffensive(false);
+        }
+      },
+    });
+  };
+
+  const handleDeleteEvent = (id: number) => {
+    setModalConfig({
+      mode: 'confirm',
+      title: 'Remover evento / publicidade',
+      message: 'Remover este evento/publicidade da plataforma?',
+      confirmLabel: 'Remover',
+      danger: true,
+      onConfirm: async () => {
+        try {
+          setBusyId(`event-${id}`);
+          const res = await fetchWithAuth(`/api/v1/admin/events/${id}`, { method: 'DELETE' });
+          const body = await res.json();
+          if (!res.ok || !body?.success) throw new Error(body?.message || 'Erro ao remover evento');
+          notify('Evento removido.');
+          await loadAll();
+        } catch (e: any) {
+          setError(e?.message || 'Erro ao remover evento');
+        } finally {
+          setBusyId(null);
+        }
+      },
+    });
   };
 
   useEffect(() => {
@@ -692,20 +912,28 @@ export default function PlatformControlPage() {
     }
   };
 
-  const handleDeleteVideo = async (id: number, title: string) => {
-    if (!confirm(`Remover o vídeo "${title}" da plataforma?`)) return;
-    try {
-      setBusyId(`video-${id}`);
-      const res = await fetchWithAuth(`/api/v1/admin/content/video/${id}`, { method: 'DELETE' });
-      const body = await res.json();
-      if (!res.ok || !body?.success) throw new Error(body?.message || 'Erro ao remover vídeo');
-      notify(`Vídeo "${title}" removido.`);
-      await loadAll();
-    } catch (e: any) {
-      setError(e?.message || 'Erro ao remover vídeo');
-    } finally {
-      setBusyId(null);
-    }
+  const handleDeleteVideo = (id: number, title: string) => {
+    setModalConfig({
+      mode: 'confirm',
+      title: 'Remover vídeo',
+      message: `Remover o vídeo "${title}" da plataforma?`,
+      confirmLabel: 'Remover',
+      danger: true,
+      onConfirm: async () => {
+        try {
+          setBusyId(`video-${id}`);
+          const res = await fetchWithAuth(`/api/v1/admin/content/video/${id}`, { method: 'DELETE' });
+          const body = await res.json();
+          if (!res.ok || !body?.success) throw new Error(body?.message || 'Erro ao remover vídeo');
+          notify(`Vídeo "${title}" removido.`);
+          await loadAll();
+        } catch (e: any) {
+          setError(e?.message || 'Erro ao remover vídeo');
+        } finally {
+          setBusyId(null);
+        }
+      },
+    });
   };
 
   const handleToggleVideoCommentsLock = async (id: number, currentlyLocked: boolean) => {
@@ -729,20 +957,28 @@ export default function PlatformControlPage() {
     }
   };
 
-  const handleDeleteArtist = async (id: number, name: string) => {
-    if (!confirm(`Remover o artista "${name}" da plataforma?`)) return;
-    try {
-      setBusyId(`artist-${id}`);
-      const res = await fetchWithAuth(`/api/v1/artists/${id}`, { method: 'DELETE' });
-      const body = await res.json();
-      if (!res.ok || !body?.success) throw new Error(body?.message || 'Erro ao remover artista');
-      notify(`Artista "${name}" removido.`);
-      await loadAll();
-    } catch (e: any) {
-      setError(e?.message || 'Erro ao remover artista');
-    } finally {
-      setBusyId(null);
-    }
+  const handleDeleteArtist = (id: number, name: string) => {
+    setModalConfig({
+      mode: 'confirm',
+      title: 'Remover artista',
+      message: `Remover o artista "${name}" da plataforma?`,
+      confirmLabel: 'Remover',
+      danger: true,
+      onConfirm: async () => {
+        try {
+          setBusyId(`artist-${id}`);
+          const res = await fetchWithAuth(`/api/v1/artists/${id}`, { method: 'DELETE' });
+          const body = await res.json();
+          if (!res.ok || !body?.success) throw new Error(body?.message || 'Erro ao remover artista');
+          notify(`Artista "${name}" removido.`);
+          await loadAll();
+        } catch (e: any) {
+          setError(e?.message || 'Erro ao remover artista');
+        } finally {
+          setBusyId(null);
+        }
+      },
+    });
   };
 
   const handleBroadcastNotification = async (e: React.FormEvent) => {
@@ -867,7 +1103,7 @@ export default function PlatformControlPage() {
           ) : (
             <>
               {/* Tabs */}
-              <div className="flex flex-wrap gap-2 mb-6 border-b border-white/10 pb-3">
+              <div className="flex flex-nowrap overflow-x-auto no-scrollbar md:flex-wrap gap-2 mb-6 border-b border-white/10 pb-3">
                 {[
                   { key: 'overview', label: 'Visão Geral', icon: BarChart3 },
                   { key: 'users', label: `Utilizadores (${users.length})`, icon: Users },
@@ -876,16 +1112,34 @@ export default function PlatformControlPage() {
                     label: `Artistas (${artistRequests.filter((r) => r.status === 'pending').length})`,
                     icon: CheckCircle,
                   },
+                  {
+                    key: 'reports',
+                    label: `Denúncias (${reportsList.filter((r) => r.status === 'pending').length})`,
+                    icon: AlertCircle,
+                  },
+                  {
+                    key: 'pitches',
+                    label: `Pitching (${pitchesList.filter((p) => p.status === 'pending').length})`,
+                    icon: ListMusic,
+                  },
+                  {
+                    key: 'support',
+                    label: `Suporte (${supportList.filter((s) => s.status === 'open').length})`,
+                    icon: FileText,
+                  },
                   { key: 'music', label: `Músicas (${musicList.length})`, icon: Music },
                   { key: 'videos', label: `Vídeos (${videoList.length})`, icon: VideoIcon },
+                  { key: 'comments', label: `Comentários (${videoComments.length})`, icon: MessageSquare },
                   { key: 'events', label: `Eventos & Publicidades (${eventsList.length})`, icon: Calendar },
                   { key: 'catalog', label: `Artistas & Álbuns`, icon: DiscAlbum },
-                  { key: 'series', label: `Séries (${seriesList.length})`, icon: Sparkles },
+                  { key: 'series', label: `Séries (${seriesList.length})`, icon: VideoIcon },
                   { key: 'notifications', label: 'Notificar Todos', icon: Bell },
                   ...(isFullAdmin
                     ? [
+                        { key: 'payments', label: 'GESTÃO DE PAGAMENTOS', icon: CreditCard },
                         { key: 'backups', label: 'Backups', icon: Database },
                         { key: 'logs', label: 'Logs', icon: FileText },
+                        { key: 'footer', label: 'Rodapé', icon: Globe },
                         { key: 'branding', label: 'Logo', icon: ImageIcon },
                       ]
                     : []),
@@ -893,7 +1147,7 @@ export default function PlatformControlPage() {
                   <button
                     key={t.key}
                     onClick={() => setTab(t.key as TabKey)}
-                    className={`px-4 py-2 rounded-full text-sm font-medium flex items-center gap-2 transition-all ${
+                    className={`shrink-0 px-4 py-2 rounded-full text-sm font-medium flex items-center gap-2 transition-all ${
                       tab === t.key
                         ? 'bg-purple-600 text-white shadow-lg'
                         : 'bg-white/5 text-gray-300 hover:bg-white/10'
@@ -1201,7 +1455,26 @@ export default function PlatformControlPage() {
                   )}
 
                   {/* TAB: UTILIZADORES */}
-                  {tab === 'users' && (
+                  {tab === 'users' && (() => {
+                    const USERS_PER_PAGE = 12;
+                    const qUser = userSearch.trim().toLowerCase();
+                    const filteredUsers = qUser
+                      ? users.filter(
+                          (u) =>
+                            String(u.full_name || '').toLowerCase().includes(qUser) ||
+                            String(u.username || '').toLowerCase().includes(qUser) ||
+                            String(u.email || '').toLowerCase().includes(qUser) ||
+                            String(u.phone || '').toLowerCase().includes(qUser) ||
+                            String(u.role || '').toLowerCase().includes(qUser)
+                        )
+                      : users;
+                    const totalUserPages = Math.max(1, Math.ceil(filteredUsers.length / USERS_PER_PAGE));
+                    const safeUsersPage = Math.min(usersPage, totalUserPages);
+                    const paginatedUsers = filteredUsers.slice(
+                      (safeUsersPage - 1) * USERS_PER_PAGE,
+                      safeUsersPage * USERS_PER_PAGE
+                    );
+                    return (
                     <div>
                       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
                         <div className="relative max-w-sm w-full">
@@ -1209,7 +1482,10 @@ export default function PlatformControlPage() {
                           <input
                             type="text"
                             value={userSearch}
-                            onChange={(e) => setUserSearch(e.target.value)}
+                            onChange={(e) => {
+                              setUserSearch(e.target.value);
+                              setUsersPage(1);
+                            }}
                             placeholder="Pesquisar utilizador..."
                             className="w-full pl-9 pr-3 py-2 rounded-xl bg-white/5 border border-white/10 text-sm text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-purple-500"
                           />
@@ -1238,7 +1514,7 @@ export default function PlatformControlPage() {
                             </tr>
                           </thead>
                           <tbody className="divide-y divide-white/10">
-                            {users.map((u) => {
+                            {paginatedUsers.map((u) => {
                               const active = Boolean(u.is_active);
                               return (
                                 <tr key={u.id} className="hover:bg-white/5">
@@ -1316,8 +1592,15 @@ export default function PlatformControlPage() {
                           </tbody>
                         </table>
                       </div>
+                      <PaginationBar
+                        page={safeUsersPage}
+                        totalPages={totalUserPages}
+                        totalItems={filteredUsers.length}
+                        onPageChange={setUsersPage}
+                      />
                     </div>
-                  )}
+                    );
+                  })()}
 
                   {/* TAB: MÚSICAS & CONTEÚDOS DE ÁUDIO */}
                   {tab === 'music' && (
@@ -1408,9 +1691,39 @@ export default function PlatformControlPage() {
                   )}
 
                   {/* TAB: VÍDEOS */}
-                  {tab === 'videos' && (
+                  {tab === 'videos' && (() => {
+                    const VIDEOS_PER_PAGE = 12;
+                    const qVideo = videoSearch.trim().toLowerCase();
+                    const filteredVideos = qVideo
+                      ? videoList.filter(
+                          (v) =>
+                            String(v.title || '').toLowerCase().includes(qVideo) ||
+                            String(v.category || '').toLowerCase().includes(qVideo) ||
+                            String(v.artist_name || '').toLowerCase().includes(qVideo)
+                        )
+                      : videoList;
+                    const totalVideoPages = Math.max(1, Math.ceil(filteredVideos.length / VIDEOS_PER_PAGE));
+                    const safeVideosPage = Math.min(videosPage, totalVideoPages);
+                    const paginatedVideos = filteredVideos.slice(
+                      (safeVideosPage - 1) * VIDEOS_PER_PAGE,
+                      safeVideosPage * VIDEOS_PER_PAGE
+                    );
+                    return (
                     <div className="space-y-4">
-                      <div className="flex justify-end">
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                        <div className="relative max-w-sm w-full">
+                          <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                          <input
+                            type="text"
+                            value={videoSearch}
+                            onChange={(e) => {
+                              setVideoSearch(e.target.value);
+                              setVideosPage(1);
+                            }}
+                            placeholder="Pesquisar vídeo por título ou categoria..."
+                            className="w-full pl-9 pr-3 py-2 rounded-xl bg-white/5 border border-white/10 text-sm text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-purple-500"
+                          />
+                        </div>
                         <button
                           onClick={() => setShowAddVideoModal(true)}
                           className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-purple-600 hover:bg-purple-500 text-white text-sm font-medium transition-colors"
@@ -1421,7 +1734,7 @@ export default function PlatformControlPage() {
                       </div>
 
                       <div className="bg-white/5 border border-white/10 rounded-2xl divide-y divide-white/10">
-                        {videoList.map((v) => {
+                        {paginatedVideos.map((v) => {
                           const locked = Boolean(v.comments_locked);
                           const blocked = Boolean(v.is_blocked);
                           return (
@@ -1505,10 +1818,18 @@ export default function PlatformControlPage() {
                             </div>
                           );
                         })}
-                        {videoList.length === 0 && (
-                          <p className="p-8 text-center text-gray-400 text-sm">Nenhum vídeo registado.</p>
+                        {filteredVideos.length === 0 && (
+                          <p className="p-8 text-center text-gray-400 text-sm">
+                            {videoSearch.trim() ? 'Nenhum vídeo encontrado para esta pesquisa.' : 'Nenhum vídeo registado.'}
+                          </p>
                         )}
                       </div>
+                      <PaginationBar
+                        page={safeVideosPage}
+                        totalPages={totalVideoPages}
+                        totalItems={filteredVideos.length}
+                        onPageChange={setVideosPage}
+                      />
 
                       <AddVideoModal
                         open={showAddVideoModal}
@@ -1519,17 +1840,225 @@ export default function PlatformControlPage() {
                         }}
                       />
                     </div>
-                  )}
+                    );
+                  })()}
+
+                  {/* TAB: COMENTÁRIOS DE VÍDEOS & MODERAÇÃO */}
+                  {tab === 'comments' && (() => {
+                    const COMMENTS_PER_PAGE = 12;
+                    const qComment = commentSearch.trim().toLowerCase();
+                    const filteredComments = videoComments.filter((c) => {
+                      if (onlyFlaggedComments && !c.is_offensive) return false;
+                      if (!qComment) return true;
+                      return (
+                        String(c.content || '').toLowerCase().includes(qComment) ||
+                        String(c.video_title || '').toLowerCase().includes(qComment) ||
+                        String(c.username || '').toLowerCase().includes(qComment) ||
+                        String(c.full_name || '').toLowerCase().includes(qComment)
+                      );
+                    });
+                    const totalCommentPages = Math.max(
+                      1,
+                      Math.ceil(filteredComments.length / COMMENTS_PER_PAGE)
+                    );
+                    const safeCommentsPage = Math.min(commentsPage, totalCommentPages);
+                    const paginatedComments = filteredComments.slice(
+                      (safeCommentsPage - 1) * COMMENTS_PER_PAGE,
+                      safeCommentsPage * COMMENTS_PER_PAGE
+                    );
+                    const flaggedCount = videoComments.filter((c) => c.is_offensive).length;
+
+                    return (
+                      <div className="space-y-4">
+                        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
+                          <div className="flex flex-wrap items-center gap-3 flex-1">
+                            <div className="relative max-w-sm w-full">
+                              <Search
+                                size={16}
+                                className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
+                              />
+                              <input
+                                type="text"
+                                value={commentSearch}
+                                onChange={(e) => {
+                                  setCommentSearch(e.target.value);
+                                  setCommentsPage(1);
+                                }}
+                                placeholder="Pesquisar por comentário, vídeo ou utilizador..."
+                                className="w-full pl-9 pr-3 py-2 rounded-xl bg-white/5 border border-white/10 text-sm text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-purple-500"
+                              />
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setOnlyFlaggedComments((v) => !v);
+                                setCommentsPage(1);
+                              }}
+                              className={`px-3.5 py-2 rounded-xl text-xs font-medium border transition-colors ${
+                                onlyFlaggedComments
+                                  ? 'bg-red-500/20 border-red-400/50 text-red-200'
+                                  : 'bg-white/5 border-white/10 text-gray-300 hover:bg-white/10'
+                              }`}
+                            >
+                              Só ofensivos ({flaggedCount})
+                            </button>
+                          </div>
+
+                          <button
+                            type="button"
+                            onClick={handleRunOffensiveModeration}
+                            disabled={moderatingOffensive}
+                            className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-red-600 hover:bg-red-500 disabled:opacity-50 text-white text-sm font-medium transition-colors"
+                          >
+                            {moderatingOffensive ? (
+                              <Loader2 size={16} className="animate-spin" />
+                            ) : (
+                              <Shield size={16} />
+                            )}
+                            <span>Avaliar e remover ofensivos</span>
+                          </button>
+                        </div>
+
+                        <div className="bg-white/5 border border-white/10 rounded-2xl divide-y divide-white/10">
+                          {paginatedComments.map((c) => {
+                            const authorName = c.full_name || c.username || 'Utilizador';
+                            return (
+                              <div
+                                key={c.id}
+                                className="p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4 hover:bg-white/[0.03]"
+                              >
+                                <div className="min-w-0 flex-1 space-y-1">
+                                  <div className="flex flex-wrap items-center gap-2">
+                                    <span className="text-sm font-semibold text-white">
+                                      {authorName}
+                                    </span>
+                                    <span className="text-xs text-gray-400">
+                                      @{c.username}
+                                    </span>
+                                    {c.parent_id && (
+                                      <span className="text-[10px] px-2 py-0.5 rounded-full bg-indigo-500/20 text-indigo-300">
+                                        Resposta
+                                      </span>
+                                    )}
+                                    {c.is_offensive && (
+                                      <span className="text-[10px] px-2 py-0.5 rounded-full bg-red-500/20 text-red-300 font-semibold">
+                                        Ofensivo ({c.moderation_reason || 'detectado'})
+                                      </span>
+                                    )}
+                                  </div>
+                                  <p className="text-sm text-gray-200 whitespace-pre-line break-words">
+                                    {c.content}
+                                  </p>
+                                  <div className="flex flex-wrap items-center gap-3 text-xs text-gray-400">
+                                    <span>
+                                      Vídeo: <strong className="text-purple-300">{c.video_title}</strong>
+                                    </span>
+                                    <span>{c.likes_count || 0} gostos</span>
+                                    <span>
+                                      {new Date(c.created_at).toLocaleString('pt-PT', {
+                                        day: '2-digit',
+                                        month: 'short',
+                                        year: 'numeric',
+                                        hour: '2-digit',
+                                        minute: '2-digit',
+                                      })}
+                                    </span>
+                                  </div>
+                                </div>
+
+                                <div className="flex items-center gap-2 shrink-0">
+                                  <button
+                                    type="button"
+                                    onClick={() => handleDeleteAdminComment(c)}
+                                    disabled={busyId === `comment-${c.id}`}
+                                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-red-500/15 hover:bg-red-500/25 border border-red-500/30 text-red-300 text-xs font-medium transition-colors disabled:opacity-50"
+                                  >
+                                    {busyId === `comment-${c.id}` ? (
+                                      <Loader2 size={14} className="animate-spin" />
+                                    ) : (
+                                      <Trash2 size={14} />
+                                    )}
+                                    <span>Remover</span>
+                                  </button>
+                                </div>
+                              </div>
+                            );
+                          })}
+                          {filteredComments.length === 0 && (
+                            <p className="p-8 text-center text-gray-400 text-sm">
+                              {commentSearch.trim() || onlyFlaggedComments
+                                ? 'Nenhum comentário encontrado para estes filtros.'
+                                : 'Nenhum comentário registado.'}
+                            </p>
+                          )}
+                        </div>
+
+                        <PaginationBar
+                          page={safeCommentsPage}
+                          totalPages={totalCommentPages}
+                          totalItems={filteredComments.length}
+                          onPageChange={setCommentsPage}
+                        />
+                      </div>
+                    );
+                  })()}
 
                   {/* TAB: ARTISTAS & ÁLBUNS */}
-                  {tab === 'catalog' && (
+                  {tab === 'catalog' && (() => {
+                    const CATALOG_PER_PAGE = 12;
+                    const qArtist = artistSearch.trim().toLowerCase();
+                    const filteredArtists = qArtist
+                      ? artists.filter(
+                          (a) =>
+                            String(a.name || '').toLowerCase().includes(qArtist) ||
+                            String(a.genre || '').toLowerCase().includes(qArtist)
+                        )
+                      : artists;
+                    const totalArtistPages = Math.max(1, Math.ceil(filteredArtists.length / CATALOG_PER_PAGE));
+                    const safeArtistsPage = Math.min(artistsPage, totalArtistPages);
+                    const paginatedArtists = filteredArtists.slice(
+                      (safeArtistsPage - 1) * CATALOG_PER_PAGE,
+                      safeArtistsPage * CATALOG_PER_PAGE
+                    );
+
+                    const qAlbum = albumSearch.trim().toLowerCase();
+                    const filteredAlbums = qAlbum
+                      ? albums.filter(
+                          (al) =>
+                            String(al.title || '').toLowerCase().includes(qAlbum) ||
+                            String(al.artist_name || '').toLowerCase().includes(qAlbum)
+                        )
+                      : albums;
+                    const totalAlbumPages = Math.max(1, Math.ceil(filteredAlbums.length / CATALOG_PER_PAGE));
+                    const safeAlbumsPage = Math.min(albumsPage, totalAlbumPages);
+                    const paginatedAlbums = filteredAlbums.slice(
+                      (safeAlbumsPage - 1) * CATALOG_PER_PAGE,
+                      safeAlbumsPage * CATALOG_PER_PAGE
+                    );
+
+                    return (
                     <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                      <div className="bg-white/5 border border-white/10 rounded-2xl p-4">
-                        <h3 className="font-bold text-base mb-3 flex items-center gap-2">
-                          <Mic size={16} className="text-pink-400" /> Artistas ({artists.length})
-                        </h3>
-                        <div className="divide-y divide-white/10">
-                          {artists.map((a) => (
+                      <div className="bg-white/5 border border-white/10 rounded-2xl p-4 flex flex-col">
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-3">
+                          <h3 className="font-bold text-base flex items-center gap-2">
+                            <Mic size={16} className="text-pink-400" /> Artistas ({filteredArtists.length})
+                          </h3>
+                          <div className="relative sm:w-56 w-full">
+                            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                            <input
+                              type="text"
+                              value={artistSearch}
+                              onChange={(e) => {
+                                setArtistSearch(e.target.value);
+                                setArtistsPage(1);
+                              }}
+                              placeholder="Pesquisar artista..."
+                              className="w-full pl-8 pr-3 py-1.5 rounded-xl bg-white/5 border border-white/10 text-xs text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-purple-500"
+                            />
+                          </div>
+                        </div>
+                        <div className="divide-y divide-white/10 flex-1">
+                          {paginatedArtists.map((a) => (
                             <div key={a.id} className="flex items-center justify-between py-2.5">
                               <div className="flex items-center gap-3 min-w-0">
                                 <img
@@ -1553,15 +2082,41 @@ export default function PlatformControlPage() {
                               </button>
                             </div>
                           ))}
+                          {filteredArtists.length === 0 && (
+                            <p className="py-6 text-center text-gray-400 text-xs">
+                              {artistSearch.trim() ? 'Nenhum artista encontrado.' : 'Nenhum artista registado.'}
+                            </p>
+                          )}
                         </div>
+                        <PaginationBar
+                          page={safeArtistsPage}
+                          totalPages={totalArtistPages}
+                          totalItems={filteredArtists.length}
+                          onPageChange={setArtistsPage}
+                        />
                       </div>
 
-                      <div className="bg-white/5 border border-white/10 rounded-2xl p-4">
-                        <h3 className="font-bold text-base mb-3 flex items-center gap-2">
-                          <DiscAlbum size={16} className="text-amber-400" /> Álbuns ({albums.length})
-                        </h3>
-                        <div className="divide-y divide-white/10">
-                          {albums.map((al) => (
+                      <div className="bg-white/5 border border-white/10 rounded-2xl p-4 flex flex-col">
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-3">
+                          <h3 className="font-bold text-base flex items-center gap-2">
+                            <DiscAlbum size={16} className="text-amber-400" /> Álbuns ({filteredAlbums.length})
+                          </h3>
+                          <div className="relative sm:w-56 w-full">
+                            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                            <input
+                              type="text"
+                              value={albumSearch}
+                              onChange={(e) => {
+                                setAlbumSearch(e.target.value);
+                                setAlbumsPage(1);
+                              }}
+                              placeholder="Pesquisar álbum..."
+                              className="w-full pl-8 pr-3 py-1.5 rounded-xl bg-white/5 border border-white/10 text-xs text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-purple-500"
+                            />
+                          </div>
+                        </div>
+                        <div className="divide-y divide-white/10 flex-1">
+                          {paginatedAlbums.map((al) => (
                             <div key={al.id} className="flex items-center justify-between py-2.5">
                               <div className="flex items-center gap-3 min-w-0">
                                 <img
@@ -1578,10 +2133,22 @@ export default function PlatformControlPage() {
                               </div>
                             </div>
                           ))}
+                          {filteredAlbums.length === 0 && (
+                            <p className="py-6 text-center text-gray-400 text-xs">
+                              {albumSearch.trim() ? 'Nenhum álbum encontrado.' : 'Nenhum álbum registado.'}
+                            </p>
+                          )}
                         </div>
+                        <PaginationBar
+                          page={safeAlbumsPage}
+                          totalPages={totalAlbumPages}
+                          totalItems={filteredAlbums.length}
+                          onPageChange={setAlbumsPage}
+                        />
                       </div>
                     </div>
-                  )}
+                    );
+                  })()}
 
                   {/* TAB: SÉRIES EM DESTAQUE */}
                   {tab === 'series' && (
@@ -2049,7 +2616,139 @@ export default function PlatformControlPage() {
                     </div>
                   )}
 
+                  {/* TAB: RODAPÉ GERENCIÁVEL */}
+                  {tab === 'footer' && isFullAdmin && (
+                    <form onSubmit={handleSaveFooter} className="space-y-6">
+                      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                        <div className="bg-white/5 border border-white/10 rounded-2xl p-6 space-y-3.5">
+                          <h3 className="font-bold text-base text-white">Redes Sociais</h3>
+                          <p className="text-xs text-gray-400">
+                            Deixa em branco as redes que não quiseres exibir no rodapé.
+                          </p>
+                          {(
+                            [
+                              { key: 'instagram', label: 'Instagram URL' },
+                              { key: 'facebook', label: 'Facebook URL' },
+                              { key: 'youtube', label: 'YouTube URL' },
+                              { key: 'tiktok', label: 'TikTok URL' },
+                              { key: 'whatsapp', label: 'WhatsApp URL (ex: https://wa.me/...)' },
+                            ] as const
+                          ).map((item) => (
+                            <div key={item.key}>
+                              <label className="block text-xs text-gray-400 mb-1">{item.label}</label>
+                              <input
+                                type="text"
+                                value={footerConfig.social?.[item.key] || ''}
+                                onChange={(e) =>
+                                  setFooterConfig((prev) => ({
+                                    ...prev,
+                                    social: { ...prev.social, [item.key]: e.target.value },
+                                  }))
+                                }
+                                placeholder="https://..."
+                                className="w-full px-3.5 py-2 rounded-xl bg-white/10 border border-white/15 text-sm text-white"
+                              />
+                            </div>
+                          ))}
+                        </div>
+
+                        <div className="bg-white/5 border border-white/10 rounded-2xl p-6 space-y-4">
+                          <h3 className="font-bold text-base text-white">Textos & Direitos</h3>
+                          <div>
+                            <label className="block text-xs text-gray-400 mb-1">Copyright</label>
+                            <input
+                              type="text"
+                              value={footerConfig.copyright || ''}
+                              onChange={(e) =>
+                                setFooterConfig((prev) => ({ ...prev, copyright: e.target.value }))
+                              }
+                              className="w-full px-3.5 py-2 rounded-xl bg-white/10 border border-white/15 text-sm text-white"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-xs text-gray-400 mb-1">Versículo / Tagline</label>
+                            <input
+                              type="text"
+                              value={footerConfig.tagline || ''}
+                              onChange={(e) =>
+                                setFooterConfig((prev) => ({ ...prev, tagline: e.target.value }))
+                              }
+                              className="w-full px-3.5 py-2 rounded-xl bg-white/10 border border-white/15 text-sm text-white"
+                            />
+                          </div>
+                          <button
+                            type="submit"
+                            disabled={savingFooter}
+                            className="w-full py-2.5 rounded-full bg-purple-600 hover:bg-purple-500 font-semibold text-sm flex items-center justify-center gap-2 disabled:opacity-50"
+                          >
+                            {savingFooter ? <Loader2 size={15} className="animate-spin" /> : <CheckCircle size={15} />}
+                            Guardar Rodapé
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Colunas de Links */}
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        {(footerConfig.columns || []).map((col, colIdx) => (
+                          <div key={`fcol-${colIdx}`} className="bg-white/5 border border-white/10 rounded-2xl p-4 space-y-3">
+                            <input
+                              type="text"
+                              value={col.title}
+                              onChange={(e) =>
+                                setFooterConfig((prev) => {
+                                  const cols = [...prev.columns];
+                                  cols[colIdx] = { ...cols[colIdx], title: e.target.value };
+                                  return { ...prev, columns: cols };
+                                })
+                              }
+                              className="w-full px-3 py-1.5 rounded-lg bg-white/10 border border-white/15 text-sm font-bold text-white"
+                            />
+                            <div className="space-y-2">
+                              {col.links.map((lnk, lnkIdx) => (
+                                <div key={`flnk-${colIdx}-${lnkIdx}`} className="flex gap-1.5">
+                                  <input
+                                    type="text"
+                                    value={lnk.label}
+                                    placeholder="Texto"
+                                    onChange={(e) =>
+                                      setFooterConfig((prev) => {
+                                        const cols = [...prev.columns];
+                                        const links = [...cols[colIdx].links];
+                                        links[lnkIdx] = { ...links[lnkIdx], label: e.target.value };
+                                        cols[colIdx] = { ...cols[colIdx], links };
+                                        return { ...prev, columns: cols };
+                                      })
+                                    }
+                                    className="w-1/2 px-2.5 py-1.5 rounded-lg bg-white/5 border border-white/10 text-xs text-white"
+                                  />
+                                  <input
+                                    type="text"
+                                    value={lnk.href}
+                                    placeholder="/rota"
+                                    onChange={(e) =>
+                                      setFooterConfig((prev) => {
+                                        const cols = [...prev.columns];
+                                        const links = [...cols[colIdx].links];
+                                        links[lnkIdx] = { ...links[lnkIdx], href: e.target.value };
+                                        cols[colIdx] = { ...cols[colIdx], links };
+                                        return { ...prev, columns: cols };
+                                      })
+                                    }
+                                    className="w-1/2 px-2.5 py-1.5 rounded-lg bg-white/5 border border-white/10 text-xs text-gray-300"
+                                  />
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </form>
+                  )}
+
                   {/* TAB: LOGO / IDENTIDADE */}
+                  {/* TAB: GESTÃO DE PAGAMENTOS (EXCLUSIVO ADMIN + 2ª AUTENTICAÇÃO) */}
+                  {tab === 'payments' && isFullAdmin && <PaymentManagementTab />}
+
                   {tab === 'branding' && (
                     <div className="bg-white/5 border border-white/10 rounded-2xl p-6 max-w-xl">
                       <h3 className="font-bold text-base mb-1 flex items-center gap-2">
@@ -2321,6 +3020,249 @@ export default function PlatformControlPage() {
                     </div>
                   )}
 
+                  {/* TAB: DENÚNCIAS & COMPLIANCE */}
+                  {tab === 'reports' && (
+                    <div className="space-y-3">
+                      {reportsList.length === 0 ? (
+                        <div className="bg-white/5 border border-white/10 rounded-xl p-8 text-center text-gray-400 text-sm">
+                          Nenhuma denúncia registada.
+                        </div>
+                      ) : (
+                        reportsList.map((rep) => (
+                          <div
+                            key={rep.id}
+                            className="bg-white/5 border border-white/10 rounded-xl p-4 flex flex-col md:flex-row md:items-center justify-between gap-4"
+                          >
+                            <div className="space-y-1 min-w-0">
+                              <div className="flex flex-wrap items-center gap-2">
+                                <span
+                                  className={`text-[10px] px-2 py-0.5 rounded-full font-bold uppercase ${
+                                    rep.severity === 'critica'
+                                      ? 'bg-red-600/30 text-red-200 border border-red-500/40'
+                                      : rep.severity === 'grave'
+                                        ? 'bg-orange-500/25 text-orange-200'
+                                        : rep.severity === 'moderada'
+                                          ? 'bg-amber-500/20 text-amber-300'
+                                          : 'bg-sky-500/20 text-sky-300'
+                                  }`}
+                                >
+                                  {rep.severity}
+                                </span>
+                                <span className="font-semibold text-sm text-white">
+                                  {rep.content_title || `${rep.content_type} #${rep.content_id}`}
+                                </span>
+                                <span className="text-[11px] text-gray-400">
+                                  ({rep.status === 'pending' ? 'Pendente' : rep.action_taken || rep.status})
+                                </span>
+                              </div>
+                              <p className="text-xs text-gray-300">Motivo: {rep.reason}</p>
+                              {rep.details && <p className="text-xs text-gray-400">{rep.details}</p>}
+                            </div>
+                            {rep.status === 'pending' && (
+                              <div className="flex flex-wrap items-center gap-2 flex-shrink-0">
+                                <button
+                                  type="button"
+                                  onClick={async () => {
+                                    await fetchWithAuth(`/api/v1/admin/reports/${rep.id}/resolve`, {
+                                      method: 'POST',
+                                      headers: { 'Content-Type': 'application/json' },
+                                      body: JSON.stringify({ action: 'strike' }),
+                                    });
+                                    notify('Strike (1 pt) aplicado e conteúdo bloqueado.');
+                                    await loadAll();
+                                  }}
+                                  className="px-3 py-1.5 rounded-lg bg-amber-600/80 hover:bg-amber-500 text-xs font-medium"
+                                >
+                                  Strike + Bloquear
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={async () => {
+                                    await fetchWithAuth(`/api/v1/admin/reports/${rep.id}/resolve`, {
+                                      method: 'POST',
+                                      headers: { 'Content-Type': 'application/json' },
+                                      body: JSON.stringify({ action: 'remove' }),
+                                    });
+                                    notify('Conteúdo removido.');
+                                    await loadAll();
+                                  }}
+                                  className="px-3 py-1.5 rounded-lg bg-red-600/80 hover:bg-red-500 text-xs font-medium"
+                                >
+                                  Remover Conteúdo
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={async () => {
+                                    await fetchWithAuth(`/api/v1/admin/reports/${rep.id}/resolve`, {
+                                      method: 'POST',
+                                      headers: { 'Content-Type': 'application/json' },
+                                      body: JSON.stringify({ action: 'dismiss' }),
+                                    });
+                                    notify('Denúncia arquivada.');
+                                    await loadAll();
+                                  }}
+                                  className="px-3 py-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-xs font-medium"
+                                >
+                                  Arquivar
+                                </button>
+                              </div>
+                            )}
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  )}
+
+                  {/* TAB: PITCHING EDITORIAL */}
+                  {tab === 'pitches' && (
+                    <div className="space-y-3">
+                      {pitchesList.length === 0 ? (
+                        <div className="bg-white/5 border border-white/10 rounded-xl p-8 text-center text-gray-400 text-sm">
+                          Nenhuma submissão de pitching editorial ainda.
+                        </div>
+                      ) : (
+                        pitchesList.map((pitch) => (
+                          <div
+                            key={pitch.id}
+                            className="bg-white/5 border border-white/10 rounded-xl p-4 flex flex-col md:flex-row md:items-center justify-between gap-4"
+                          >
+                            <div className="space-y-1 min-w-0">
+                              <div className="flex items-center gap-2">
+                                <span className="font-semibold text-sm text-white">{pitch.music_title}</span>
+                                <span className="text-xs text-purple-300">por {pitch.artist_name || 'Criador'}</span>
+                                <span
+                                  className={`text-[10px] px-2 py-0.5 rounded-full font-semibold ${
+                                    pitch.status === 'approved'
+                                      ? 'bg-emerald-500/20 text-emerald-300'
+                                      : pitch.status === 'rejected'
+                                        ? 'bg-red-500/20 text-red-300'
+                                        : 'bg-amber-500/20 text-amber-300'
+                                  }`}
+                                >
+                                  {pitch.status === 'approved' ? 'Aprovado' : pitch.status === 'rejected' ? 'Rejeitado' : 'Pendente'}
+                                </span>
+                              </div>
+                              <p className="text-xs text-gray-300">{pitch.ministerial_context}</p>
+                              {pitch.target_audience && (
+                                <p className="text-xs text-gray-400">Público: {pitch.target_audience}</p>
+                              )}
+                            </div>
+                            {pitch.status === 'pending' && (
+                              <div className="flex items-center gap-2 flex-shrink-0">
+                                <button
+                                  type="button"
+                                  onClick={async () => {
+                                    await fetchWithAuth(`/api/v1/admin/pitches/${pitch.id}/review`, {
+                                      method: 'POST',
+                                      headers: { 'Content-Type': 'application/json' },
+                                      body: JSON.stringify({ decision: 'approved' }),
+                                    });
+                                    notify('Faixa aprovada para playlist editorial!');
+                                    await loadAll();
+                                  }}
+                                  className="px-3.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-xs font-medium"
+                                >
+                                  Aprovar
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={async () => {
+                                    await fetchWithAuth(`/api/v1/admin/pitches/${pitch.id}/review`, {
+                                      method: 'POST',
+                                      headers: { 'Content-Type': 'application/json' },
+                                      body: JSON.stringify({ decision: 'rejected' }),
+                                    });
+                                    notify('Submissão rejeitada.');
+                                    await loadAll();
+                                  }}
+                                  className="px-3.5 py-1.5 rounded-lg bg-red-600/80 hover:bg-red-500 text-xs font-medium"
+                                >
+                                  Rejeitar
+                                </button>
+                              </div>
+                            )}
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  )}
+
+                  {/* TAB: MENSAGENS DE SUPORTE (apenas em aberto) */}
+                  {tab === 'support' && (
+                    <div className="space-y-3">
+                      {(() => {
+                        const openSupport = supportList.filter((tk) => tk.status === 'open');
+                        if (openSupport.length === 0) {
+                          return (
+                            <div className="bg-white/5 border border-white/10 rounded-xl p-8 text-center text-gray-400 text-sm">
+                              Nenhum pedido de suporte em aberto no momento.
+                            </div>
+                          );
+                        }
+                        return openSupport.map((tk) => (
+                          <div
+                            key={tk.id}
+                            className="bg-white/5 border border-white/10 rounded-xl p-4 flex flex-col md:flex-row md:items-center justify-between gap-4"
+                          >
+                            <div className="space-y-1 min-w-0">
+                              <div className="flex flex-wrap items-center gap-2">
+                                <span className="font-semibold text-sm text-white">
+                                  #{tk.id} · {tk.subject}
+                                </span>
+                                <span className="text-[10px] px-2 py-0.5 rounded-full bg-purple-500/20 text-purple-300 uppercase">
+                                  {tk.category || 'geral'}
+                                </span>
+                                <span className="text-[10px] px-2 py-0.5 rounded-full font-semibold bg-amber-500/20 text-amber-300">
+                                  Em aberto
+                                </span>
+                              </div>
+                              <p className="text-xs text-gray-400">
+                                De: {tk.name || 'Utilizador'} {tk.email ? `(${tk.email})` : ''} ·{' '}
+                                {new Date(tk.created_at).toLocaleString('pt-PT')}
+                              </p>
+                              <p className="text-xs text-gray-200 whitespace-pre-line mt-1">{tk.message}</p>
+                              {tk.attachment_url && (
+                                <a
+                                  href={tk.attachment_url}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="inline-flex items-center gap-1.5 mt-2 text-xs text-purple-300 hover:text-purple-200 underline"
+                                >
+                                  Ver anexo enviado
+                                </a>
+                              )}
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setModalConfig({
+                                  mode: 'prompt',
+                                  title: `Resolver Suporte #${tk.id}`,
+                                  message: `Pedido: "${tk.subject}" — Ao confirmar, o utilizador será notificado na plataforma e por email e o pedido sairá da fila.`,
+                                  inputLabel: 'Resposta para o utilizador (opcional)',
+                                  inputPlaceholder: 'Escreve a solução ou resposta para o utilizador...',
+                                  confirmLabel: 'Responder & Resolver',
+                                  onConfirm: async (reply) => {
+                                    await fetchWithAuth(`/api/v1/admin/support/${tk.id}/resolve`, {
+                                      method: 'PATCH',
+                                      headers: { 'Content-Type': 'application/json' },
+                                      body: JSON.stringify({ reply: reply || '' }),
+                                    });
+                                    notify('Pedido resolvido e utilizador notificado!');
+                                    await loadAll();
+                                  },
+                                })
+                              }
+                              className="px-3.5 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-xs font-medium flex-shrink-0"
+                            >
+                              Responder & Resolver
+                            </button>
+                          </div>
+                        ));
+                      })()}
+                    </div>
+                  )}
+
                   {/* TAB: SOLICITAÇÕES DE ARTISTA */}
                   {tab === 'artist-requests' && (
                     <div className="space-y-3">
@@ -2368,6 +3310,50 @@ export default function PlatformControlPage() {
                                 {reqItem.rejection_reason && (
                                   <p className="text-xs text-red-300">Motivo: {reqItem.rejection_reason}</p>
                                 )}
+                                {(reqItem.has_selfie || reqItem.has_bi_front || reqItem.has_bi_back || reqItem.selfie_url || reqItem.bi_front_url || reqItem.bi_back_url) && (
+                                  <div className="pt-1">
+                                    <button
+                                      type="button"
+                                      onClick={async () => {
+                                        setDocPreviewModal({
+                                          artistName: reqItem.artist_name,
+                                          loading: true,
+                                        });
+                                        try {
+                                          const loadDoc = async (docType: 'selfie' | 'bi_front' | 'bi_back') => {
+                                            const r = await fetchWithAuth(
+                                              `/api/v1/admin/artist-requests/${reqItem.id}/document/${docType}`
+                                            );
+                                            if (!r.ok) return undefined;
+                                            const blob = await r.blob();
+                                            return URL.createObjectURL(blob);
+                                          };
+                                          const [selfie, biFront, biBack] = await Promise.all([
+                                            loadDoc('selfie'),
+                                            loadDoc('bi_front'),
+                                            loadDoc('bi_back'),
+                                          ]);
+                                          setDocPreviewModal({
+                                            artistName: reqItem.artist_name,
+                                            loading: false,
+                                            selfie,
+                                            biFront,
+                                            biBack,
+                                          });
+                                        } catch {
+                                          setDocPreviewModal({
+                                            artistName: reqItem.artist_name,
+                                            loading: false,
+                                            error: 'Não foi possível carregar os documentos.',
+                                          });
+                                        }
+                                      }}
+                                      className="px-3 py-1.5 rounded-lg bg-purple-600/20 hover:bg-purple-600/35 border border-purple-500/30 text-purple-200 text-xs font-medium inline-flex items-center gap-1.5"
+                                    >
+                                      Ver documentos (Rosto + BI)
+                                    </button>
+                                  </div>
+                                )}
                               </div>
 
                               {isPending && (
@@ -2398,24 +3384,34 @@ export default function PlatformControlPage() {
                                   <button
                                     type="button"
                                     disabled={busyId === `req-${reqItem.id}`}
-                                    onClick={async () => {
-                                      const reason = window.prompt('Motivo da rejeição (opcional):') || '';
-                                      try {
-                                        setBusyId(`req-${reqItem.id}`);
-                                        const res = await fetchWithAuth(`/api/v1/admin/artist-requests/${reqItem.id}/reject`, {
-                                          method: 'POST',
-                                          body: JSON.stringify({ reason }),
-                                        });
-                                        const b = await res.json();
-                                        if (!res.ok || !b?.success) throw new Error(b?.message || 'Erro ao rejeitar');
-                                        notify('Solicitação rejeitada.');
-                                        await loadAll();
-                                      } catch (e: any) {
-                                        setError(e?.message || 'Erro ao rejeitar');
-                                      } finally {
-                                        setBusyId(null);
-                                      }
-                                    }}
+                                    onClick={() =>
+                                      setModalConfig({
+                                        mode: 'prompt',
+                                        title: `Rejeitar solicitação de "${reqItem.artist_name}"`,
+                                        message: 'Indica o motivo da rejeição para o utilizador (opcional):',
+                                        inputLabel: 'Motivo da rejeição',
+                                        inputPlaceholder: 'Ex: Documento ilegível ou perfil incompleto...',
+                                        confirmLabel: 'Rejeitar',
+                                        danger: true,
+                                        onConfirm: async (reason) => {
+                                          try {
+                                            setBusyId(`req-${reqItem.id}`);
+                                            const res = await fetchWithAuth(`/api/v1/admin/artist-requests/${reqItem.id}/reject`, {
+                                              method: 'POST',
+                                              body: JSON.stringify({ reason: reason || '' }),
+                                            });
+                                            const b = await res.json();
+                                            if (!res.ok || !b?.success) throw new Error(b?.message || 'Erro ao rejeitar');
+                                            notify('Solicitação rejeitada.');
+                                            await loadAll();
+                                          } catch (e: any) {
+                                            setError(e?.message || 'Erro ao rejeitar');
+                                          } finally {
+                                            setBusyId(null);
+                                          }
+                                        },
+                                      })
+                                    }
                                     className="px-3.5 py-2 rounded-lg bg-red-600/80 hover:bg-red-500 text-white text-xs font-medium inline-flex items-center gap-1.5 disabled:opacity-50"
                                   >
                                     <XCircle size={14} /> Rejeitar
@@ -2612,6 +3608,85 @@ export default function PlatformControlPage() {
       )}
 
       <PlayerBar />
+      {docPreviewModal && (
+        <div
+          className="fixed inset-0 z-[130] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4"
+          role="dialog"
+          aria-modal="true"
+          onClick={() => {
+            if (docPreviewModal.selfie) URL.revokeObjectURL(docPreviewModal.selfie);
+            if (docPreviewModal.biFront) URL.revokeObjectURL(docPreviewModal.biFront);
+            if (docPreviewModal.biBack) URL.revokeObjectURL(docPreviewModal.biBack);
+            setDocPreviewModal(null);
+          }}
+        >
+          <div
+            className="w-full max-w-4xl max-h-[90vh] overflow-y-auto bg-slate-900 border border-white/15 rounded-2xl p-6 shadow-2xl space-y-4"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <h3 className="text-lg font-bold text-white">
+                  Documentos de Verificação — {docPreviewModal.artistName}
+                </h3>
+                <p className="text-xs text-gray-400">
+                  Compara a foto do rosto com a frente e o verso do Bilhete de Identidade.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  if (docPreviewModal.selfie) URL.revokeObjectURL(docPreviewModal.selfie);
+                  if (docPreviewModal.biFront) URL.revokeObjectURL(docPreviewModal.biFront);
+                  if (docPreviewModal.biBack) URL.revokeObjectURL(docPreviewModal.biBack);
+                  setDocPreviewModal(null);
+                }}
+                className="px-3 py-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-xs text-white"
+              >
+                Fechar
+              </button>
+            </div>
+
+            {docPreviewModal.loading ? (
+              <div className="flex justify-center py-12">
+                <Loader2 className="animate-spin text-purple-400" size={32} />
+              </div>
+            ) : docPreviewModal.error ? (
+              <p className="text-sm text-red-300 py-6 text-center">{docPreviewModal.error}</p>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                {[
+                  { label: 'Foto do Rosto (Selfie)', src: docPreviewModal.selfie },
+                  { label: 'BI — Parte Frontal', src: docPreviewModal.biFront },
+                  { label: 'BI — Parte Traseira', src: docPreviewModal.biBack },
+                ].map((doc) => (
+                  <div
+                    key={doc.label}
+                    className="rounded-xl border border-white/10 bg-white/[0.03] p-3 space-y-2"
+                  >
+                    <p className="text-xs font-semibold text-gray-200">{doc.label}</p>
+                    {doc.src ? (
+                      <a href={doc.src} target="_blank" rel="noreferrer" className="block">
+                        <img
+                          src={doc.src}
+                          alt={doc.label}
+                          className="w-full aspect-[4/3] object-cover rounded-lg border border-white/10 hover:opacity-90 transition"
+                        />
+                      </a>
+                    ) : (
+                      <div className="w-full aspect-[4/3] rounded-lg bg-white/5 flex items-center justify-center text-xs text-gray-500">
+                        Não enviado
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      <ActionModal config={modalConfig} onClose={() => setModalConfig(null)} />
     </div>
   );
 }
@@ -2640,6 +3715,46 @@ function StatBox({
       <p className="text-2xl font-bold text-white">{value.toLocaleString('pt-PT')}</p>
       <p className="text-xs text-gray-400 mt-0.5">{label}</p>
       {sub && <p className="text-[11px] text-purple-300 mt-1">{sub}</p>}
+    </div>
+  );
+}
+
+function PaginationBar({
+  page,
+  totalPages,
+  totalItems,
+  onPageChange,
+}: {
+  page: number;
+  totalPages: number;
+  totalItems: number;
+  onPageChange: (nextPage: number) => void;
+}) {
+  if (totalItems === 0 || totalPages <= 1) return null;
+  return (
+    <div className="flex items-center justify-between gap-3 pt-4 mt-2 border-t border-white/10 text-xs text-gray-400">
+      <span>
+        Página <strong className="text-white">{page}</strong> de{' '}
+        <strong className="text-white">{totalPages}</strong> ({totalItems} registos)
+      </span>
+      <div className="flex items-center gap-1.5">
+        <button
+          type="button"
+          onClick={() => onPageChange(Math.max(1, page - 1))}
+          disabled={page <= 1}
+          className="px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-white disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+        >
+          Anterior
+        </button>
+        <button
+          type="button"
+          onClick={() => onPageChange(Math.min(totalPages, page + 1))}
+          disabled={page >= totalPages}
+          className="px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-white disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+        >
+          Seguinte
+        </button>
+      </div>
     </div>
   );
 }

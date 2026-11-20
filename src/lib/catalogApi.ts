@@ -1,5 +1,6 @@
 // src/lib/catalogApi.ts
-import { getApiUrl, getAuthHeaders, getUploadHeaders } from '@/config/api';
+import { getApiUrl, getUploadHeaders } from '@/config/api';
+import { apiJsonFetch, parseMultipartResponse } from '@/lib/errorHandler';
 
 // ============================================================
 // TIPOS
@@ -69,27 +70,7 @@ export interface ArtistListResponse {
 // ============================================================
 
 async function jsonFetch<T>(url: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(url, {
-    ...init,
-    headers: {
-      'Content-Type': 'application/json',
-      ...getAuthHeaders(),
-      ...(init?.headers ?? {}),
-    },
-  });
-
-  let body: any = null;
-  try {
-    body = await res.json();
-  } catch {
-    throw new Error(`Erro ${res.status} (resposta não-JSON)`);
-  }
-
-  if (!res.ok || !body?.success) {
-    throw new Error(body?.message || `Erro ${res.status}`);
-  }
-
-  return body.data as T;
+  return apiJsonFetch<T>(url, init);
 }
 
 // ============================================================
@@ -165,11 +146,7 @@ export const catalogApi = {
       body: formData,
     });
 
-    const body = await res.json();
-    if (!res.ok || !body?.success) {
-      throw new Error(body?.message || `Erro ${res.status}`);
-    }
-    return body.data as Artist;
+    return parseMultipartResponse<Artist>(res, 'Não foi possível criar o artista.');
   },
 
   // ---------- ADMIN: ATUALIZAR ARTISTA (multipart) ----------
@@ -188,11 +165,7 @@ export const catalogApi = {
       body: formData,
     });
 
-    const body = await res.json();
-    if (!res.ok || !body?.success) {
-      throw new Error(body?.message || `Erro ${res.status}`);
-    }
-    return body.data as Artist;
+    return parseMultipartResponse<Artist>(res, 'Não foi possível atualizar o artista.');
   },
 
   // ---------- ADMIN: APAGAR ARTISTA ----------
@@ -213,11 +186,7 @@ export const catalogApi = {
       body: formData,
     });
 
-    const body = await res.json();
-    if (!res.ok || !body?.success) {
-      throw new Error(body?.message || `Erro ${res.status}`);
-    }
-    return body.data as Artist;
+    return parseMultipartResponse<Artist>(res, 'Não foi possível enviar a foto do artista.');
   },
 
   // ---------- ALBUMS ----------
@@ -263,4 +232,26 @@ export function formatDurationOrDash(seconds?: number | null): string {
 
 export function followersLabel(n: number): string {
   return `${formatPlays(n)} ${n === 1 ? 'seguidor' : 'seguidores'}`;
+}
+
+export function slugifyArtistName(name?: string | null): string {
+  return String(name || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+}
+
+export function getArtistHref(
+  id?: number | string | null,
+  name?: string | null
+): string {
+  const slug = slugifyArtistName(name);
+  if (slug) return `/artists/${slug}`;
+  if (id !== undefined && id !== null && String(id).trim() !== '') {
+    return `/artists/${id}`;
+  }
+  return '/artists';
 }

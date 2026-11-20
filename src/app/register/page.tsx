@@ -5,6 +5,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
+import { getFriendlyErrorMessage } from '@/lib/errorHandler';
 import {
   Eye,
   EyeOff,
@@ -23,7 +24,6 @@ import {
   Loader2,
   Send,
   RefreshCw,
-  Sparkles,
   Search,
   X,
   KeyRound,
@@ -161,8 +161,7 @@ const ChurchSelect = ({
       }
       
       setChurches(churchesData);
-    } catch (error) {
-      console.error('Erro ao carregar igrejas:', error);
+    } catch {
       setChurches([]);
     } finally {
       setLoading(false);
@@ -642,8 +641,7 @@ export default function RegisterPage() {
       setCurrentStep(2);
       setCountdown(60);
     } catch (err: any) {
-      console.error('Erro no registro:', err);
-      setError(err.message || 'Erro ao criar conta');
+      setError(getFriendlyErrorMessage(err, 'Erro ao criar conta'));
     } finally {
       setIsLoading(false);
     }

@@ -1,5 +1,6 @@
 // lib/historyApi.ts
 import { fetchWithAuth } from '@/config/api';
+import { apiJsonFetch } from '@/lib/errorHandler';
 
 // ============================================================
 // TIPOS — alinhados com o shape REAL do backend
@@ -60,27 +61,11 @@ export interface HistoryStats {
 // ============================================================
 
 async function jsonFetch<T>(endpoint: string, init?: RequestInit): Promise<T> {
-  const res = await fetchWithAuth(endpoint, {
-    cache: 'no-store',
-    ...init,
-    headers: {
-      'Content-Type': 'application/json',
-      ...(init?.headers ?? {}),
-    },
-  });
-
-  let body: any = null;
-  try {
-    body = await res.json();
-  } catch {
-    throw new Error(`Erro ${res.status} (resposta não-JSON)`);
-  }
-
-  if (!res.ok || !body?.success) {
-    throw new Error(body?.message || `Erro ${res.status}`);
-  }
-
-  return body.data as T;
+  return apiJsonFetch<T>(
+    endpoint,
+    { cache: 'no-store', ...init },
+    { fetcher: fetchWithAuth, useAuthHeaders: false }
+  );
 }
 
 function buildQuery(params: Record<string, unknown>): string {
@@ -145,22 +130,15 @@ export const historyApi = {
       completed: params?.completed,
     });
 
-    const res = await fetchWithAuth(`/api/v1/history${qs}`, {
-      cache: 'no-store',
-    });
-    const body = await res.json();
+    const data = await jsonFetch<any>(`/api/v1/history${qs}`);
 
-    if (!res.ok || !body?.success) {
-      throw new Error(body?.message || `Erro ${res.status}`);
-    }
-
-    const items: HistoryItem[] = Array.isArray(body.data?.history)
-      ? body.data.history
-      : Array.isArray(body.data)
-        ? body.data
+    const items: HistoryItem[] = Array.isArray(data?.history)
+      ? data.history
+      : Array.isArray(data)
+        ? data
         : [];
 
-    const pagination = body.data?.pagination ?? {
+    const pagination = data?.pagination ?? {
       page: params?.page ?? 1,
       limit: params?.limit ?? 20,
       total: items.length,

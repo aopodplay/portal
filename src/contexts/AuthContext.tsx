@@ -78,6 +78,17 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     localStorage.removeItem('podplay_current_time');
     localStorage.removeItem('podplay_queue');
     localStorage.removeItem('podplay_current_index');
+    localStorage.removeItem('podplay_preferences');
+    if (typeof sessionStorage !== 'undefined') {
+      sessionStorage.removeItem('podplay_payment_admin_token');
+      sessionStorage.removeItem('podplay_payment_admin_exp');
+    }
+    if (typeof document !== 'undefined') {
+      document.documentElement.dataset.theme = 'dark';
+      document.documentElement.lang = 'pt';
+      document.documentElement.style.fontSize = '';
+      document.documentElement.classList.remove('reduce-motion');
+    }
     setUser(null);
   }, []);
 
@@ -150,8 +161,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
             scheduleProactiveRefresh(token);
             syncUserProfile();
           }
-        } catch (error) {
-          console.error('Erro ao carregar usuário:', error);
+        } catch {
           clearUserData();
         }
       }
@@ -287,8 +297,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
           body: JSON.stringify({ refreshToken }),
         });
       }
-    } catch (error) {
-      console.error('Erro no logout:', error);
+    } catch {
+      // Ignora erro de rede ao encerrar sessão no servidor; os dados locais serão limpos no finally
     } finally {
       clearUserData();
       window.location.replace('/');

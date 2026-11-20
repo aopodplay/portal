@@ -16,27 +16,34 @@ import {
   ChevronLeft,
   ChevronRight,
   X,
+  HelpCircle,
+  Flag,
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { getApiUrl } from '@/config/api';
 import { resolveCoverUrl } from '@/lib/media';
+import { useLanguage, MENU_TRANSLATIONS } from '@/lib/i18n';
 
 const STORAGE_COLLAPSED = 'podplay_sidebar_collapsed';
 const STORAGE_BRANDING_LOGO = 'podplay_branding_logo';
 
-const menuItems = [
-  { icon: Home, label: 'Início', href: '/' },
-  { icon: MusicIcon, label: 'Músicas', href: '/music' },
-  { icon: VideoIcon, label: 'Vídeos', href: '/videos' },
-  { icon: Flame, label: 'Em Alta', href: '/trending' },
-  { icon: Library, label: 'Biblioteca', href: '/library' },
-  { icon: ListMusic, label: 'Playlists', href: '/playlists' },
-  { icon: Mic2, label: 'Estúdio', href: '/studio' },
-];
-
 export default function PodPlaySidebar() {
   const pathname = usePathname();
   const { user } = useAuth();
+  const lang = useLanguage();
+  const t = MENU_TRANSLATIONS[lang];
+
+  const menuItems = [
+    { icon: Home, label: t.home, href: '/' },
+    { icon: MusicIcon, label: t.music, href: '/music' },
+    { icon: VideoIcon, label: t.videos, href: '/videos' },
+    { icon: Flame, label: t.trending, href: '/trending' },
+    { icon: Library, label: t.library, href: '/library' },
+    { icon: ListMusic, label: t.playlists, href: '/playlists' },
+    { icon: Mic2, label: t.studio, href: '/studio' },
+    { icon: HelpCircle, label: t.support, href: '/support' },
+    { icon: Flag, label: 'Denúncias', href: '/reports' },
+  ];
 
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -112,16 +119,10 @@ export default function PodPlaySidebar() {
 
   return (
     <>
-      {mobileOpen && (
-        <div
-          className="fixed inset-0 z-40 bg-black/70 backdrop-blur-sm md:hidden"
-          onClick={() => setMobileOpen(false)}
-        />
-      )}
       <aside
-        className={`fixed left-0 top-0 h-full bg-slate-950/95 md:bg-black/50 backdrop-blur-xl border-r border-white/10 transition-all duration-300 z-50 md:z-30 flex flex-col ${
-          mobileOpen ? 'translate-x-0 w-64' : '-translate-x-full md:translate-x-0'
-        } ${collapsed ? 'md:w-20' : 'md:w-60'}`}
+        className={`hidden md:flex fixed left-0 top-0 h-full bg-black/50 backdrop-blur-xl border-r border-white/10 transition-all duration-300 z-30 flex-col ${
+          collapsed ? 'md:w-20' : 'md:w-60'
+        }`}
       >
         {/* Logo */}
         <div className="px-4 py-5 flex-shrink-0 flex items-center justify-between">
@@ -187,10 +188,10 @@ export default function PodPlaySidebar() {
                     ? 'bg-amber-500/15 text-amber-200 border border-amber-500/25'
                     : 'text-gray-400 hover:text-white hover:bg-white/5'
                 } ${collapsed ? 'justify-center' : ''}`}
-                title={collapsed ? 'Controlo Geral' : ''}
+                title={collapsed ? (userType === 'moderator' ? t.reviewPanel : t.control) : ''}
               >
                 <Shield size={19} className="flex-shrink-0 text-amber-400" />
-                {!collapsed && <span>Controlo Geral</span>}
+                {!collapsed && <span>{userType === 'moderator' ? t.reviewPanel : t.control}</span>}
               </Link>
             </div>
           )}
@@ -208,6 +209,34 @@ export default function PodPlaySidebar() {
           </button>
         </div>
       </aside>
+
+      {/* Barra de navegação inferior para dispositivos móveis */}
+      <nav
+        aria-label="Navegação móvel"
+        className="md:hidden fixed bottom-0 left-0 right-0 z-40 h-14 bg-slate-950/95 backdrop-blur-xl border-t border-white/10 grid grid-cols-5 items-center px-1"
+      >
+        {[
+          { icon: Home, label: t.home, href: '/' },
+          { icon: MusicIcon, label: t.music, href: '/music' },
+          { icon: VideoIcon, label: t.videos, href: '/videos' },
+          { icon: Flame, label: t.trending, href: '/trending' },
+          { icon: Library, label: t.library, href: '/library' },
+        ].map((item) => {
+          const active = isActive(item.href);
+          return (
+            <Link
+              key={item.href}
+              href={item.href}
+              className={`flex flex-col items-center justify-center gap-0.5 py-1 rounded-lg text-[10px] font-medium transition-colors ${
+                active ? 'text-purple-400' : 'text-gray-400 hover:text-white'
+              }`}
+            >
+              <item.icon size={18} />
+              <span className="truncate max-w-[64px]">{item.label}</span>
+            </Link>
+          );
+        })}
+      </nav>
     </>
   );
 }

@@ -5,8 +5,9 @@ import { useState, useEffect, useRef } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { resolveMediaUrl } from '@/lib/media';
-import { API_ENDPOINTS, fetchWithAuth } from '@/config/api';
+import { resolveCoverUrl, resolveMediaUrl } from '@/lib/media';
+import { API_ENDPOINTS, fetchWithAuth, getApiUrl } from '@/config/api';
+import { useLanguage, MENU_TRANSLATIONS } from '@/lib/i18n';
 import {
   Bell,
   Search,
@@ -18,7 +19,10 @@ import {
   Clock,
   Headphones,
   X,
-  Menu,
+  ListMusic,
+  Mic2,
+  HelpCircle,
+  Flag,
 } from 'lucide-react';
 
 interface Notification {
@@ -33,6 +37,8 @@ interface Notification {
 
 export default function Header() {
   const { user, logout } = useAuth();
+  const lang = useLanguage();
+  const t = MENU_TRANSLATIONS[lang];
   const router = useRouter();
   const [showUserDropdown, setShowUserDropdown] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
@@ -40,6 +46,39 @@ export default function Header() {
   const [showMobileSearch, setShowMobileSearch] = useState(false);
   const [avatarError, setAvatarError] = useState(false);
   const [notifications, setNotifications] = useState<Notification[]>([]);
+  const [logoUrl, setLogoUrl] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    try {
+      const cached = localStorage.getItem('podplay_branding_logo');
+      if (cached) setLogoUrl(cached);
+    } catch {}
+
+    fetch(getApiUrl('/api/v1/branding'))
+      .then((r) => r.json())
+      .then((b) => {
+        if (!cancelled && b?.success) {
+          const url = b.data?.logo_url ?? null;
+          setLogoUrl(url);
+          try {
+            if (url) localStorage.setItem('podplay_branding_logo', url);
+            else localStorage.removeItem('podplay_branding_logo');
+          } catch {}
+        }
+      })
+      .catch(() => {});
+
+    const onBrandingUpdated = (e: Event) => {
+      const url = (e as CustomEvent)?.detail?.logo_url ?? null;
+      setLogoUrl(url);
+    };
+    window.addEventListener('podplay:branding-updated', onBrandingUpdated);
+    return () => {
+      cancelled = true;
+      window.removeEventListener('podplay:branding-updated', onBrandingUpdated);
+    };
+  }, []);
 
   const dropdownRef = useRef<HTMLDivElement>(null);
   const notificationRef = useRef<HTMLDivElement>(null);
@@ -79,6 +118,9 @@ export default function Header() {
     };
 
     loadNotifications();
+    const onRefresh = () => loadNotifications();
+    window.addEventListener('podplay:notifications-updated', onRefresh);
+    return () => window.removeEventListener('podplay:notifications-updated', onRefresh);
   }, [user?.id]);
 
   useEffect(() => {
@@ -176,15 +218,22 @@ export default function Header() {
   return (
     <header className="sticky top-0 z-40 bg-[#09090d]/85 backdrop-blur-xl border-b border-white/[0.07]">
       <div className="flex items-center justify-between gap-4 px-4 sm:px-6 py-3">
-        {/* Botão Menu Mobile (sem saudação "PodFéPlay / Olá") */}
+        {/* Logo oficial da plataforma no mobile (sem sidebar no mobile) */}
         <div className="flex items-center">
-          <button
-            onClick={() => window.dispatchEvent(new CustomEvent('podplay:toggle-mobile-sidebar'))}
-            className="md:hidden p-2 -ml-1 rounded-lg text-gray-300 hover:text-white hover:bg-white/10 transition-colors"
-            aria-label="Abrir menu"
-          >
-            <Menu size={22} />
-          </button>
+          <Link href="/" className="md:hidden flex items-center gap-2 text-white font-bold text-base">
+            {logoUrl ? (
+              <img
+                src={resolveCoverUrl(logoUrl)}
+                alt="PodFéPlay"
+                className="w-8 h-8 rounded-lg object-contain bg-white/5 flex-shrink-0"
+              />
+            ) : (
+              <span className="w-7 h-7 rounded-lg bg-purple-600 flex items-center justify-center">
+                <Headphones size={15} className="text-white" />
+              </span>
+            )}
+            <span>PodFéPlay</span>
+          </Link>
         </div>
 
         {/* Barra de Pesquisa */}
@@ -244,9 +293,9 @@ export default function Header() {
 
             {/* Dropdown de Notificações */}
             {showNotifications && (
-              <div className="absolute right-0 mt-2 w-80 sm:w-96 bg-gray-900/95 backdrop-blur-xl rounded-xl shadow-2xl border border-white/10 z-50 max-h-[500px] overflow-hidden">
-                <div className="p-4 border-b border-white/10 flex justify-between items-center">
-                  <h3 className="font-semibold text-white">Notificações</h3>
+              <div className="fixed left-3 right-3 top-14 sm:absolute sm:left-auto sm:right-0 sm:top-auto sm:mt-2 sm:w-96 bg-gray-900/95 backdrop-blur-xl rounded-xl shadow-2xl border border-white/10 z-50 max-h-[60vh] sm:max-h-[480px] overflow-hidden flex flex-col">
+                <div className="p-3 sm:p-4 border-b border-white/10 flex justify-between items-center shrink-0">
+                  <h3 className="font-semibold text-white text-sm sm:text-base">Notificações</h3>
                   {unreadCount > 0 && (
                     <button
                       onClick={handleMarkAllAsRead}
@@ -256,29 +305,29 @@ export default function Header() {
                     </button>
                   )}
                 </div>
-                <div className="max-h-96 overflow-y-auto">
+                <div className="max-h-[50vh] sm:max-h-96 overflow-y-auto">
                   {notifications.length === 0 && (
-                    <div className="p-8 text-center text-gray-400">
-                      <Bell size={32} className="mx-auto mb-2 opacity-50" />
-                      <p className="text-sm">Nenhuma notificação</p>
+                    <div className="p-6 sm:p-8 text-center text-gray-400">
+                      <Bell size={28} className="mx-auto mb-2 opacity-50" />
+                      <p className="text-xs sm:text-sm">Nenhuma notificação</p>
                     </div>
                   )}
                   {notifications.map((notification) => (
                     <div
                       key={notification.id}
                       onClick={() => handleNotificationClick(notification)}
-                      className={`p-4 border-b border-white/5 cursor-pointer transition-all hover:bg-white/5 ${
+                      className={`p-3 sm:p-4 border-b border-white/5 cursor-pointer transition-all hover:bg-white/5 ${
                         !notification.read ? 'bg-purple-500/10 border-l-4 border-l-purple-500' : ''
                       }`}
                     >
-                      <div className="flex items-start gap-3">
-                        <div className="w-8 h-8 rounded-full bg-white/10 flex items-center justify-center flex-shrink-0">
+                      <div className="flex items-start gap-2.5 sm:gap-3">
+                        <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-white/10 flex items-center justify-center flex-shrink-0">
                           {getNotificationIcon(notification.type)}
                         </div>
                         <div className="flex-1 min-w-0">
-                          <p className="font-medium text-white text-sm">{notification.title}</p>
-                          <p className="text-gray-400 text-xs mt-1 line-clamp-2">{notification.message}</p>
-                          <p className="text-xs text-gray-500 mt-2">{formatDate(notification.createdAt)}</p>
+                          <p className="font-medium text-white text-xs sm:text-sm">{notification.title}</p>
+                          <p className="text-gray-400 text-[11px] sm:text-xs mt-0.5 line-clamp-2">{notification.message}</p>
+                          <p className="text-[10px] sm:text-xs text-gray-500 mt-1">{formatDate(notification.createdAt)}</p>
                         </div>
                         {!notification.read && (
                           <div className="w-2 h-2 rounded-full bg-purple-500 flex-shrink-0 mt-2" />
@@ -330,12 +379,12 @@ export default function Header() {
                 </div>
                 <div className="py-1">
                   <Link
-                    href="/profile"
+                    href="/settings"
                     className="flex items-center gap-3 px-4 py-2.5 text-sm text-gray-300 hover:bg-white/10 transition-colors"
                     onClick={() => setShowUserDropdown(false)}
                   >
                     <User size={16} />
-                    <span>Meu Perfil</span>
+                    <span>{t.settingsProfile}</span>
                   </Link>
                   <Link
                     href="/favorites"
@@ -343,7 +392,7 @@ export default function Header() {
                     onClick={() => setShowUserDropdown(false)}
                   >
                     <Heart size={16} />
-                    <span>Meus Favoritos</span>
+                    <span>{t.favorites}</span>
                   </Link>
                   <Link
                     href="/history"
@@ -351,7 +400,39 @@ export default function Header() {
                     onClick={() => setShowUserDropdown(false)}
                   >
                     <Clock size={16} />
-                    <span>Histórico</span>
+                    <span>{t.history}</span>
+                  </Link>
+                  <Link
+                    href="/playlists"
+                    className="md:hidden flex items-center gap-3 px-4 py-2.5 text-sm text-gray-300 hover:bg-white/10 transition-colors"
+                    onClick={() => setShowUserDropdown(false)}
+                  >
+                    <ListMusic size={16} />
+                    <span>{t.playlists}</span>
+                  </Link>
+                  <Link
+                    href="/studio"
+                    className="md:hidden flex items-center gap-3 px-4 py-2.5 text-sm text-gray-300 hover:bg-white/10 transition-colors"
+                    onClick={() => setShowUserDropdown(false)}
+                  >
+                    <Mic2 size={16} />
+                    <span>{t.studio}</span>
+                  </Link>
+                  <Link
+                    href="/support"
+                    className="md:hidden flex items-center gap-3 px-4 py-2.5 text-sm text-gray-300 hover:bg-white/10 transition-colors"
+                    onClick={() => setShowUserDropdown(false)}
+                  >
+                    <HelpCircle size={16} />
+                    <span>{t.support}</span>
+                  </Link>
+                  <Link
+                    href="/reports"
+                    className="md:hidden flex items-center gap-3 px-4 py-2.5 text-sm text-gray-300 hover:bg-white/10 transition-colors"
+                    onClick={() => setShowUserDropdown(false)}
+                  >
+                    <Flag size={16} />
+                    <span>Denúncias</span>
                   </Link>
                   {['admin', 'moderator'].includes(
                     String((user as any)?.role || (user as any)?.type || '').toLowerCase()
@@ -364,8 +445,8 @@ export default function Header() {
                       <Settings size={16} />
                       <span>
                         {String((user as any)?.role || '').toLowerCase() === 'moderator'
-                          ? 'Painel de Revisão'
-                          : 'Controlo Geral'}
+                          ? t.reviewPanel
+                          : t.control}
                       </span>
                     </Link>
                   )}
@@ -375,7 +456,7 @@ export default function Header() {
                     className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-red-400 hover:bg-red-500/10 transition-colors"
                   >
                     <LogOut size={16} />
-                    <span>Sair</span>
+                    <span>{t.logout}</span>
                   </button>
                 </div>
               </div>

@@ -5,6 +5,7 @@ const BASE = API_BASE_URL.replace(/\/+$/, '');
 
 export const DEFAULT_COVER = '/default-cover.svg';
 export const DEFAULT_VIDEO_THUMB = '/default-video-thumb.svg';
+export const DEFAULT_AVATAR = '/default-avatar.svg';
 
 export const resolveMediaUrl = (value?: string | null): string | null => {
   if (!value) return null;
@@ -23,6 +24,27 @@ export const resolveMediaUrl = (value?: string | null): string | null => {
 export const resolveCoverUrl = (value?: string | null): string => {
   const resolved = resolveMediaUrl(value);
   return resolved || DEFAULT_COVER;
+};
+
+export const resolveAvatarUrl = (value?: string | null): string => {
+  if (!value) return DEFAULT_AVATAR;
+  const path = String(value).trim();
+  if (!path) return DEFAULT_AVATAR;
+
+  if (
+    path.startsWith('http://') ||
+    path.startsWith('https://') ||
+    path.startsWith('data:') ||
+    path.startsWith('blob:')
+  ) {
+    return path;
+  }
+  if (path.startsWith('/uploads/')) return BASE + path;
+  if (path.startsWith('uploads/')) return BASE + '/' + path;
+
+  const parts = path.replace(/\\/g, '/').split('/');
+  const fileName = parts[parts.length - 1];
+  return BASE + '/uploads/avatars/' + fileName;
 };
 
 export const resolveThumbUrl = (value?: string | null): string => {

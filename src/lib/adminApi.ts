@@ -1,5 +1,6 @@
 // src/lib/adminApi.ts
-import { getApiUrl, getAuthHeaders } from '@/config/api';
+import { getApiUrl } from '@/config/api';
+import { apiJsonFetch } from '@/lib/errorHandler';
 
 export interface StatsTotals {
   total_music: number;
@@ -58,27 +59,7 @@ export interface PlaysByPeriodResponse {
 }
 
 async function jsonFetch<T>(url: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(url, {
-    ...init,
-    headers: {
-      'Content-Type': 'application/json',
-      ...getAuthHeaders(),
-      ...(init?.headers ?? {}),
-    },
-  });
-
-  let body: any = null;
-  try {
-    body = await res.json();
-  } catch {
-    throw new Error(`Erro ${res.status} (resposta não-JSON)`);
-  }
-
-  if (!res.ok || !body?.success) {
-    throw new Error(body?.message || `Erro ${res.status}`);
-  }
-
-  return body.data as T;
+  return apiJsonFetch<T>(url, init);
 }
 
 export const adminApi = {

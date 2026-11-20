@@ -259,8 +259,7 @@ export async function refreshSessionToken(): Promise<string | null> {
 
       window.dispatchEvent(new CustomEvent("podplay:token-refreshed", { detail: { accessToken } }));
       return accessToken;
-    } catch (error) {
-      console.error("Erro ao renovar token:", error);
+    } catch {
       return null;
     } finally {
       refreshPromise = null;
@@ -1062,8 +1061,8 @@ export async function logoutUser(): Promise<void> {
         body: JSON.stringify({ refreshToken }),
       });
     }
-  } catch (error) {
-    console.error("Erro no logout:", error);
+  } catch {
+    // Limpa os dados locais mesmo se o servidor não responder
   }
 
   // Limpar dados locais

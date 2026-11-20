@@ -20,11 +20,15 @@ import {
   ChevronDown,
   ChevronUp,
   ThumbsUp,
-  Sparkles,
   Repeat,
+  Reply,
+  Heart,
+  Flag,
 } from 'lucide-react';
-import { resolveMediaUrl, resolveThumbUrl, resolveCoverUrl } from '@/lib/media';
-import { fetchWithAuth, getApiUrl } from '@/config/api';
+import { resolveMediaUrl, resolveThumbUrl, resolveAvatarUrl, DEFAULT_AVATAR } from '@/lib/media';
+import ReportContentModal from '@/components/ReportContentModal';
+import { fetchWithAuth, getApiUrl, getAuthHeaders } from '@/config/api';
+import { getFriendlyErrorMessage, parseApiError } from '@/lib/errorHandler';
 import { getOfflineBlobUrl, getOfflineMedia, saveOfflineMedia } from '@/lib/offlineStorage';
 import { useAuth } from '@/contexts/AuthContext';
 import { historyApi } from '@/lib/historyApi';
@@ -50,7 +54,10 @@ interface VideoComment {
   id: number;
   video_id: number;
   user_id: number;
+  parent_id?: number | null;
   content: string;
+  likes_count?: number;
+  liked_by_me?: boolean;
   username?: string;
   full_name?: string | null;
   avatar_url?: string | null;
@@ -104,6 +111,12 @@ export default function VideoPlayerModal<T extends VideoItem = VideoItem>({
   const [submittingComment, setSubmittingComment] = useState(false);
   const [commentError, setCommentError] = useState<string | null>(null);
   const [togglingLock, setTogglingLock] = useState(false);
+  const [replyingTo, setReplyingTo] = useState<VideoComment | null>(null);
+  const [replyText, setReplyText] = useState('');
+  const [submittingReply, setSubmittingReply] = useState(false);
+  const [replyError, setReplyError] = useState<string | null>(null);
+  const [expandedReplies, setExpandedReplies] = useState<Set<number>>(new Set());
+  const [showReportModal, setShowReportModal] = useState(false);
 
   useEffect(() => {
     if (video && !user) {
@@ -260,7 +273,9 @@ export default function VideoPlayerModal<T extends VideoItem = VideoItem>({
   const loadComments = useCallback(async (videoId: number) => {
     try {
       setLoadingComments(true);
-      const res = await fetch(getApiUrl(`/api/v1/videos/${videoId}/comments`));
+      const res = await fetch(getApiUrl(`/api/v1/videos/${videoId}/comments`), {
+        headers: getAuthHeaders(),
+      });
       const body = await res.json();
       if (res.ok && body?.success && body.data) {
         setComments(Array.isArray(body.data.comments) ? body.data.comments : []);
@@ -436,14 +451,14 @@ export default function VideoPlayerModal<T extends VideoItem = VideoItem>({
         method: 'POST',
         body: JSON.stringify({ content }),
       });
-      const body = await res.json();
+      const body = await res.json().catch(() => null);
       if (!res.ok || !body?.success) {
-        throw new Error(body?.message || 'Não foi possível publicar o comentário');
+        throw new Error(parseApiError(res, body, 'Não foi possível publicar o comentário.'));
       }
       setComments((prev) => [body.data, ...prev]);
       setNewComment('');
     } catch (err: any) {
-      setCommentError(err?.message || 'Erro ao comentar');
+      setCommentError(getFriendlyErrorMessage(err, 'Não foi possível publicar o comentário.'));
     } finally {
       setSubmittingComment(false);
     }
@@ -456,10 +471,77 @@ export default function VideoPlayerModal<T extends VideoItem = VideoItem>({
         { method: 'DELETE' }
       );
       if (res.ok) {
-        setComments((prev) => prev.filter((c) => c.id !== commentId));
+        setComments((prev) =>
+          prev.filter((c) => c.id !== commentId && Number(c.parent_id) !== commentId)
+        );
       }
     } catch {
       // Silencioso
+    }
+  };
+
+  const handleToggleCommentLike = async (commentId: number) => {
+    if (!user) return;
+    setComments((prev) =>
+      prev.map((c) => {
+        if (c.id !== commentId) return c;
+        const nextLiked = !c.liked_by_me;
+        return {
+          ...c,
+          liked_by_me: nextLiked,
+          likes_count: Math.max(0, (c.likes_count || 0) + (nextLiked ? 1 : -1)),
+        };
+      })
+    );
+    try {
+      const res = await fetchWithAuth(
+        `/api/v1/videos/${activeVideo.id}/comments/${commentId}/like`,
+        { method: 'POST' }
+      );
+      const body = await res.json();
+      if (res.ok && body?.success && body.data) {
+        setComments((prev) =>
+          prev.map((c) =>
+            c.id === commentId
+              ? {
+                  ...c,
+                  liked_by_me: Boolean(body.data.liked),
+                  likes_count: Number(body.data.likes_count || 0),
+                }
+              : c
+          )
+        );
+      }
+    } catch {
+      // Silencioso
+    }
+  };
+
+  const handleSubmitReply = async (e: React.FormEvent, parentComment: VideoComment) => {
+    e.preventDefault();
+    const content = replyText.trim();
+    if (!content || submittingReply || commentsLocked) return;
+
+    try {
+      setSubmittingReply(true);
+      setReplyError(null);
+      const res = await fetchWithAuth(`/api/v1/videos/${activeVideo.id}/comments`, {
+        method: 'POST',
+        body: JSON.stringify({ content, parent_id: parentComment.id }),
+      });
+      const body = await res.json().catch(() => null);
+      if (!res.ok || !body?.success) {
+        throw new Error(parseApiError(res, body, 'Não foi possível publicar a resposta.'));
+      }
+      const rootId = parentComment.parent_id ? Number(parentComment.parent_id) : parentComment.id;
+      setComments((prev) => [body.data, ...prev]);
+      setExpandedReplies((prev) => new Set(prev).add(rootId));
+      setReplyText('');
+      setReplyingTo(null);
+    } catch (err: any) {
+      setReplyError(getFriendlyErrorMessage(err, 'Não foi possível publicar a resposta.'));
+    } finally {
+      setSubmittingReply(false);
     }
   };
 
@@ -628,6 +710,15 @@ export default function VideoPlayerModal<T extends VideoItem = VideoItem>({
                     )}
                     <span>{copied ? 'Copiado' : 'Partilhar'}</span>
                   </button>
+                  <button
+                    type="button"
+                    onClick={() => setShowReportModal(true)}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white/10 hover:bg-red-500/25 text-xs text-gray-200 hover:text-red-200 transition-all"
+                    title="Denunciar vídeo"
+                  >
+                    <Flag size={13} />
+                    <span>Denunciar</span>
+                  </button>
                 </div>
               </div>
 
@@ -759,60 +850,272 @@ export default function VideoPlayerModal<T extends VideoItem = VideoItem>({
                     Ainda não há comentários neste vídeo.
                   </p>
                 ) : (
-                  <div className="space-y-3 max-h-72 overflow-y-auto pr-1">
-                    {comments.map((c) => {
-                      const displayName = c.full_name || c.username || 'Utilizador';
-                      const canDelete =
-                        user &&
-                        (isAdmin || Number(c.user_id) === Number(user.id));
+                  <div className="space-y-3 max-h-96 overflow-y-auto pr-1">
+                    {comments
+                      .filter((c) => !c.parent_id)
+                      .map((c) => {
+                        const displayName = c.full_name || c.username || 'Utilizador';
+                        const isStaff =
+                          isAdmin ||
+                          String((user as any)?.role || '').toLowerCase() === 'moderator';
+                        const canDelete =
+                          user &&
+                          (isStaff || Number(c.user_id) === Number(user.id));
+                        const replies = comments
+                          .filter((r) => Number(r.parent_id) === Number(c.id))
+                          .sort(
+                            (a, b) =>
+                              new Date(a.created_at).getTime() -
+                              new Date(b.created_at).getTime()
+                          );
+                        const repliesExpanded = expandedReplies.has(c.id);
+                        const isReplyingHere =
+                          replyingTo &&
+                          (replyingTo.id === c.id || Number(replyingTo.parent_id) === c.id);
 
-                      return (
-                        <div
-                          key={c.id}
-                          className="flex items-start gap-3 p-3 rounded-xl bg-white/5 border border-white/5"
-                        >
-                          {c.avatar_url ? (
-                            <img
-                              src={resolveCoverUrl(c.avatar_url)}
-                              alt={displayName}
-                              className="w-8 h-8 rounded-full object-cover flex-shrink-0 bg-slate-800"
-                            />
-                          ) : (
-                            <div className="w-8 h-8 rounded-full bg-purple-600/30 text-purple-200 flex items-center justify-center text-xs font-bold flex-shrink-0">
-                              {displayName.charAt(0).toUpperCase()}
-                            </div>
-                          )}
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center justify-between gap-2">
-                              <div className="flex items-center gap-2 min-w-0">
-                                <span className="text-xs font-semibold text-white truncate">
-                                  {displayName}
-                                </span>
-                                <span className="text-[11px] text-gray-500">
-                                  {new Date(c.created_at).toLocaleDateString('pt-PT', {
-                                    day: '2-digit',
-                                    month: 'short',
-                                  })}
-                                </span>
+                        return (
+                          <div
+                            key={c.id}
+                            className="p-3 rounded-xl bg-white/5 border border-white/5 space-y-2.5"
+                          >
+                            <div className="flex items-start gap-3">
+                              <img
+                                src={resolveAvatarUrl(c.avatar_url)}
+                                alt={displayName}
+                                className="w-8 h-8 rounded-full object-cover flex-shrink-0 bg-slate-800 border border-white/10"
+                                onError={(e) => {
+                                  (e.currentTarget as HTMLImageElement).src = DEFAULT_AVATAR;
+                                }}
+                              />
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center justify-between gap-2">
+                                  <div className="flex items-center gap-2 min-w-0">
+                                    <span className="text-xs font-semibold text-white truncate">
+                                      {displayName}
+                                    </span>
+                                    <span className="text-[11px] text-gray-500">
+                                      {new Date(c.created_at).toLocaleDateString('pt-PT', {
+                                        day: '2-digit',
+                                        month: 'short',
+                                      })}
+                                    </span>
+                                  </div>
+                                  {canDelete && (
+                                    <button
+                                      type="button"
+                                      onClick={() => handleDeleteComment(c.id)}
+                                      className="text-gray-500 hover:text-red-400 transition-colors p-1"
+                                      title="Apagar comentário"
+                                    >
+                                      <Trash2 size={13} />
+                                    </button>
+                                  )}
+                                </div>
+                                <p className="text-xs text-gray-300 mt-1 whitespace-pre-line break-words">
+                                  {c.content}
+                                </p>
+
+                                {/* Ações do comentário: Curtir, Responder e Ver respostas */}
+                                <div className="flex flex-wrap items-center gap-3 mt-2 text-[11px]">
+                                  <button
+                                    type="button"
+                                    onClick={() => handleToggleCommentLike(c.id)}
+                                    disabled={!user}
+                                    className={`inline-flex items-center gap-1 transition-colors ${
+                                      c.liked_by_me
+                                        ? 'text-pink-400 font-semibold'
+                                        : 'text-gray-400 hover:text-white'
+                                    } disabled:opacity-50`}
+                                    title={user ? 'Curtir comentário' : 'Inicia sessão para curtir'}
+                                  >
+                                    <Heart
+                                      size={12}
+                                      className={c.liked_by_me ? 'fill-pink-400' : ''}
+                                    />
+                                    <span>{c.likes_count || 0}</span>
+                                  </button>
+
+                                  {user && !commentsLocked && (
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setReplyingTo(c);
+                                        setReplyText('');
+                                        setReplyError(null);
+                                      }}
+                                      className="inline-flex items-center gap-1 text-gray-400 hover:text-purple-300 transition-colors"
+                                    >
+                                      <Reply size={12} />
+                                      <span>Responder</span>
+                                    </button>
+                                  )}
+
+                                  {replies.length > 0 && (
+                                    <button
+                                      type="button"
+                                      onClick={() =>
+                                        setExpandedReplies((prev) => {
+                                          const next = new Set(prev);
+                                          if (next.has(c.id)) next.delete(c.id);
+                                          else next.add(c.id);
+                                          return next;
+                                        })
+                                      }
+                                      className="inline-flex items-center gap-1 text-purple-300 hover:text-purple-200 font-medium transition-colors"
+                                    >
+                                      {repliesExpanded ? (
+                                        <ChevronUp size={12} />
+                                      ) : (
+                                        <ChevronDown size={12} />
+                                      )}
+                                      <span>
+                                        {repliesExpanded
+                                          ? 'Ocultar respostas'
+                                          : `Ver ${replies.length} resposta${replies.length !== 1 ? 's' : ''}`}
+                                      </span>
+                                    </button>
+                                  )}
+                                </div>
                               </div>
-                              {canDelete && (
-                                <button
-                                  type="button"
-                                  onClick={() => handleDeleteComment(c.id)}
-                                  className="text-gray-500 hover:text-red-400 transition-colors p-1"
-                                  title="Apagar comentário"
-                                >
-                                  <Trash2 size={13} />
-                                </button>
-                              )}
                             </div>
-                            <p className="text-xs text-gray-300 mt-1 whitespace-pre-line break-words">
-                              {c.content}
-                            </p>
+
+                            {/* Formulário inline de resposta */}
+                            {isReplyingHere && replyingTo && (
+                              <form
+                                onSubmit={(e) => handleSubmitReply(e, replyingTo)}
+                                className="ml-11 pt-1"
+                              >
+                                <div className="flex items-center justify-between text-[11px] text-purple-300 mb-1">
+                                  <span>
+                                    A responder a{' '}
+                                    <strong>
+                                      {replyingTo.full_name || replyingTo.username || 'Utilizador'}
+                                    </strong>
+                                  </span>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setReplyingTo(null);
+                                      setReplyError(null);
+                                    }}
+                                    className="text-gray-400 hover:text-white"
+                                  >
+                                    Cancelar
+                                  </button>
+                                </div>
+                                <div className="flex gap-2">
+                                  <input
+                                    type="text"
+                                    value={replyText}
+                                    onChange={(e) => setReplyText(e.target.value)}
+                                    placeholder="Escreve a tua resposta..."
+                                    maxLength={2000}
+                                    autoFocus
+                                    className="flex-1 px-3 py-1.5 rounded-lg bg-white/5 border border-white/15 text-xs text-white placeholder-gray-400 focus:outline-none focus:border-purple-500"
+                                  />
+                                  <button
+                                    type="submit"
+                                    disabled={!replyText.trim() || submittingReply}
+                                    className="px-3 py-1.5 rounded-lg bg-purple-600 hover:bg-purple-500 disabled:opacity-50 text-white text-xs font-medium inline-flex items-center gap-1"
+                                  >
+                                    {submittingReply ? (
+                                      <Loader2 size={12} className="animate-spin" />
+                                    ) : (
+                                      <Send size={12} />
+                                    )}
+                                    <span>Responder</span>
+                                  </button>
+                                </div>
+                                {replyError && (
+                                  <p className="text-[11px] text-red-400 mt-1">{replyError}</p>
+                                )}
+                              </form>
+                            )}
+
+                            {/* Lista de respostas */}
+                            {replies.length > 0 && repliesExpanded && (
+                              <div className="ml-11 space-y-2 pt-2 border-l-2 border-purple-500/30 pl-3">
+                                {replies.map((r) => {
+                                  const rName = r.full_name || r.username || 'Utilizador';
+                                  const canDeleteReply =
+                                    user && (isStaff || Number(r.user_id) === Number(user.id));
+                                  return (
+                                    <div key={r.id} className="flex items-start gap-2.5">
+                                      <img
+                                        src={resolveAvatarUrl(r.avatar_url)}
+                                        alt={rName}
+                                        className="w-6 h-6 rounded-full object-cover flex-shrink-0 bg-slate-800 border border-white/10"
+                                        onError={(e) => {
+                                          (e.currentTarget as HTMLImageElement).src = DEFAULT_AVATAR;
+                                        }}
+                                      />
+                                      <div className="flex-1 min-w-0">
+                                        <div className="flex items-center justify-between gap-2">
+                                          <div className="flex items-center gap-1.5 min-w-0">
+                                            <span className="text-[11px] font-semibold text-white truncate">
+                                              {rName}
+                                            </span>
+                                            <span className="text-[10px] text-gray-500">
+                                              {new Date(r.created_at).toLocaleDateString('pt-PT', {
+                                                day: '2-digit',
+                                                month: 'short',
+                                              })}
+                                            </span>
+                                          </div>
+                                          {canDeleteReply && (
+                                            <button
+                                              type="button"
+                                              onClick={() => handleDeleteComment(r.id)}
+                                              className="text-gray-500 hover:text-red-400 transition-colors p-0.5"
+                                              title="Apagar resposta"
+                                            >
+                                              <Trash2 size={12} />
+                                            </button>
+                                          )}
+                                        </div>
+                                        <p className="text-xs text-gray-300 mt-0.5 whitespace-pre-line break-words">
+                                          {r.content}
+                                        </p>
+                                        <div className="flex items-center gap-3 mt-1 text-[11px]">
+                                          <button
+                                            type="button"
+                                            onClick={() => handleToggleCommentLike(r.id)}
+                                            disabled={!user}
+                                            className={`inline-flex items-center gap-1 transition-colors ${
+                                              r.liked_by_me
+                                                ? 'text-pink-400 font-semibold'
+                                                : 'text-gray-400 hover:text-white'
+                                            } disabled:opacity-50`}
+                                          >
+                                            <Heart
+                                              size={11}
+                                              className={r.liked_by_me ? 'fill-pink-400' : ''}
+                                            />
+                                            <span>{r.likes_count || 0}</span>
+                                          </button>
+                                          {user && !commentsLocked && (
+                                            <button
+                                              type="button"
+                                              onClick={() => {
+                                                setReplyingTo(r);
+                                                setReplyText('');
+                                                setReplyError(null);
+                                              }}
+                                              className="text-gray-400 hover:text-purple-300 transition-colors"
+                                            >
+                                              Responder
+                                            </button>
+                                          )}
+                                        </div>
+                                      </div>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            )}
                           </div>
-                        </div>
-                      );
-                    })}
+                        );
+                      })}
                   </div>
                 )}
               </div>
@@ -827,7 +1130,7 @@ export default function VideoPlayerModal<T extends VideoItem = VideoItem>({
                   <div className="px-3.5 py-3 border-b border-white/10 flex items-center justify-between gap-2">
                     <div className="min-w-0">
                       <div className="flex items-center gap-1.5 text-xs font-bold text-white">
-                        <Sparkles size={14} className="text-purple-300 flex-shrink-0" />
+                        <Repeat size={14} className="text-purple-300 flex-shrink-0" />
                         <span className="truncate">O teu Mix de Vídeos</span>
                       </div>
                       <p className="text-[11px] text-purple-200/70 mt-0.5 truncate">
@@ -938,6 +1241,14 @@ export default function VideoPlayerModal<T extends VideoItem = VideoItem>({
           )}
         </div>
       </div>
+
+      <ReportContentModal
+        open={showReportModal}
+        contentType="video"
+        contentId={activeVideo?.id ?? null}
+        contentTitle={activeVideo?.title}
+        onClose={() => setShowReportModal(false)}
+      />
     </div>
   );
 }

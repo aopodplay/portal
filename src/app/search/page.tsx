@@ -22,6 +22,7 @@ import {
   AlertCircle,
 } from 'lucide-react';
 import { getApiUrl, getAuthHeaders } from '@/config/api';
+import { getFriendlyErrorMessage, parseApiError } from '@/lib/errorHandler';
 
 // =====================================================================
 // TIPOS
@@ -294,8 +295,7 @@ function SearchPageContent() {
         if (result.success) {
           setTrendingSearches(result.data || []);
         }
-      } catch (err) {
-        console.error('Erro ao carregar buscas populares:', err);
+      } catch {
         setTrendingSearches(['gospel', 'louvor', 'adoração', 'sermão', 'podcast']);
       }
     };
@@ -321,8 +321,8 @@ function SearchPageContent() {
         setSuggestions(result.data || []);
         setShowSuggestions(true);
       }
-    } catch (err) {
-      console.error('Erro ao carregar sugestões:', err);
+    } catch {
+      // Silencioso: sugestões são opcionais
     }
   }, [query]);
 
@@ -352,9 +352,9 @@ function SearchPageContent() {
         const response = await fetch(getApiUrl(url), {
           headers: getAuthHeaders(),
         });
-        const result = await response.json();
+        const result = await response.json().catch(() => null);
 
-        if (result.success) {
+        if (response.ok && result?.success) {
           setResults(result.data.results || []);
           setPagination({
             page: result.data.pagination.page,
@@ -364,10 +364,10 @@ function SearchPageContent() {
             hasPrev: result.data.pagination.hasPrev,
           });
         } else {
-          setError(result.message || 'Erro ao buscar resultados');
+          setError(parseApiError(response, result, 'Não foi possível carregar os resultados da pesquisa.'));
         }
       } catch (err) {
-        setError('Erro ao conectar com o servidor');
+        setError(getFriendlyErrorMessage(err, 'Não foi possível concluir a pesquisa. Tenta novamente.'));
       } finally {
         setLoading(false);
       }

@@ -45,3 +45,160 @@ input:focus {
     background-position: 0% 50%;
   }
 }
+
+/* Acessibilidade: reduzir animações */
+html.reduce-motion *,
+html.reduce-motion *::before,
+html.reduce-motion *::after {
+  animation-duration: 0.01ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.01ms !important;
+  scroll-behavior: auto !important;
+}
+
+/* Tema Claro global (sem filter: invert para preservar position: fixed e contraste) */
+html[data-theme="light"],
+html[data-theme="light"] body {
+  background-color: #f8fafc;
+  color: #0f172a;
+}
+
+html[data-theme="light"] .min-h-screen {
+  background: linear-gradient(180deg, #f8fafc 0%, #f3f0ff 50%, #eef2ff 100%) !important;
+  color: #0f172a !important;
+}
+
+/* Sidebar, Header & Modais escuros -> claro */
+html[data-theme="light"] aside,
+html[data-theme="light"] header,
+html[data-theme="light"] footer {
+  background-color: rgba(255, 255, 255, 0.92) !important;
+  border-color: rgba(15, 23, 42, 0.1) !important;
+  color: #0f172a !important;
+}
+
+/* Cartões e superfícies translúcidas */
+html[data-theme="light"] [class*="bg-white/5"],
+html[data-theme="light"] [class*="bg-white/[0.04]"],
+html[data-theme="light"] [class*="bg-white/[0.05]"],
+html[data-theme="light"] [class*="bg-white/10"],
+html[data-theme="light"] [class*="bg-slate-900"],
+html[data-theme="light"] [class*="bg-slate-950"],
+html[data-theme="light"] [class*="bg-gray-900"],
+html[data-theme="light"] [class*="bg-black/50"],
+html[data-theme="light"] [class*="bg-black/60"] {
+  background-color: rgba(255, 255, 255, 0.88) !important;
+  border-color: rgba(15, 23, 42, 0.1) !important;
+}
+
+/* Textos de alto contraste no modo claro */
+html[data-theme="light"] [class*="text-white"] {
+  color: #0f172a !important;
+}
+
+html[data-theme="light"] .text-gray-100,
+html[data-theme="light"] .text-gray-200,
+html[data-theme="light"] .text-slate-100,
+html[data-theme="light"] .text-slate-200 {
+  color: #1e293b !important;
+}
+
+html[data-theme="light"] .text-gray-300,
+html[data-theme="light"] .text-slate-300 {
+  color: #334155 !important;
+}
+
+html[data-theme="light"] .text-gray-400,
+html[data-theme="light"] .text-gray-500,
+html[data-theme="light"] .text-slate-400 {
+  color: #475569 !important;
+}
+
+html[data-theme="light"] .text-purple-100,
+html[data-theme="light"] .text-purple-200,
+html[data-theme="light"] .text-purple-300,
+html[data-theme="light"] .text-purple-400 {
+  color: #6d28d9 !important;
+}
+
+html[data-theme="light"] .text-sky-200,
+html[data-theme="light"] .text-sky-300 {
+  color: #0369a1 !important;
+}
+
+html[data-theme="light"] .text-emerald-200,
+html[data-theme="light"] .text-emerald-300 {
+  color: #047857 !important;
+}
+
+html[data-theme="light"] .text-amber-200,
+html[data-theme="light"] .text-amber-300 {
+  color: #b45309 !important;
+}
+
+html[data-theme="light"] .text-pink-200,
+html[data-theme="light"] .text-pink-300 {
+  color: #be185d !important;
+}
+
+html[data-theme="light"] .text-red-200,
+html[data-theme="light"] .text-red-300,
+html[data-theme="light"] .text-red-400 {
+  color: #b91c1c !important;
+}
+
+html[data-theme="light"] .text-indigo-200,
+html[data-theme="light"] .text-indigo-300 {
+  color: #4338ca !important;
+}
+
+/* Preservar texto branco APENAS dentro de botões sólidos e banners com gradiente */
+html[data-theme="light"] .bg-purple-600,
+html[data-theme="light"] .bg-purple-500,
+html[data-theme="light"] .bg-emerald-600,
+html[data-theme="light"] .bg-red-600,
+html[data-theme="light"] .bg-pink-600,
+html[data-theme="light"] .bg-purple-600 .text-white,
+html[data-theme="light"] .bg-purple-500 .text-white,
+html[data-theme="light"] .bg-emerald-600 .text-white,
+html[data-theme="light"] .bg-red-600 .text-white,
+html[data-theme="light"] .bg-pink-600 .text-white,
+html[data-theme="light"] [class*="bg-gradient-to-r"][class*="from-purple"],
+html[data-theme="light"] [class*="bg-gradient-to-br"][class*="from-purple"],
+html[data-theme="light"] [class*="bg-gradient-to-r"][class*="from-purple"] [class*="text-white"],
+html[data-theme="light"] [class*="bg-gradient-to-br"][class*="from-purple"] [class*="text-white"] {
+  color: #ffffff !important;
+}
+
+html[data-theme="light"] [class*="bg-gradient-to-br"][class*="from-purple"] .text-purple-100,
+html[data-theme="light"] [class*="bg-gradient-to-br"][class*="from-purple"] .text-purple-200 {
+  color: #f3e8ff !important;
+}
+
+html[data-theme="light"] input,
+html[data-theme="light"] select,
+html[data-theme="light"] textarea {
+  color: #0f172a !important;
+  background-color: #ffffff !important;
+  border-color: rgba(15, 23, 42, 0.18) !important;
+}
+
+html[data-theme="light"] input::placeholder,
+html[data-theme="light"] textarea::placeholder {
+  color: #64748b !important;
+}
+
+/* Responsividade e prevenção de scroll horizontal em dispositivos móveis */
+html,
+body {
+  max-width: 100%;
+  overflow-x: hidden;
+}
+
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}

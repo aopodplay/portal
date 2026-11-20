@@ -21,6 +21,7 @@ import {
   catalogApi,
   formatDurationOrDash,
   playsLabel,
+  getArtistHref,
   type Album,
   type MusicTrack,
 } from '@/lib/catalogApi';
@@ -226,7 +227,7 @@ export default function AlbumPage() {
 
               {album.artist_id && album.artist_name && (
                 <Link
-                  href={`/artists/${album.artist_id}`}
+                  href={getArtistHref(album.artist_id, album.artist_name)}
                   className="text-purple-300 hover:text-white text-sm font-medium mt-2 inline-block"
                 >
                   {album.artist_name}

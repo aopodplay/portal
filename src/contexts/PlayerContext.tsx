@@ -506,7 +506,16 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       return;
     }
 
-    if (i + 1 < q.length) {
+    let autoPlayEnabled = true;
+    try {
+      const raw = localStorage.getItem('podplay_preferences');
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (parsed.autoPlay === false) autoPlayEnabled = false;
+      }
+    } catch {}
+
+    if (autoPlayEnabled && i + 1 < q.length) {
       setCurrentIndex(i + 1);
       setCurrentMusic(q[i + 1]);
       setCurrentTime(0);
