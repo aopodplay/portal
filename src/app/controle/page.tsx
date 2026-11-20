@@ -37,6 +37,7 @@ import {
   Globe,
   MessageSquare,
   CreditCard,
+  Pencil,
 } from 'lucide-react';
 import Header from '@/components/layout/Header';
 import PodPlaySidebar from '@/components/PodPlaySidebar';
@@ -47,7 +48,8 @@ import PaymentManagementTab from '@/components/PaymentManagementTab';
 import { useAuth } from '@/contexts/AuthContext';
 import { useVideoUpload } from '@/contexts/VideoUploadContext';
 import { fetchWithAuth } from '@/config/api';
-import { resolveCoverUrl, resolveThumbUrl } from '@/lib/media';
+import { resolveCoverUrl, resolveThumbUrl, resolveMediaUrl } from '@/lib/media';
+import { useLanguage, CONTROLE_TRANSLATIONS } from '@/lib/i18n';
 import {
   ResponsiveContainer,
   AreaChart,
@@ -63,7 +65,7 @@ import {
   Tooltip,
 } from 'recharts';
 
-type TabKey = 'overview' | 'users' | 'artist-requests' | 'reports' | 'pitches' | 'support' | 'music' | 'videos' | 'comments' | 'events' | 'catalog' | 'series' | 'notifications' | 'payments' | 'branding' | 'footer' | 'backups' | 'logs';
+type TabKey = 'overview' | 'users' | 'staff' | 'artist-requests' | 'reports' | 'pitches' | 'support' | 'music' | 'videos' | 'comments' | 'events' | 'catalog' | 'series' | 'notifications' | 'payments' | 'branding' | 'footer' | 'backups' | 'logs';
 
 interface AdminStats {
   totalUsers: number;
@@ -91,19 +93,68 @@ interface AdminUser {
   phone?: string | null;
   full_name?: string | null;
   role: string;
+  platform_only?: number | boolean;
   is_active: number | boolean;
   is_verified: number | boolean;
   created_at: string;
 }
 
 export default function PlatformControlPage() {
-  const { user, loading: authLoading } = useAuth();
+  const { user, loading: authLoading, updateUser } = useAuth();
   const { reopenModalPath, clearReopenModal, lastCompletedAt } = useVideoUpload();
+  const lang = useLanguage();
+  const tc = CONTROLE_TRANSLATIONS[lang];
   const userType = String(
     (user as any)?.role || (user as any)?.type || (user as any)?.perfil || ''
   ).toLowerCase();
   const isFullAdmin = Boolean(user && userType === 'admin');
-  const isOwner = Boolean(user && (userType === 'admin' || userType === 'moderator'));
+  const isModerator = Boolean(user && userType === 'moderator');
+  const isSupport = Boolean(user && userType === 'support');
+  const isModOrAdmin = isFullAdmin || isModerator;
+  const isOwner = Boolean(user && (isFullAdmin || isModerator || isSupport));
+
+  const allowedTabs: TabKey[] = isFullAdmin
+    ? [
+        'overview',
+        'users',
+        'staff',
+        'artist-requests',
+        'reports',
+        'pitches',
+        'support',
+        'music',
+        'videos',
+        'comments',
+        'events',
+        'catalog',
+        'series',
+        'notifications',
+        'payments',
+        'backups',
+        'logs',
+        'footer',
+        'branding',
+      ]
+    : isModerator
+      ? [
+          'overview',
+          'users',
+          'staff',
+          'artist-requests',
+          'reports',
+          'pitches',
+          'support',
+          'music',
+          'videos',
+          'comments',
+          'events',
+          'catalog',
+          'series',
+          'notifications',
+        ]
+      : isSupport
+        ? ['support', 'reports', 'comments', 'users', 'overview']
+        : [];
 
   const [tab, setTab] = useState<TabKey>('overview');
   const [loading, setLoading] = useState(true);
@@ -146,6 +197,14 @@ export default function PlatformControlPage() {
   const [eventExpiresAt, setEventExpiresAt] = useState('');
   const [eventNotify, setEventNotify] = useState(true);
   const [savingEvent, setSavingEvent] = useState(false);
+  const [editingEventId, setEditingEventId] = useState<number | null>(null);
+  const [mediaPreview, setMediaPreview] = useState<{
+    type: 'music' | 'video';
+    title: string;
+    subtitle?: string;
+    src: string;
+    poster?: string;
+  } | null>(null);
   const [showAddAudioModal, setShowAddAudioModal] = useState(false);
   const [audioTitle, setAudioTitle] = useState('');
   const [audioArtist, setAudioArtist] = useState('PodFéPlay');
@@ -157,8 +216,17 @@ export default function PlatformControlPage() {
   const [staffFullName, setStaffFullName] = useState('');
   const [staffUsername, setStaffUsername] = useState('');
   const [staffEmail, setStaffEmail] = useState('');
-  const [staffRole, setStaffRole] = useState<'moderator' | 'admin'>('moderator');
+  const [staffRole, setStaffRole] = useState<'support' | 'moderator' | 'admin'>('support');
+  const [staffPlatformOnly, setStaffPlatformOnly] = useState(true);
   const [creatingStaff, setCreatingStaff] = useState(false);
+
+  // Modal de redefinição de palavra-passe
+  const [showPasswordModal, setShowPasswordModal] = useState(false);
+  const [pwdOld, setPwdOld] = useState('');
+  const [pwdNew, setPwdNew] = useState('');
+  const [pwdConfirm, setPwdConfirm] = useState('');
+  const [savingPwd, setSavingPwd] = useState(false);
+  const [pwdError, setPwdError] = useState<string | null>(null);
 
   // Backups & Logs
   const [backupList, setBackupList] = useState<any[]>([]);
@@ -202,6 +270,10 @@ export default function PlatformControlPage() {
 
   const [userSearch, setUserSearch] = useState('');
   const [usersPage, setUsersPage] = useState(1);
+  const [communityRoleFilter, setCommunityRoleFilter] = useState<'all' | 'user' | 'creator'>('all');
+  const [staffSearch, setStaffSearch] = useState('');
+  const [staffPage, setStaffPage] = useState(1);
+  const [staffRoleFilter, setStaffRoleFilter] = useState<'all' | 'support' | 'moderator' | 'admin'>('all');
   const [musicList, setMusicList] = useState<any[]>([]);
   const [videoList, setVideoList] = useState<any[]>([]);
   const [videoSearch, setVideoSearch] = useState('');
@@ -246,28 +318,31 @@ export default function PlatformControlPage() {
       setError(null);
 
       const q = userSearch.trim() ? `&search=${encodeURIComponent(userSearch.trim())}` : '';
-      const [statsRes, overviewRes, usersRes, mediaRes, artistsRes, albumsRes, seriesRes, requestsRes, eventsRes, reportsRes, pitchesRes, supportRes, commentsRes] =
+      const emptyOk = async () => new Response(JSON.stringify({ success: true, data: [] }), { status: 200 });
+      const [statsRes, overviewRes, communityRes, staffRes, mediaRes, artistsRes, albumsRes, seriesRes, requestsRes, eventsRes, reportsRes, pitchesRes, supportRes, commentsRes] =
         await Promise.all([
           fetchWithAuth('/api/v1/admin/stats'),
           fetchWithAuth('/api/v1/admin/stats/overview'),
-          fetchWithAuth(`/api/v1/admin/users?page=1&limit=50${q}`),
-          fetchWithAuth('/api/v1/admin/moderation/media'),
-          fetchWithAuth('/api/v1/artists?page=1&limit=50'),
-          fetchWithAuth('/api/v1/albums?page=1&limit=50'),
-          fetchWithAuth('/api/v1/series?all=true'),
-          fetchWithAuth('/api/v1/admin/artist-requests'),
-          fetchWithAuth('/api/v1/admin/events'),
+          fetchWithAuth(`/api/v1/admin/users?group=community&page=1&limit=200${q}`),
+          isModOrAdmin ? fetchWithAuth('/api/v1/admin/users?group=staff&page=1&limit=200') : emptyOk(),
+          isModOrAdmin ? fetchWithAuth('/api/v1/admin/moderation/media') : emptyOk(),
+          isModOrAdmin ? fetchWithAuth('/api/v1/artists?page=1&limit=50') : emptyOk(),
+          isModOrAdmin ? fetchWithAuth('/api/v1/albums?page=1&limit=50') : emptyOk(),
+          isModOrAdmin ? fetchWithAuth('/api/v1/series?all=true') : emptyOk(),
+          isModOrAdmin ? fetchWithAuth('/api/v1/admin/artist-requests') : emptyOk(),
+          isModOrAdmin ? fetchWithAuth('/api/v1/admin/events') : emptyOk(),
           fetchWithAuth('/api/v1/admin/reports'),
-          fetchWithAuth('/api/v1/admin/pitches'),
+          isModOrAdmin ? fetchWithAuth('/api/v1/admin/pitches') : emptyOk(),
           fetchWithAuth('/api/v1/admin/support'),
           fetchWithAuth('/api/v1/admin/video-comments'),
         ]);
 
-      const [statsBody, overviewBody, usersBody, mediaBody, artistsBody, albumsBody, seriesBody, requestsBody, eventsBody, reportsBody, pitchesBody, supportBody, commentsBody] =
+      const [statsBody, overviewBody, communityBody, staffBody, mediaBody, artistsBody, albumsBody, seriesBody, requestsBody, eventsBody, reportsBody, pitchesBody, supportBody, commentsBody] =
         await Promise.all([
           statsRes.json().catch(() => null),
           overviewRes.json().catch(() => null),
-          usersRes.json().catch(() => null),
+          communityRes.json().catch(() => null),
+          staffRes.json().catch(() => null),
           mediaRes.json().catch(() => null),
           artistsRes.json().catch(() => null),
           albumsRes.json().catch(() => null),
@@ -288,7 +363,9 @@ export default function PlatformControlPage() {
         setTopMusicStats(Array.isArray(overviewBody.data?.topMusic) ? overviewBody.data.topMusic : []);
         setTopArtistsStats(Array.isArray(overviewBody.data?.topArtists) ? overviewBody.data.topArtists : []);
       }
-      if (usersRes.ok && usersBody?.success) setUsers(usersBody.data?.users || []);
+      const nextCommunity = communityRes.ok && communityBody?.success ? communityBody.data?.users || [] : [];
+      const nextStaff = staffRes.ok && staffBody?.success ? staffBody.data?.users || [] : [];
+      setUsers([...nextCommunity, ...nextStaff]);
       if (requestsRes.ok && requestsBody?.success) setArtistRequests(Array.isArray(requestsBody.data) ? requestsBody.data : []);
       if (eventsRes.ok && eventsBody?.success) setEventsList(Array.isArray(eventsBody.data) ? eventsBody.data : []);
       if (reportsRes.ok && reportsBody?.success) setReportsList(Array.isArray(reportsBody.data) ? reportsBody.data : []);
@@ -639,7 +716,19 @@ export default function PlatformControlPage() {
     runModeration(undefined);
   };
 
-  const handleSetUserRole = async (u: AdminUser, role: 'user' | 'creator' | 'moderator' | 'admin') => {
+  useEffect(() => {
+    if (isSupport && !['support', 'reports', 'comments', 'users', 'overview'].includes(tab)) {
+      setTab('support');
+    }
+  }, [isSupport, tab]);
+
+  useEffect(() => {
+    if (isSupport && tab === 'overview') {
+      setTab('support');
+    }
+  }, [isSupport]);
+
+  const handleSetUserRole = async (u: AdminUser, role: 'user' | 'creator' | 'support' | 'moderator' | 'admin') => {
     try {
       setBusyId(`role-${u.id}`);
       const res = await fetchWithAuth(`/api/v1/admin/users/${u.id}/role`, {
@@ -652,6 +741,7 @@ export default function PlatformControlPage() {
       const roleLabels: Record<string, string> = {
         admin: 'Administrador',
         moderator: 'Revisor',
+        support: 'Suporte',
         creator: 'Artista/Criador',
         user: 'Utilizador',
       };
@@ -678,6 +768,7 @@ export default function PlatformControlPage() {
           username: staffUsername.trim(),
           email: staffEmail.trim(),
           role: staffRole,
+          platform_only: staffRole === 'support' ? true : staffPlatformOnly,
         }),
       });
       const body = await res.json();
@@ -686,7 +777,8 @@ export default function PlatformControlPage() {
       setStaffFullName('');
       setStaffUsername('');
       setStaffEmail('');
-      setStaffRole('moderator');
+      setStaffRole('support');
+      setStaffPlatformOnly(true);
       notify(body?.message || 'Utilizador criado e credenciais enviadas por email!');
       await loadAll();
     } catch (e: any) {
@@ -694,6 +786,77 @@ export default function PlatformControlPage() {
     } finally {
       setCreatingStaff(false);
     }
+  };
+
+  const handleChangeOwnPassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setPwdError(null);
+    if (pwdNew.length < 6) {
+      setPwdError('A nova palavra-passe deve ter pelo menos 6 caracteres.');
+      return;
+    }
+    if (pwdNew !== pwdConfirm) {
+      setPwdError('As novas palavras-passe não coincidem.');
+      return;
+    }
+    try {
+      setSavingPwd(true);
+      const res = await fetchWithAuth('/api/v1/users/change-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ oldPassword: pwdOld, newPassword: pwdNew }),
+      });
+      const body = await res.json();
+      if (!res.ok || !body?.success) {
+        throw new Error(body?.message || 'Erro ao redefinir palavra-passe');
+      }
+      updateUser({ mustChangePassword: false });
+      setShowPasswordModal(false);
+      setPwdOld('');
+      setPwdNew('');
+      setPwdConfirm('');
+      notify('Palavra-passe redefinida com sucesso!');
+    } catch (e: any) {
+      setPwdError(e?.message || 'Erro ao redefinir palavra-passe');
+    } finally {
+      setSavingPwd(false);
+    }
+  };
+
+  const toLocalDateTimeInput = (val?: string | null) => {
+    if (!val) return '';
+    const d = new Date(val);
+    if (isNaN(d.getTime())) return '';
+    const pad = (n: number) => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  };
+
+  const handleStartEditEvent = (ev: any) => {
+    setEditingEventId(ev.id);
+    setEventTitle(ev.title || '');
+    setEventDesc(ev.description || '');
+    setEventDate(ev.event_date || '');
+    setEventLocation(ev.location || '');
+    setEventCategory(ev.category === 'publicidade' ? 'publicidade' : 'evento');
+    setEventLinkUrl(ev.link_url || '');
+    setEventScheduledAt(toLocalDateTimeInput(ev.scheduled_at));
+    setEventExpiresAt(toLocalDateTimeInput(ev.expires_at));
+    setEventBanner(null);
+    setEventNotify(false);
+  };
+
+  const handleCancelEditEvent = () => {
+    setEditingEventId(null);
+    setEventTitle('');
+    setEventDesc('');
+    setEventDate('');
+    setEventLocation('');
+    setEventCategory('evento');
+    setEventLinkUrl('');
+    setEventBanner(null);
+    setEventScheduledAt('');
+    setEventExpiresAt('');
+    setEventNotify(true);
   };
 
   const handleCreateEvent = async (e: React.FormEvent) => {
@@ -704,34 +867,39 @@ export default function PlatformControlPage() {
       setError(null);
       const fd = new FormData();
       fd.append('title', eventTitle.trim());
-      if (eventDesc.trim()) fd.append('description', eventDesc.trim());
-      if (eventDate.trim()) fd.append('event_date', eventDate.trim());
-      if (eventLocation.trim()) fd.append('location', eventLocation.trim());
+      fd.append('description', eventDesc.trim());
+      fd.append('event_date', eventDate.trim());
+      fd.append('location', eventLocation.trim());
       fd.append('category', eventCategory);
-      if (eventLinkUrl.trim()) fd.append('link_url', eventLinkUrl.trim());
-      if (eventScheduledAt) fd.append('scheduled_at', new Date(eventScheduledAt).toISOString());
-      if (eventExpiresAt) fd.append('expires_at', new Date(eventExpiresAt).toISOString());
-      fd.append('notifyUsers', String(eventNotify));
+      fd.append('link_url', eventLinkUrl.trim());
+      fd.append('scheduled_at', eventScheduledAt ? new Date(eventScheduledAt).toISOString() : '');
+      fd.append('expires_at', eventExpiresAt ? new Date(eventExpiresAt).toISOString() : '');
+      if (!editingEventId) {
+        fd.append('notifyUsers', String(eventNotify));
+      }
       if (eventBanner) fd.append('banner', eventBanner);
 
-      const res = await fetchWithAuth('/api/v1/admin/events', {
-        method: 'POST',
-        body: fd,
-      });
+      const isEditing = Boolean(editingEventId);
+      const res = await fetchWithAuth(
+        isEditing ? `/api/v1/admin/events/${editingEventId}` : '/api/v1/admin/events',
+        {
+          method: isEditing ? 'PUT' : 'POST',
+          body: fd,
+        }
+      );
       const body = await res.json();
-      if (!res.ok || !body?.success) throw new Error(body?.message || 'Erro ao publicar');
-      setEventTitle('');
-      setEventDesc('');
-      setEventDate('');
-      setEventLocation('');
-      setEventLinkUrl('');
-      setEventBanner(null);
-      setEventScheduledAt('');
-      setEventExpiresAt('');
-      notify(eventCategory === 'publicidade' ? 'Publicidade publicada na página principal!' : 'Evento publicado na plataforma!');
+      if (!res.ok || !body?.success) throw new Error(body?.message || 'Erro ao guardar evento');
+      handleCancelEditEvent();
+      notify(
+        isEditing
+          ? 'Evento/publicidade atualizado com sucesso!'
+          : eventCategory === 'publicidade'
+            ? 'Publicidade publicada na página principal!'
+            : 'Evento publicado na plataforma!'
+      );
       await loadAll();
     } catch (e: any) {
-      setError(e?.message || 'Erro ao publicar');
+      setError(e?.message || 'Erro ao guardar');
     } finally {
       setSavingEvent(false);
     }
@@ -1077,27 +1245,67 @@ export default function PlatformControlPage() {
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
             <div>
               <span className="inline-flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-amber-300 bg-amber-500/15 px-3 py-1 rounded-full">
-                <Shield size={13} /> Controlo Geral PodPlay
+                <Shield size={13} />{' '}
+                {isSupport
+                  ? tc.badgeSupport
+                  : isModerator
+                    ? tc.badgeMod
+                    : tc.badgeAdmin}
               </span>
-              <h1 className="text-2xl sm:text-3xl font-bold mt-2">Gestão da Plataforma</h1>
+              <h1 className="text-2xl sm:text-3xl font-bold mt-2">
+                {isSupport ? tc.titleSupport : tc.titleAdmin}
+              </h1>
               <p className="text-sm text-gray-400">
-                Área exclusiva dos proprietários para controlar utilizadores, catálogo, vídeos e métricas do sistema.
+                {isSupport ? tc.subtitleSupport : tc.subtitleAdmin}
               </p>
             </div>
+            {isOwner && (
+              <button
+                type="button"
+                onClick={() => setShowPasswordModal(true)}
+                className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-white/5 hover:bg-white/10 border border-white/15 text-xs font-medium text-gray-200 transition-colors self-start"
+              >
+                <Lock size={14} className="text-purple-400" />
+                {tc.changePasswordBtn}
+              </button>
+            )}
           </div>
+
+          {isOwner && user?.mustChangePassword && (
+            <div className="mb-6 p-4 rounded-2xl bg-amber-500/15 border border-amber-500/30 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div className="flex items-start gap-3">
+                <AlertCircle size={20} className="text-amber-300 flex-shrink-0 mt-0.5" />
+                <div>
+                  <p className="text-sm font-semibold text-amber-100">
+                    {tc.defaultPwdBannerTitle}
+                  </p>
+                  <p className="text-xs text-amber-200/80 mt-0.5">
+                    {tc.defaultPwdBannerDesc}
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowPasswordModal(true)}
+                className="px-4 py-2 rounded-full bg-amber-500 hover:bg-amber-400 text-slate-950 font-semibold text-xs flex-shrink-0 transition-colors"
+              >
+                {tc.redefinePwdBtn}
+              </button>
+            </div>
+          )}
 
           {!authLoading && !isOwner ? (
             <div className="p-10 rounded-2xl bg-red-500/10 border border-red-500/20 text-center">
               <Shield size={40} className="text-red-400 mx-auto mb-3" />
-              <h2 className="text-lg font-bold text-white">Acesso Restrito</h2>
+              <h2 className="text-lg font-bold text-white">{tc.restrictedTitle}</h2>
               <p className="text-sm text-gray-400 mt-1">
-                Esta área é exclusiva para administradores/proprietários da plataforma PodPlay.
+                {tc.restrictedDesc}
               </p>
               <Link
                 href="/"
                 className="inline-block mt-4 px-5 py-2 rounded-full bg-purple-600 hover:bg-purple-500 text-sm font-medium"
               >
-                Voltar ao Início
+                {tc.backHome}
               </Link>
             </div>
           ) : (
@@ -1105,45 +1313,56 @@ export default function PlatformControlPage() {
               {/* Tabs */}
               <div className="flex flex-nowrap overflow-x-auto no-scrollbar md:flex-wrap gap-2 mb-6 border-b border-white/10 pb-3">
                 {[
-                  { key: 'overview', label: 'Visão Geral', icon: BarChart3 },
-                  { key: 'users', label: `Utilizadores (${users.length})`, icon: Users },
+                  { key: 'overview', label: tc.tabs.overview, icon: BarChart3 },
+                  {
+                    key: 'users',
+                    label: `${tc.tabs.users} (${users.filter((u) => ['user', 'creator', 'church_admin'].includes(String(u.role || '').toLowerCase())).length})`,
+                    icon: Users,
+                  },
+                  {
+                    key: 'staff',
+                    label: `${tc.tabs.staff} (${users.filter((u) => ['support', 'moderator', 'admin'].includes(String(u.role || '').toLowerCase())).length})`,
+                    icon: Shield,
+                  },
                   {
                     key: 'artist-requests',
-                    label: `Artistas (${artistRequests.filter((r) => r.status === 'pending').length})`,
+                    label: `${tc.tabs.artistRequests} (${artistRequests.filter((r) => r.status === 'pending').length})`,
                     icon: CheckCircle,
                   },
                   {
                     key: 'reports',
-                    label: `Denúncias (${reportsList.filter((r) => r.status === 'pending').length})`,
+                    label: `${tc.tabs.reports} (${reportsList.filter((r) => r.status === 'pending').length})`,
                     icon: AlertCircle,
                   },
                   {
                     key: 'pitches',
-                    label: `Pitching (${pitchesList.filter((p) => p.status === 'pending').length})`,
+                    label: `${tc.tabs.pitches} (${pitchesList.filter((p) => p.status === 'pending').length})`,
                     icon: ListMusic,
                   },
                   {
                     key: 'support',
-                    label: `Suporte (${supportList.filter((s) => s.status === 'open').length})`,
+                    label: `${tc.tabs.support} (${supportList.filter((s) => s.status === 'open').length})`,
                     icon: FileText,
                   },
-                  { key: 'music', label: `Músicas (${musicList.length})`, icon: Music },
-                  { key: 'videos', label: `Vídeos (${videoList.length})`, icon: VideoIcon },
-                  { key: 'comments', label: `Comentários (${videoComments.length})`, icon: MessageSquare },
-                  { key: 'events', label: `Eventos & Publicidades (${eventsList.length})`, icon: Calendar },
-                  { key: 'catalog', label: `Artistas & Álbuns`, icon: DiscAlbum },
-                  { key: 'series', label: `Séries (${seriesList.length})`, icon: VideoIcon },
-                  { key: 'notifications', label: 'Notificar Todos', icon: Bell },
+                  { key: 'music', label: `${tc.tabs.music} (${musicList.length})`, icon: Music },
+                  { key: 'videos', label: `${tc.tabs.videos} (${videoList.length})`, icon: VideoIcon },
+                  { key: 'comments', label: `${tc.tabs.comments} (${videoComments.length})`, icon: MessageSquare },
+                  { key: 'events', label: `${tc.tabs.events} (${eventsList.length})`, icon: Calendar },
+                  { key: 'catalog', label: tc.tabs.catalog, icon: DiscAlbum },
+                  { key: 'series', label: `${tc.tabs.series} (${seriesList.length})`, icon: VideoIcon },
+                  { key: 'notifications', label: tc.tabs.notifications, icon: Bell },
                   ...(isFullAdmin
                     ? [
-                        { key: 'payments', label: 'GESTÃO DE PAGAMENTOS', icon: CreditCard },
-                        { key: 'backups', label: 'Backups', icon: Database },
-                        { key: 'logs', label: 'Logs', icon: FileText },
-                        { key: 'footer', label: 'Rodapé', icon: Globe },
-                        { key: 'branding', label: 'Logo', icon: ImageIcon },
+                        { key: 'payments', label: tc.tabs.payments, icon: CreditCard },
+                        { key: 'backups', label: tc.tabs.backups, icon: Database },
+                        { key: 'logs', label: tc.tabs.logs, icon: FileText },
+                        { key: 'footer', label: tc.tabs.footer, icon: Globe },
+                        { key: 'branding', label: tc.tabs.branding, icon: ImageIcon },
                       ]
                     : []),
-                ].map((t) => (
+                ]
+                  .filter((t) => allowedTabs.includes(t.key as TabKey))
+                  .map((t) => (
                   <button
                     key={t.key}
                     onClick={() => setTab(t.key as TabKey)}
@@ -1186,31 +1405,31 @@ export default function PlatformControlPage() {
                       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                         <StatBox
                           icon={<Users size={20} className="text-sky-400" />}
-                          label="Utilizadores Ativos"
+                          label={tc.kpi.activeUsers}
                           value={stats?.totalUsers ?? 0}
-                          sub={`+${stats?.newUsersThisMonth ?? 0} este mês`}
-                          onClick={() => setTab('users')}
+                          sub={`+${stats?.newUsersThisMonth ?? 0} ${tc.kpi.thisMonth}`}
+                          onClick={() => allowedTabs.includes('users') && setTab('users')}
                         />
                         <StatBox
                           icon={<Play size={20} className="text-emerald-400" />}
-                          label="Reproduções Totais"
+                          label={tc.kpi.totalPlays}
                           value={overview?.total_plays ?? 0}
-                          sub={`${overview?.unique_listeners ?? 0} ouvintes únicos`}
-                          onClick={() => setTab('music')}
+                          sub={`${overview?.unique_listeners ?? 0} ${tc.kpi.uniqueListeners}`}
+                          onClick={() => allowedTabs.includes('music') && setTab('music')}
                         />
                         <StatBox
                           icon={<Music size={20} className="text-purple-400" />}
-                          label="Músicas no Catálogo"
+                          label={tc.kpi.catalogMusic}
                           value={overview?.total_music ?? musicList.length}
-                          sub={`${videoList.length} vídeos publicados`}
-                          onClick={() => setTab('music')}
+                          sub={`${videoList.length} ${tc.kpi.publishedVideos}`}
+                          onClick={() => allowedTabs.includes('music') && setTab('music')}
                         />
                         <StatBox
                           icon={<DiscAlbum size={20} className="text-amber-400" />}
-                          label="Artistas & Álbuns"
+                          label={tc.kpi.artistsAlbums}
                           value={overview?.total_artists ?? artists.length}
-                          sub={`${overview?.total_albums ?? albums.length} álbuns · ${stats?.totalFavorites ?? 0} favoritos`}
-                          onClick={() => setTab('catalog')}
+                          sub={`${overview?.total_albums ?? albums.length} ${tc.kpi.registeredAlbums}`}
+                          onClick={() => allowedTabs.includes('catalog') && setTab('catalog')}
                         />
                       </div>
 
@@ -1318,27 +1537,32 @@ export default function PlatformControlPage() {
                         </div>
 
                         <div className="bg-white/5 border border-white/10 rounded-2xl p-5 flex flex-col">
-                          <h3 className="font-bold text-base text-white">Equipa & Utilizadores</h3>
-                          <p className="text-xs text-gray-400 mb-3">Distribuição por tipo de conta</p>
+                          <h3 className="font-bold text-base text-white">{tc.kpi.teamUsersTitle}</h3>
+                          <p className="text-xs text-gray-400 mb-3">{tc.kpi.teamUsersSub}</p>
                           {(() => {
                             const roleCounts = [
                               {
-                                name: 'Utilizadores',
+                                name: tc.kpi.users,
                                 value: users.filter((u) => u.role === 'user').length,
                                 color: '#38BDF8',
                               },
                               {
-                                name: 'Artistas',
+                                name: tc.kpi.artists,
                                 value: users.filter((u) => u.role === 'creator').length,
                                 color: '#A855F7',
                               },
                               {
-                                name: 'Revisores',
+                                name: tc.kpi.support,
+                                value: users.filter((u) => u.role === 'support').length,
+                                color: '#EC4899',
+                              },
+                              {
+                                name: tc.kpi.moderators,
                                 value: users.filter((u) => u.role === 'moderator').length,
                                 color: '#10B981',
                               },
                               {
-                                name: 'Admins',
+                                name: tc.kpi.admins,
                                 value: users.filter((u) => u.role === 'admin').length,
                                 color: '#F59E0B',
                               },
@@ -1454,12 +1678,19 @@ export default function PlatformControlPage() {
                     </div>
                   )}
 
-                  {/* TAB: UTILIZADORES */}
+                  {/* TAB: UTILIZADORES & ARTISTAS (COMUNIDADE) */}
                   {tab === 'users' && (() => {
                     const USERS_PER_PAGE = 12;
+                    const communityList = users.filter((u) =>
+                      ['user', 'creator', 'church_admin'].includes(String(u.role || '').toLowerCase())
+                    );
+                    const byRole =
+                      communityRoleFilter === 'all'
+                        ? communityList
+                        : communityList.filter((u) => String(u.role || '').toLowerCase() === communityRoleFilter);
                     const qUser = userSearch.trim().toLowerCase();
                     const filteredUsers = qUser
-                      ? users.filter(
+                      ? byRole.filter(
                           (u) =>
                             String(u.full_name || '').toLowerCase().includes(qUser) ||
                             String(u.username || '').toLowerCase().includes(qUser) ||
@@ -1467,7 +1698,7 @@ export default function PlatformControlPage() {
                             String(u.phone || '').toLowerCase().includes(qUser) ||
                             String(u.role || '').toLowerCase().includes(qUser)
                         )
-                      : users;
+                      : byRole;
                     const totalUserPages = Math.max(1, Math.ceil(filteredUsers.length / USERS_PER_PAGE));
                     const safeUsersPage = Math.min(usersPage, totalUserPages);
                     const paginatedUsers = filteredUsers.slice(
@@ -1476,119 +1707,155 @@ export default function PlatformControlPage() {
                     );
                     return (
                     <div>
-                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
-                        <div className="relative max-w-sm w-full">
-                          <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-                          <input
-                            type="text"
-                            value={userSearch}
-                            onChange={(e) => {
-                              setUserSearch(e.target.value);
-                              setUsersPage(1);
-                            }}
-                            placeholder="Pesquisar utilizador..."
-                            className="w-full pl-9 pr-3 py-2 rounded-xl bg-white/5 border border-white/10 text-sm text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-purple-500"
-                          />
+                      <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 mb-4">
+                        <div className="flex flex-col sm:flex-row sm:items-center gap-3 flex-1">
+                          <div className="relative max-w-sm w-full">
+                            <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                            <input
+                              type="text"
+                              value={userSearch}
+                              onChange={(e) => {
+                                setUserSearch(e.target.value);
+                                setUsersPage(1);
+                              }}
+                              placeholder={tc.usersTab.searchCommunity}
+                              className="w-full pl-9 pr-3 py-2 rounded-xl bg-white/5 border border-white/10 text-sm text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-purple-500"
+                            />
+                          </div>
+                          <div className="flex items-center gap-1.5 bg-white/5 p-1 rounded-xl border border-white/10 self-start">
+                            {[
+                              { id: 'all', label: tc.usersTab.all },
+                              { id: 'user', label: tc.usersTab.normalUsers },
+                              { id: 'creator', label: tc.usersTab.artists },
+                            ].map((opt) => (
+                              <button
+                                key={opt.id}
+                                type="button"
+                                onClick={() => {
+                                  setCommunityRoleFilter(opt.id as 'all' | 'user' | 'creator');
+                                  setUsersPage(1);
+                                }}
+                                className={`px-3 py-1 rounded-lg text-xs font-medium transition-colors ${
+                                  communityRoleFilter === opt.id
+                                    ? 'bg-purple-600 text-white'
+                                    : 'text-gray-300 hover:text-white'
+                                }`}
+                              >
+                                {opt.label}
+                              </button>
+                            ))}
+                          </div>
                         </div>
-                        {isFullAdmin && (
-                          <button
-                            type="button"
-                            onClick={() => setShowCreateStaffModal(true)}
-                            className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-purple-600 hover:bg-purple-500 text-white text-sm font-medium transition-colors flex-shrink-0"
-                          >
-                            <Plus size={16} />
-                            <span>Novo Membro de Gestão</span>
-                          </button>
-                        )}
                       </div>
 
                       <div className="bg-white/5 border border-white/10 rounded-2xl overflow-hidden overflow-x-auto">
                         <table className="w-full text-left text-sm">
                           <thead className="bg-white/5 text-xs uppercase text-gray-300">
                             <tr>
-                              <th className="px-4 py-3">Utilizador</th>
-                              <th className="px-4 py-3">Contacto</th>
-                              <th className="px-4 py-3">Perfil</th>
-                              <th className="px-4 py-3">Estado</th>
-                              <th className="px-4 py-3 text-right">Ações</th>
+                              <th className="px-4 py-3">{tc.usersTab.colUser}</th>
+                              <th className="px-4 py-3">{tc.usersTab.colContact}</th>
+                              <th className="px-4 py-3">{tc.usersTab.colRole}</th>
+                              <th className="px-4 py-3">{tc.usersTab.colStatus}</th>
+                              <th className="px-4 py-3 text-right">{tc.usersTab.colActions}</th>
                             </tr>
                           </thead>
                           <tbody className="divide-y divide-white/10">
-                            {paginatedUsers.map((u) => {
-                              const active = Boolean(u.is_active);
-                              return (
-                                <tr key={u.id} className="hover:bg-white/5">
-                                  <td className="px-4 py-3">
-                                    <p className="font-medium text-white">{u.full_name || u.username}</p>
-                                    <p className="text-xs text-gray-400">@{u.username}</p>
-                                  </td>
-                                  <td className="px-4 py-3 text-xs text-gray-300">
-                                    {u.email || u.phone || '—'}
-                                  </td>
-                                  <td className="px-4 py-3 text-xs">
-                                    <span className="px-2 py-0.5 rounded-full bg-indigo-500/20 text-indigo-300">
-                                      {u.role}
-                                    </span>
-                                  </td>
-                                  <td className="px-4 py-3 text-xs">
-                                    <span
-                                      className={`px-2 py-0.5 rounded-full font-medium ${
-                                        active
-                                          ? 'bg-emerald-500/20 text-emerald-300'
-                                          : 'bg-red-500/20 text-red-300'
-                                      }`}
-                                    >
-                                      {active ? 'Ativo' : 'Desativado'}
-                                    </span>
-                                  </td>
-                                  <td className="px-4 py-3 text-right">
-                                    <div className="inline-flex items-center gap-2">
-                                      {isFullAdmin && u.id !== (user as any)?.id && (
-                                        <select
-                                          value={u.role}
-                                          disabled={busyId === `role-${u.id}`}
-                                          onChange={(e) =>
-                                            handleSetUserRole(
-                                              u,
-                                              e.target.value as 'user' | 'creator' | 'moderator' | 'admin'
-                                            )
-                                          }
-                                          className="px-2.5 py-1.5 rounded-lg bg-slate-800 border border-white/15 text-xs text-white focus:outline-none focus:ring-2 focus:ring-purple-500"
-                                          title="Dar ou retirar permissão"
-                                        >
-                                          <option value="user">Utilizador</option>
-                                          <option value="creator">Artista / Criador</option>
-                                          <option value="moderator">Revisor</option>
-                                          <option value="admin">Administrador</option>
-                                        </select>
-                                      )}
-                                      <button
-                                        onClick={() => handleToggleUser(u)}
-                                        disabled={busyId === `user-${u.id}`}
-                                        className={`px-3 py-1.5 rounded-lg text-xs font-medium inline-flex items-center gap-1 ${
-                                          active
-                                            ? 'bg-amber-500/20 hover:bg-amber-500/30 text-amber-300'
-                                            : 'bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300'
+                            {paginatedUsers.length === 0 ? (
+                              <tr>
+                                <td colSpan={5} className="px-4 py-8 text-center text-gray-400 text-sm">
+                                  {tc.usersTab.emptyCommunity}
+                                </td>
+                              </tr>
+                            ) : (
+                              paginatedUsers.map((u) => {
+                                const active = Boolean(u.is_active);
+                                const roleLabel =
+                                  u.role === 'creator'
+                                    ? tc.usersTab.roleCreator
+                                    : u.role === 'church_admin'
+                                      ? tc.usersTab.roleChurchAdmin
+                                      : tc.usersTab.roleUser;
+                                return (
+                                  <tr key={u.id} className="hover:bg-white/5">
+                                    <td className="px-4 py-3">
+                                      <p className="font-medium text-white">{u.full_name || u.username}</p>
+                                      <p className="text-xs text-gray-400">@{u.username}</p>
+                                    </td>
+                                    <td className="px-4 py-3 text-xs text-gray-300">
+                                      {u.email || u.phone || '—'}
+                                    </td>
+                                    <td className="px-4 py-3 text-xs">
+                                      <span
+                                        className={`px-2 py-0.5 rounded-full ${
+                                          u.role === 'creator'
+                                            ? 'bg-purple-500/20 text-purple-300'
+                                            : 'bg-sky-500/20 text-sky-300'
                                         }`}
                                       >
-                                        {active ? <UserX size={13} /> : <UserCheck size={13} />}
-                                        {active ? 'Desativar' : 'Ativar'}
-                                      </button>
-                                      {isFullAdmin && (
+                                        {roleLabel}
+                                      </span>
+                                    </td>
+                                    <td className="px-4 py-3 text-xs">
+                                      <span
+                                        className={`px-2 py-0.5 rounded-full font-medium ${
+                                          active
+                                            ? 'bg-emerald-500/20 text-emerald-300'
+                                            : 'bg-red-500/20 text-red-300'
+                                        }`}
+                                      >
+                                        {active ? 'Ativo' : 'Desativado'}
+                                      </span>
+                                    </td>
+                                    <td className="px-4 py-3 text-right">
+                                      <div className="inline-flex items-center gap-2">
+                                        {isFullAdmin && u.id !== (user as any)?.id && (
+                                          <select
+                                            value={u.role}
+                                            disabled={busyId === `role-${u.id}`}
+                                            onChange={(e) =>
+                                              handleSetUserRole(
+                                                u,
+                                                e.target.value as 'user' | 'creator' | 'support' | 'moderator' | 'admin'
+                                              )
+                                            }
+                                            className="px-2.5 py-1.5 rounded-lg bg-slate-800 border border-white/15 text-xs text-white focus:outline-none focus:ring-2 focus:ring-purple-500"
+                                            title="Dar ou retirar permissão"
+                                          >
+                                            <option value="user">Utilizador</option>
+                                            <option value="creator">Artista / Criador</option>
+                                            <option value="support">Suporte</option>
+                                            <option value="moderator">Revisor</option>
+                                            <option value="admin">Administrador</option>
+                                          </select>
+                                        )}
                                         <button
-                                          onClick={() => handleDeleteUser(u)}
-                                          disabled={busyId === `user-del-${u.id}`}
-                                          className="p-1.5 rounded-lg text-gray-400 hover:text-red-400 hover:bg-red-500/10"
-                                          title="Apagar utilizador"
+                                          onClick={() => handleToggleUser(u)}
+                                          disabled={busyId === `user-${u.id}`}
+                                          className={`px-3 py-1.5 rounded-lg text-xs font-medium inline-flex items-center gap-1 ${
+                                            active
+                                              ? 'bg-amber-500/20 hover:bg-amber-500/30 text-amber-300'
+                                              : 'bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300'
+                                          }`}
                                         >
-                                          <Trash2 size={15} />
+                                          {active ? <UserX size={13} /> : <UserCheck size={13} />}
+                                          {active ? 'Desativar' : 'Ativar'}
                                         </button>
-                                      )}
-                                    </div>
-                                  </td>
-                                </tr>
-                              );
-                            })}
+                                        {isFullAdmin && (
+                                          <button
+                                            onClick={() => handleDeleteUser(u)}
+                                            disabled={busyId === `user-del-${u.id}`}
+                                            className="p-1.5 rounded-lg text-gray-400 hover:text-red-400 hover:bg-red-500/10"
+                                            title="Apagar utilizador"
+                                          >
+                                            <Trash2 size={15} />
+                                          </button>
+                                        )}
+                                      </div>
+                                    </td>
+                                  </tr>
+                                );
+                              })
+                            )}
                           </tbody>
                         </table>
                       </div>
@@ -1597,6 +1864,210 @@ export default function PlatformControlPage() {
                         totalPages={totalUserPages}
                         totalItems={filteredUsers.length}
                         onPageChange={setUsersPage}
+                      />
+                    </div>
+                    );
+                  })()}
+
+                  {/* TAB: EQUIPA & ADMINISTRADORES DA PLATAFORMA */}
+                  {tab === 'staff' && isModOrAdmin && (() => {
+                    const STAFF_PER_PAGE = 12;
+                    const staffList = users.filter((u) =>
+                      ['support', 'moderator', 'admin'].includes(String(u.role || '').toLowerCase())
+                    );
+                    const byRole =
+                      staffRoleFilter === 'all'
+                        ? staffList
+                        : staffList.filter((u) => String(u.role || '').toLowerCase() === staffRoleFilter);
+                    const qStaff = staffSearch.trim().toLowerCase();
+                    const filteredStaff = qStaff
+                      ? byRole.filter(
+                          (u) =>
+                            String(u.full_name || '').toLowerCase().includes(qStaff) ||
+                            String(u.username || '').toLowerCase().includes(qStaff) ||
+                            String(u.email || '').toLowerCase().includes(qStaff) ||
+                            String(u.role || '').toLowerCase().includes(qStaff)
+                        )
+                      : byRole;
+                    const totalStaffPages = Math.max(1, Math.ceil(filteredStaff.length / STAFF_PER_PAGE));
+                    const safeStaffPage = Math.min(staffPage, totalStaffPages);
+                    const paginatedStaff = filteredStaff.slice(
+                      (safeStaffPage - 1) * STAFF_PER_PAGE,
+                      safeStaffPage * STAFF_PER_PAGE
+                    );
+                    return (
+                    <div>
+                      <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 mb-4">
+                        <div className="flex flex-col sm:flex-row sm:items-center gap-3 flex-1">
+                          <div className="relative max-w-sm w-full">
+                            <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                            <input
+                              type="text"
+                              value={staffSearch}
+                              onChange={(e) => {
+                                setStaffSearch(e.target.value);
+                                setStaffPage(1);
+                              }}
+                              placeholder={tc.usersTab.searchStaff}
+                              className="w-full pl-9 pr-3 py-2 rounded-xl bg-white/5 border border-white/10 text-sm text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-purple-500"
+                            />
+                          </div>
+                          <div className="flex flex-wrap items-center gap-1.5 bg-white/5 p-1 rounded-xl border border-white/10 self-start">
+                            {[
+                              { id: 'all', label: tc.usersTab.all },
+                              { id: 'support', label: tc.usersTab.support },
+                              { id: 'moderator', label: tc.usersTab.moderators },
+                              { id: 'admin', label: tc.usersTab.admins },
+                            ].map((opt) => (
+                              <button
+                                key={opt.id}
+                                type="button"
+                                onClick={() => {
+                                  setStaffRoleFilter(opt.id as 'all' | 'support' | 'moderator' | 'admin');
+                                  setStaffPage(1);
+                                }}
+                                className={`px-3 py-1 rounded-lg text-xs font-medium transition-colors ${
+                                  staffRoleFilter === opt.id
+                                    ? 'bg-purple-600 text-white'
+                                    : 'text-gray-300 hover:text-white'
+                                }`}
+                              >
+                                {opt.label}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                        {isFullAdmin && (
+                          <button
+                            type="button"
+                            onClick={() => setShowCreateStaffModal(true)}
+                            className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-purple-600 hover:bg-purple-500 text-white text-sm font-medium transition-colors flex-shrink-0"
+                          >
+                            <Plus size={16} />
+                            <span>{tc.usersTab.newStaffBtn}</span>
+                          </button>
+                        )}
+                      </div>
+
+                      <div className="bg-white/5 border border-white/10 rounded-2xl overflow-hidden overflow-x-auto">
+                        <table className="w-full text-left text-sm">
+                          <thead className="bg-white/5 text-xs uppercase text-gray-300">
+                            <tr>
+                              <th className="px-4 py-3">{tc.usersTab.colMember}</th>
+                              <th className="px-4 py-3">{tc.usersTab.colContact}</th>
+                              <th className="px-4 py-3">{tc.usersTab.colRoleAccess}</th>
+                              <th className="px-4 py-3">{tc.usersTab.colStatus}</th>
+                              <th className="px-4 py-3 text-right">{tc.usersTab.colActions}</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-white/10">
+                            {paginatedStaff.length === 0 ? (
+                              <tr>
+                                <td colSpan={5} className="px-4 py-8 text-center text-gray-400 text-sm">
+                                  {tc.usersTab.emptyStaff}
+                                </td>
+                              </tr>
+                            ) : (
+                              paginatedStaff.map((u) => {
+                                const active = Boolean(u.is_active);
+                                const staffBadge =
+                                  u.role === 'admin'
+                                    ? { label: tc.usersTab.roleAdmin, cls: 'bg-amber-500/20 text-amber-300' }
+                                    : u.role === 'moderator'
+                                      ? { label: tc.usersTab.roleModerator, cls: 'bg-emerald-500/20 text-emerald-300' }
+                                      : { label: tc.usersTab.roleSupport, cls: 'bg-pink-500/20 text-pink-300' };
+                                return (
+                                  <tr key={u.id} className="hover:bg-white/5">
+                                    <td className="px-4 py-3">
+                                      <p className="font-medium text-white">{u.full_name || u.username}</p>
+                                      <p className="text-xs text-gray-400">@{u.username}</p>
+                                    </td>
+                                    <td className="px-4 py-3 text-xs text-gray-300">
+                                      {u.email || u.phone || '—'}
+                                    </td>
+                                    <td className="px-4 py-3 text-xs">
+                                      <div className="flex flex-wrap items-center gap-1.5">
+                                        <span className={`px-2 py-0.5 rounded-full font-medium ${staffBadge.cls}`}>
+                                          {staffBadge.label}
+                                        </span>
+                                        {(Boolean(u.platform_only) || u.role === 'support') && (
+                                          <span className="px-2 py-0.5 rounded-full bg-indigo-500/20 text-indigo-300 text-[11px]">
+                                            Apenas Painel
+                                          </span>
+                                        )}
+                                      </div>
+                                    </td>
+                                    <td className="px-4 py-3 text-xs">
+                                      <span
+                                        className={`px-2 py-0.5 rounded-full font-medium ${
+                                          active
+                                            ? 'bg-emerald-500/20 text-emerald-300'
+                                            : 'bg-red-500/20 text-red-300'
+                                        }`}
+                                      >
+                                        {active ? 'Ativo' : 'Desativado'}
+                                      </span>
+                                    </td>
+                                    <td className="px-4 py-3 text-right">
+                                      <div className="inline-flex items-center gap-2">
+                                        {isFullAdmin && u.id !== (user as any)?.id && (
+                                          <select
+                                            value={u.role}
+                                            disabled={busyId === `role-${u.id}`}
+                                            onChange={(e) =>
+                                              handleSetUserRole(
+                                                u,
+                                                e.target.value as 'user' | 'creator' | 'support' | 'moderator' | 'admin'
+                                              )
+                                            }
+                                            className="px-2.5 py-1.5 rounded-lg bg-slate-800 border border-white/15 text-xs text-white focus:outline-none focus:ring-2 focus:ring-purple-500"
+                                            title="Alterar perfil"
+                                          >
+                                            <option value="user">Utilizador</option>
+                                            <option value="creator">Artista / Criador</option>
+                                            <option value="support">Suporte</option>
+                                            <option value="moderator">Revisor</option>
+                                            <option value="admin">Administrador</option>
+                                          </select>
+                                        )}
+                                        {isFullAdmin && u.id !== (user as any)?.id && (
+                                          <>
+                                            <button
+                                              onClick={() => handleToggleUser(u)}
+                                              disabled={busyId === `user-${u.id}`}
+                                              className={`px-3 py-1.5 rounded-lg text-xs font-medium inline-flex items-center gap-1 ${
+                                                active
+                                                  ? 'bg-amber-500/20 hover:bg-amber-500/30 text-amber-300'
+                                                  : 'bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300'
+                                              }`}
+                                            >
+                                              {active ? <UserX size={13} /> : <UserCheck size={13} />}
+                                              {active ? 'Desativar' : 'Ativar'}
+                                            </button>
+                                            <button
+                                              onClick={() => handleDeleteUser(u)}
+                                              disabled={busyId === `user-del-${u.id}`}
+                                              className="p-1.5 rounded-lg text-gray-400 hover:text-red-400 hover:bg-red-500/10"
+                                              title="Apagar membro"
+                                            >
+                                              <Trash2 size={15} />
+                                            </button>
+                                          </>
+                                        )}
+                                      </div>
+                                    </td>
+                                  </tr>
+                                );
+                              })
+                            )}
+                          </tbody>
+                        </table>
+                      </div>
+                      <PaginationBar
+                        page={safeStaffPage}
+                        totalPages={totalStaffPages}
+                        totalItems={filteredStaff.length}
+                        onPageChange={setStaffPage}
                       />
                     </div>
                     );
@@ -1654,6 +2125,24 @@ export default function PlatformControlPage() {
                                 </div>
                               </div>
                               <div className="flex items-center gap-1.5 flex-shrink-0">
+                                {m.file_path && (
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      setMediaPreview({
+                                        type: 'music',
+                                        title: m.title,
+                                        subtitle: m.artist_name || m.artist,
+                                        src: resolveMediaUrl(m.file_path) || m.file_path,
+                                        poster: m.cover_image ? resolveCoverUrl(m.cover_image) : undefined,
+                                      })
+                                    }
+                                    className="px-2.5 py-1.5 rounded-lg bg-purple-500/20 hover:bg-purple-500/30 text-purple-200 text-xs font-medium inline-flex items-center gap-1"
+                                    title="Ouvir áudio"
+                                  >
+                                    <Play size={13} /> Ouvir
+                                  </button>
+                                )}
                                 {blocked ? (
                                   <button
                                     onClick={() => handleModerateMedia('music', m.id, 'unblock')}
@@ -1777,6 +2266,24 @@ export default function PlatformControlPage() {
                                 </div>
                               </div>
                               <div className="flex items-center gap-1.5 flex-shrink-0">
+                                {v.file_path && (
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      setMediaPreview({
+                                        type: 'video',
+                                        title: v.title,
+                                        subtitle: v.speaker || v.artist || undefined,
+                                        src: resolveMediaUrl(v.file_path) || v.file_path,
+                                        poster: v.thumbnail_path ? resolveThumbUrl(v.thumbnail_path) : undefined,
+                                      })
+                                    }
+                                    className="px-2.5 py-1.5 rounded-lg bg-purple-500/20 hover:bg-purple-500/30 text-purple-200 text-xs font-medium inline-flex items-center gap-1"
+                                    title="Ver vídeo"
+                                  >
+                                    <Play size={13} /> Ver
+                                  </button>
+                                )}
                                 {blocked ? (
                                   <button
                                     onClick={() => handleModerateMedia('video', v.id, 'unblock')}
@@ -2932,14 +3439,25 @@ export default function PlatformControlPage() {
                           />
                           Notificar todos os utilizadores da plataforma sobre este evento
                         </label>
-                        <button
-                          type="submit"
-                          disabled={savingEvent}
-                          className="w-full py-2.5 rounded-full bg-purple-600 hover:bg-purple-500 font-semibold text-sm flex items-center justify-center gap-2 disabled:opacity-50"
-                        >
-                          {savingEvent ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}
-                          Publicar Evento
-                        </button>
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="submit"
+                            disabled={savingEvent}
+                            className="flex-1 py-2.5 rounded-full bg-purple-600 hover:bg-purple-500 font-semibold text-sm flex items-center justify-center gap-2 disabled:opacity-50"
+                          >
+                            {savingEvent ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}
+                            {editingEventId ? 'Guardar Alterações' : 'Publicar Evento'}
+                          </button>
+                          {editingEventId && (
+                            <button
+                              type="button"
+                              onClick={handleCancelEditEvent}
+                              className="px-4 py-2.5 rounded-full bg-white/10 hover:bg-white/20 text-xs font-medium text-gray-200"
+                            >
+                              Cancelar
+                            </button>
+                          )}
+                        </div>
                       </form>
 
                       <div className="bg-white/5 border border-white/10 rounded-2xl p-5 space-y-3">
@@ -3003,15 +3521,25 @@ export default function PlatformControlPage() {
                                     )}
                                   </div>
                                 </div>
-                                <button
-                                  type="button"
-                                  onClick={() => handleDeleteEvent(ev.id)}
-                                  disabled={busyId === `event-${ev.id}`}
-                                  className="p-1.5 rounded-lg text-gray-400 hover:text-red-400 hover:bg-red-500/10 flex-shrink-0"
-                                  title="Remover evento"
-                                >
-                                  <Trash2 size={15} />
-                                </button>
+                                <div className="flex items-center gap-1 flex-shrink-0">
+                                  <button
+                                    type="button"
+                                    onClick={() => handleStartEditEvent(ev)}
+                                    className="p-1.5 rounded-lg text-gray-400 hover:text-purple-300 hover:bg-purple-500/10"
+                                    title="Editar evento/publicidade"
+                                  >
+                                    <Pencil size={15} />
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleDeleteEvent(ev.id)}
+                                    disabled={busyId === `event-${ev.id}`}
+                                    className="p-1.5 rounded-lg text-gray-400 hover:text-red-400 hover:bg-red-500/10"
+                                    title="Remover evento"
+                                  >
+                                    <Trash2 size={15} />
+                                  </button>
+                                </div>
                               </div>
                             ))}
                           </div>
@@ -3058,55 +3586,78 @@ export default function PlatformControlPage() {
                               <p className="text-xs text-gray-300">Motivo: {rep.reason}</p>
                               {rep.details && <p className="text-xs text-gray-400">{rep.details}</p>}
                             </div>
-                            {rep.status === 'pending' && (
-                              <div className="flex flex-wrap items-center gap-2 flex-shrink-0">
+                            <div className="flex flex-wrap items-center gap-2 flex-shrink-0">
+                              {rep.content_file_path && (
                                 <button
                                   type="button"
-                                  onClick={async () => {
-                                    await fetchWithAuth(`/api/v1/admin/reports/${rep.id}/resolve`, {
-                                      method: 'POST',
-                                      headers: { 'Content-Type': 'application/json' },
-                                      body: JSON.stringify({ action: 'strike' }),
-                                    });
-                                    notify('Strike (1 pt) aplicado e conteúdo bloqueado.');
-                                    await loadAll();
-                                  }}
-                                  className="px-3 py-1.5 rounded-lg bg-amber-600/80 hover:bg-amber-500 text-xs font-medium"
+                                  onClick={() =>
+                                    setMediaPreview({
+                                      type: rep.content_type === 'music' ? 'music' : 'video',
+                                      title: rep.content_title || `${rep.content_type} #${rep.content_id}`,
+                                      subtitle: rep.content_author || undefined,
+                                      src: resolveMediaUrl(rep.content_file_path) || rep.content_file_path,
+                                      poster: rep.content_cover_url
+                                        ? rep.content_type === 'music'
+                                          ? resolveCoverUrl(rep.content_cover_url)
+                                          : resolveThumbUrl(rep.content_cover_url)
+                                        : undefined,
+                                    })
+                                  }
+                                  className="px-3 py-1.5 rounded-lg bg-purple-500/20 hover:bg-purple-500/30 text-purple-200 text-xs font-medium inline-flex items-center gap-1"
                                 >
-                                  Strike + Bloquear
+                                  <Play size={13} /> {rep.content_type === 'music' ? 'Ouvir' : 'Ver Conteúdo'}
                                 </button>
-                                <button
-                                  type="button"
-                                  onClick={async () => {
-                                    await fetchWithAuth(`/api/v1/admin/reports/${rep.id}/resolve`, {
-                                      method: 'POST',
-                                      headers: { 'Content-Type': 'application/json' },
-                                      body: JSON.stringify({ action: 'remove' }),
-                                    });
-                                    notify('Conteúdo removido.');
-                                    await loadAll();
-                                  }}
-                                  className="px-3 py-1.5 rounded-lg bg-red-600/80 hover:bg-red-500 text-xs font-medium"
-                                >
-                                  Remover Conteúdo
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={async () => {
-                                    await fetchWithAuth(`/api/v1/admin/reports/${rep.id}/resolve`, {
-                                      method: 'POST',
-                                      headers: { 'Content-Type': 'application/json' },
-                                      body: JSON.stringify({ action: 'dismiss' }),
-                                    });
-                                    notify('Denúncia arquivada.');
-                                    await loadAll();
-                                  }}
-                                  className="px-3 py-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-xs font-medium"
-                                >
-                                  Arquivar
-                                </button>
-                              </div>
-                            )}
+                              )}
+                              {rep.status === 'pending' && (
+                                <>
+                                  <button
+                                    type="button"
+                                    onClick={async () => {
+                                      await fetchWithAuth(`/api/v1/admin/reports/${rep.id}/resolve`, {
+                                        method: 'POST',
+                                        headers: { 'Content-Type': 'application/json' },
+                                        body: JSON.stringify({ action: 'strike' }),
+                                      });
+                                      notify('Strike (1 pt) aplicado e conteúdo bloqueado.');
+                                      await loadAll();
+                                    }}
+                                    className="px-3 py-1.5 rounded-lg bg-amber-600/80 hover:bg-amber-500 text-xs font-medium"
+                                  >
+                                    Strike + Bloquear
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={async () => {
+                                      await fetchWithAuth(`/api/v1/admin/reports/${rep.id}/resolve`, {
+                                        method: 'POST',
+                                        headers: { 'Content-Type': 'application/json' },
+                                        body: JSON.stringify({ action: 'remove' }),
+                                      });
+                                      notify('Conteúdo removido.');
+                                      await loadAll();
+                                    }}
+                                    className="px-3 py-1.5 rounded-lg bg-red-600/80 hover:bg-red-500 text-xs font-medium"
+                                  >
+                                    Remover Conteúdo
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={async () => {
+                                      await fetchWithAuth(`/api/v1/admin/reports/${rep.id}/resolve`, {
+                                        method: 'POST',
+                                        headers: { 'Content-Type': 'application/json' },
+                                        body: JSON.stringify({ action: 'dismiss' }),
+                                      });
+                                      notify('Denúncia arquivada.');
+                                      await loadAll();
+                                    }}
+                                    className="px-3 py-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-xs font-medium"
+                                  >
+                                    Arquivar
+                                  </button>
+                                </>
+                              )}
+                            </div>
                           </div>
                         ))
                       )}
@@ -3147,40 +3698,59 @@ export default function PlatformControlPage() {
                                 <p className="text-xs text-gray-400">Público: {pitch.target_audience}</p>
                               )}
                             </div>
-                            {pitch.status === 'pending' && (
-                              <div className="flex items-center gap-2 flex-shrink-0">
+                            <div className="flex items-center gap-2 flex-shrink-0">
+                              {pitch.music_file_path && (
                                 <button
                                   type="button"
-                                  onClick={async () => {
-                                    await fetchWithAuth(`/api/v1/admin/pitches/${pitch.id}/review`, {
-                                      method: 'POST',
-                                      headers: { 'Content-Type': 'application/json' },
-                                      body: JSON.stringify({ decision: 'approved' }),
-                                    });
-                                    notify('Faixa aprovada para playlist editorial!');
-                                    await loadAll();
-                                  }}
-                                  className="px-3.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-xs font-medium"
+                                  onClick={() =>
+                                    setMediaPreview({
+                                      type: 'music',
+                                      title: pitch.music_title,
+                                      subtitle: pitch.artist_name || 'Criador',
+                                      src: resolveMediaUrl(pitch.music_file_path) || pitch.music_file_path,
+                                      poster: pitch.cover_image ? resolveCoverUrl(pitch.cover_image) : undefined,
+                                    })
+                                  }
+                                  className="px-3 py-1.5 rounded-lg bg-purple-500/20 hover:bg-purple-500/30 text-purple-200 text-xs font-medium inline-flex items-center gap-1"
                                 >
-                                  Aprovar
+                                  <Play size={13} /> Ouvir
                                 </button>
-                                <button
-                                  type="button"
-                                  onClick={async () => {
-                                    await fetchWithAuth(`/api/v1/admin/pitches/${pitch.id}/review`, {
-                                      method: 'POST',
-                                      headers: { 'Content-Type': 'application/json' },
-                                      body: JSON.stringify({ decision: 'rejected' }),
-                                    });
-                                    notify('Submissão rejeitada.');
-                                    await loadAll();
-                                  }}
-                                  className="px-3.5 py-1.5 rounded-lg bg-red-600/80 hover:bg-red-500 text-xs font-medium"
-                                >
-                                  Rejeitar
-                                </button>
-                              </div>
-                            )}
+                              )}
+                              {pitch.status === 'pending' && (
+                                <>
+                                  <button
+                                    type="button"
+                                    onClick={async () => {
+                                      await fetchWithAuth(`/api/v1/admin/pitches/${pitch.id}/review`, {
+                                        method: 'POST',
+                                        headers: { 'Content-Type': 'application/json' },
+                                        body: JSON.stringify({ decision: 'approved' }),
+                                      });
+                                      notify('Faixa aprovada para playlist editorial!');
+                                      await loadAll();
+                                    }}
+                                    className="px-3.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-xs font-medium"
+                                  >
+                                    Aprovar
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={async () => {
+                                      await fetchWithAuth(`/api/v1/admin/pitches/${pitch.id}/review`, {
+                                        method: 'POST',
+                                        headers: { 'Content-Type': 'application/json' },
+                                        body: JSON.stringify({ decision: 'rejected' }),
+                                      });
+                                      notify('Submissão rejeitada.');
+                                      await loadAll();
+                                    }}
+                                    className="px-3.5 py-1.5 rounded-lg bg-red-600/80 hover:bg-red-500 text-xs font-medium"
+                                  >
+                                    Rejeitar
+                                  </button>
+                                </>
+                              )}
+                            </div>
                           </div>
                         ))
                       )}
@@ -3533,7 +4103,7 @@ export default function PlatformControlPage() {
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-lg font-bold text-white flex items-center gap-2">
                 <Shield size={18} className="text-purple-400" />
-                Novo Membro de Gestão
+                {tc.staffModal.title}
               </h3>
               <button
                 type="button"
@@ -3545,7 +4115,7 @@ export default function PlatformControlPage() {
             </div>
             <form onSubmit={handleCreateStaffUser} className="space-y-3.5">
               <div>
-                <label className="block text-xs text-gray-400 mb-1">Nome completo</label>
+                <label className="block text-xs text-gray-400 mb-1">{tc.staffModal.fullName}</label>
                 <input
                   type="text"
                   value={staffFullName}
@@ -3555,7 +4125,7 @@ export default function PlatformControlPage() {
                 />
               </div>
               <div>
-                <label className="block text-xs text-gray-400 mb-1">Username *</label>
+                <label className="block text-xs text-gray-400 mb-1">{tc.staffModal.username}</label>
                 <input
                   type="text"
                   required
@@ -3566,7 +4136,7 @@ export default function PlatformControlPage() {
                 />
               </div>
               <div>
-                <label className="block text-xs text-gray-400 mb-1">Email *</label>
+                <label className="block text-xs text-gray-400 mb-1">{tc.staffModal.email}</label>
                 <input
                   type="email"
                   required
@@ -3577,32 +4147,181 @@ export default function PlatformControlPage() {
                 />
               </div>
               <div className="p-3 rounded-xl bg-purple-500/10 border border-purple-500/25 text-xs text-purple-200">
-                A palavra-passe será gerada automaticamente pelo sistema e enviada com os dados de acesso para o email indicado.
+                {tc.staffModal.pwdNotice}
               </div>
               <div>
-                <label className="block text-xs text-gray-400 mb-1">Função / Permissão *</label>
+                <label className="block text-xs text-gray-400 mb-1">{tc.staffModal.roleLabel}</label>
                 <select
                   value={staffRole}
-                  onChange={(e) => setStaffRole(e.target.value as 'moderator' | 'admin')}
+                  onChange={(e) => {
+                    const next = e.target.value as 'support' | 'moderator' | 'admin';
+                    setStaffRole(next);
+                    if (next === 'support') setStaffPlatformOnly(true);
+                  }}
                   className="w-full px-3.5 py-2.5 rounded-xl bg-slate-800 border border-white/15 text-sm text-white focus:outline-none focus:ring-2 focus:ring-purple-500"
                 >
+                  <option value="support">
+                    {tc.staffModal.optSupport}
+                  </option>
                   <option value="moderator">
-                    Revisor — revisa, aprova, bloqueia, remove conteúdos e publica eventos
+                    {tc.staffModal.optModerator}
                   </option>
                   <option value="admin">
-                    Administrador — controlo total, cria equipa e gere permissões
+                    {tc.staffModal.optAdmin}
                   </option>
                 </select>
               </div>
+              <label className="flex items-start gap-2.5 p-3 rounded-xl bg-white/5 border border-white/10 text-xs text-gray-300 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={staffRole === 'support' ? true : staffPlatformOnly}
+                  disabled={staffRole === 'support'}
+                  onChange={(e) => setStaffPlatformOnly(e.target.checked)}
+                  className="mt-0.5 rounded border-white/20 bg-slate-800 text-purple-600 focus:ring-purple-500"
+                />
+                <span>
+                  <strong className="text-white block">{tc.staffModal.platformOnlyTitle}</strong>
+                  {tc.staffModal.platformOnlyDesc}
+                </span>
+              </label>
               <button
                 type="submit"
                 disabled={creatingStaff}
                 className="w-full py-2.5 rounded-full bg-purple-600 hover:bg-purple-500 font-semibold text-sm flex items-center justify-center gap-2 disabled:opacity-50"
               >
                 {creatingStaff ? <Loader2 size={16} className="animate-spin" /> : <Plus size={16} />}
-                Criar Utilizador de Gestão
+                {tc.staffModal.submit}
               </button>
             </form>
+          </div>
+        </div>
+      )}
+
+      {showPasswordModal && (
+        <div
+          className="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4"
+          onClick={() => setShowPasswordModal(false)}
+        >
+          <div
+            className="w-full max-w-md bg-slate-900 border border-white/15 rounded-2xl p-6 shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-bold text-white flex items-center gap-2">
+                <Lock size={18} className="text-purple-400" />
+                {tc.pwdModal.title}
+              </h3>
+              <button
+                type="button"
+                onClick={() => setShowPasswordModal(false)}
+                className="text-gray-400 hover:text-white"
+              >
+                <XCircle size={18} />
+              </button>
+            </div>
+            <form onSubmit={handleChangeOwnPassword} className="space-y-3.5">
+              {pwdError && (
+                <div className="p-3 rounded-xl bg-red-500/15 border border-red-500/30 text-xs text-red-200 flex items-center gap-2">
+                  <AlertCircle size={15} />
+                  <span>{pwdError}</span>
+                </div>
+              )}
+              <div>
+                <label className="block text-xs text-gray-400 mb-1">{tc.pwdModal.currentPwd}</label>
+                <input
+                  type="password"
+                  required
+                  value={pwdOld}
+                  onChange={(e) => setPwdOld(e.target.value)}
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-white/10 border border-white/15 text-sm text-white focus:outline-none focus:ring-2 focus:ring-purple-500"
+                />
+              </div>
+              <div>
+                <label className="block text-xs text-gray-400 mb-1">{tc.pwdModal.newPwd}</label>
+                <input
+                  type="password"
+                  required
+                  minLength={6}
+                  value={pwdNew}
+                  onChange={(e) => setPwdNew(e.target.value)}
+                  placeholder={tc.pwdModal.newPwdPlaceholder}
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-white/10 border border-white/15 text-sm text-white focus:outline-none focus:ring-2 focus:ring-purple-500"
+                />
+              </div>
+              <div>
+                <label className="block text-xs text-gray-400 mb-1">{tc.pwdModal.confirmPwd}</label>
+                <input
+                  type="password"
+                  required
+                  minLength={6}
+                  value={pwdConfirm}
+                  onChange={(e) => setPwdConfirm(e.target.value)}
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-white/10 border border-white/15 text-sm text-white focus:outline-none focus:ring-2 focus:ring-purple-500"
+                />
+              </div>
+              <button
+                type="submit"
+                disabled={savingPwd}
+                className="w-full py-2.5 rounded-full bg-purple-600 hover:bg-purple-500 font-semibold text-sm flex items-center justify-center gap-2 disabled:opacity-50"
+              >
+                {savingPwd ? <Loader2 size={16} className="animate-spin" /> : <CheckCircle size={16} />}
+                {tc.pwdModal.submit}
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {mediaPreview && (
+        <div
+          className="fixed inset-0 z-[135] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4"
+          role="dialog"
+          aria-modal="true"
+          onClick={() => setMediaPreview(null)}
+        >
+          <div
+            className="w-full max-w-2xl bg-slate-900 border border-white/15 rounded-2xl p-5 shadow-2xl space-y-4"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <span className="text-[10px] uppercase tracking-wider px-2 py-0.5 rounded-full bg-purple-500/20 text-purple-300 font-semibold">
+                  {mediaPreview.type === 'music' ? 'Pré-visualização de Áudio' : 'Pré-visualização de Vídeo'}
+                </span>
+                <h3 className="text-base font-bold text-white mt-1 truncate">{mediaPreview.title}</h3>
+                {mediaPreview.subtitle && (
+                  <p className="text-xs text-gray-400 truncate">{mediaPreview.subtitle}</p>
+                )}
+              </div>
+              <button
+                type="button"
+                onClick={() => setMediaPreview(null)}
+                className="text-gray-400 hover:text-white p-1"
+                aria-label="Fechar"
+              >
+                <XCircle size={20} />
+              </button>
+            </div>
+            {mediaPreview.type === 'video' ? (
+              <video
+                src={mediaPreview.src}
+                poster={mediaPreview.poster}
+                controls
+                autoPlay
+                className="w-full max-h-[65vh] rounded-xl bg-black"
+              />
+            ) : (
+              <div className="flex flex-col sm:flex-row items-center gap-4 bg-white/5 border border-white/10 rounded-xl p-4">
+                {mediaPreview.poster && (
+                  <img
+                    src={mediaPreview.poster}
+                    alt={mediaPreview.title}
+                    className="w-20 h-20 rounded-xl object-cover flex-shrink-0"
+                  />
+                )}
+                <audio src={mediaPreview.src} controls autoPlay className="w-full" />
+              </div>
+            )}
           </div>
         </div>
       )}

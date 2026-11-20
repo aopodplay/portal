@@ -42,7 +42,7 @@ export default function PodPlaySidebar() {
     { icon: ListMusic, label: t.playlists, href: '/playlists' },
     { icon: Mic2, label: t.studio, href: '/studio' },
     { icon: HelpCircle, label: t.support, href: '/support' },
-    { icon: Flag, label: 'Denúncias', href: '/reports' },
+    { icon: Flag, label: t.reports, href: '/reports' },
   ];
 
   const [collapsed, setCollapsed] = useState(false);
@@ -95,11 +95,14 @@ export default function PodPlaySidebar() {
     return () => window.removeEventListener('podplay:toggle-mobile-sidebar', onToggle);
   }, []);
 
-  // Controlo Geral / Revisão para utilizadores com tipo/role === 'admin' ou 'moderator' (Revisor)
+  // Controlo Geral / Revisão / Suporte para utilizadores com tipo/role === 'admin', 'moderator' ou 'support'
   const userType = String(
     (user as any)?.role || (user as any)?.type || (user as any)?.perfil || ''
   ).toLowerCase();
-  const isAdmin = Boolean(user && (userType === 'admin' || userType === 'moderator'));
+  const isPlatformOnly = Boolean(user && ((user as any)?.platformOnly || userType === 'support'));
+  const isAdmin = Boolean(
+    user && (userType === 'admin' || userType === 'moderator' || userType === 'support')
+  );
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -126,7 +129,7 @@ export default function PodPlaySidebar() {
       >
         {/* Logo */}
         <div className="px-4 py-5 flex-shrink-0 flex items-center justify-between">
-          <Link href="/" className="flex items-center gap-2.5" title="Podfe Play">
+          <Link href={isPlatformOnly ? '/controle' : '/'} className="flex items-center gap-2.5" title="Podfe Play">
             {logoUrl ? (
               <img
                 src={resolveCoverUrl(logoUrl)}
@@ -157,30 +160,31 @@ export default function PodPlaySidebar() {
 
         {/* Navegação minimalista */}
         <nav className="px-3 space-y-1 flex-1 overflow-y-auto">
-          {menuItems.map((item) => {
-            const active = isActive(item.href);
-            return (
-              <Link
-                key={item.label}
-                href={item.href}
-                className={`flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all ${
-                  active
-                    ? 'bg-purple-600/20 text-white border border-purple-500/20'
-                    : 'text-gray-400 hover:text-white hover:bg-white/5'
-                } ${collapsed ? 'justify-center' : ''}`}
-                title={collapsed ? item.label : ''}
-              >
-                <item.icon
-                  size={19}
-                  className={`flex-shrink-0 ${active ? 'text-purple-400' : ''}`}
-                />
-                {!collapsed && <span>{item.label}</span>}
-              </Link>
-            );
-          })}
+          {!isPlatformOnly &&
+            menuItems.map((item) => {
+              const active = isActive(item.href);
+              return (
+                <Link
+                  key={item.label}
+                  href={item.href}
+                  className={`flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all ${
+                    active
+                      ? 'bg-purple-600/20 text-white border border-purple-500/20'
+                      : 'text-gray-400 hover:text-white hover:bg-white/5'
+                  } ${collapsed ? 'justify-center' : ''}`}
+                  title={collapsed ? item.label : ''}
+                >
+                  <item.icon
+                    size={19}
+                    className={`flex-shrink-0 ${active ? 'text-purple-400' : ''}`}
+                  />
+                  {!collapsed && <span>{item.label}</span>}
+                </Link>
+              );
+            })}
 
           {isAdmin && (
-            <div className="pt-3 mt-3 border-t border-white/10">
+            <div className={isPlatformOnly ? '' : 'pt-3 mt-3 border-t border-white/10'}>
               <Link
                 href="/controle"
                 className={`flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all ${
@@ -188,10 +192,26 @@ export default function PodPlaySidebar() {
                     ? 'bg-amber-500/15 text-amber-200 border border-amber-500/25'
                     : 'text-gray-400 hover:text-white hover:bg-white/5'
                 } ${collapsed ? 'justify-center' : ''}`}
-                title={collapsed ? (userType === 'moderator' ? t.reviewPanel : t.control) : ''}
+                title={
+                  collapsed
+                    ? userType === 'support'
+                      ? t.supportPanel
+                      : userType === 'moderator'
+                        ? t.reviewPanel
+                        : t.control
+                    : ''
+                }
               >
                 <Shield size={19} className="flex-shrink-0 text-amber-400" />
-                {!collapsed && <span>{userType === 'moderator' ? t.reviewPanel : t.control}</span>}
+                {!collapsed && (
+                  <span>
+                    {userType === 'support'
+                      ? t.supportPanel
+                      : userType === 'moderator'
+                        ? t.reviewPanel
+                        : t.control}
+                  </span>
+                )}
               </Link>
             </div>
           )}

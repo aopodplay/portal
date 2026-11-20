@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import {
   X,
   Share2,
@@ -24,6 +24,8 @@ import {
   Reply,
   Heart,
   Flag,
+  SkipBack,
+  SkipForward,
 } from 'lucide-react';
 import { resolveMediaUrl, resolveThumbUrl, resolveAvatarUrl, DEFAULT_AVATAR } from '@/lib/media';
 import ReportContentModal from '@/components/ReportContentModal';
@@ -31,6 +33,7 @@ import { fetchWithAuth, getApiUrl, getAuthHeaders } from '@/config/api';
 import { getFriendlyErrorMessage, parseApiError } from '@/lib/errorHandler';
 import { getOfflineBlobUrl, getOfflineMedia, saveOfflineMedia } from '@/lib/offlineStorage';
 import { useAuth } from '@/contexts/AuthContext';
+import { usePlayer } from '@/contexts/PlayerContext';
 import { historyApi } from '@/lib/historyApi';
 
 export interface VideoItem {
@@ -79,7 +82,10 @@ export default function VideoPlayerModal<T extends VideoItem = VideoItem>({
   onClose,
 }: VideoPlayerModalProps<T>) {
   const { user } = useAuth();
+  const { isPlaying: isAudioPlaying, pause: pauseAudio } = usePlayer();
   const [internalVideo, setInternalVideo] = useState<T | null>(video);
+  const [videoHistory, setVideoHistory] = useState<T[]>([]);
+  const videoRef = useRef<HTMLVideoElement | null>(null);
   const [fallbackVideos, setFallbackVideos] = useState<T[]>([]);
   const [recommendedVideos, setRecommendedVideos] = useState<T[]>([]);
   const [mixVideos, setMixVideos] = useState<T[]>([]);
@@ -131,7 +137,17 @@ export default function VideoPlayerModal<T extends VideoItem = VideoItem>({
     setInternalVideo(video);
     setDescExpanded(false);
     setCommentError(null);
+    if (!video) {
+      setVideoHistory([]);
+    }
   }, [video, user, onClose]);
+
+  // Pausar áudio em reprodução ao abrir um vídeo
+  useEffect(() => {
+    if (internalVideo && isAudioPlaying) {
+      pauseAudio();
+    }
+  }, [internalVideo?.id, isAudioPlaying, pauseAudio]);
 
   const activeVideo = internalVideo;
 
@@ -326,9 +342,15 @@ export default function VideoPlayerModal<T extends VideoItem = VideoItem>({
     rawPath.includes('player.vimeo.com');
 
   let iframeSrc = rawPath;
-  if (isIframeStream && thumbUrl.startsWith('http') && !rawPath.includes('poster=')) {
-    const separator = rawPath.includes('?') ? '&' : '?';
-    iframeSrc = `${rawPath}${separator}poster=${encodeURIComponent(thumbUrl)}`;
+  if (isIframeStream) {
+    if (thumbUrl.startsWith('http') && !iframeSrc.includes('poster=')) {
+      const separator = iframeSrc.includes('?') ? '&' : '?';
+      iframeSrc = `${iframeSrc}${separator}poster=${encodeURIComponent(thumbUrl)}`;
+    }
+    if (!iframeSrc.includes('autoplay=')) {
+      const separator = iframeSrc.includes('?') ? '&' : '?';
+      iframeSrc = `${iframeSrc}${separator}autoplay=1`;
+    }
   }
 
   const directVideoSrc =
@@ -341,6 +363,17 @@ export default function VideoPlayerModal<T extends VideoItem = VideoItem>({
         ? videos
         : fallbackVideos;
   const upNext = sourcePool.filter((v) => v.id !== activeVideo.id).slice(0, 10);
+  const poolIndex = sourcePool.findIndex((v) => v.id === activeVideo.id);
+  const prevVideo: T | null =
+    videoHistory.length > 0
+      ? videoHistory[videoHistory.length - 1]
+      : poolIndex > 0
+        ? sourcePool[poolIndex - 1]
+        : null;
+  const nextVideo: T | null =
+    poolIndex >= 0 && poolIndex + 1 < sourcePool.length
+      ? sourcePool[poolIndex + 1]
+      : upNext[0] || null;
   const hasSidebar = !theaterMode && (upNext.length > 0 || mixVideos.length > 0);
 
   const toggleAutoPlay = () => {
@@ -378,11 +411,26 @@ export default function VideoPlayerModal<T extends VideoItem = VideoItem>({
     }
   };
 
-  const handleSelectNext = (nextVideo: T) => {
+  const handleSelectNext = (nextVid: T) => {
+    if (activeVideo && nextVid.id !== activeVideo.id) {
+      setVideoHistory((prev) => [...prev.slice(-19), activeVideo]);
+    }
     if (onSelectVideo) {
-      onSelectVideo(nextVideo);
+      onSelectVideo(nextVid);
     } else {
-      setInternalVideo(nextVideo);
+      setInternalVideo(nextVid);
+    }
+  };
+
+  const handleSelectPrev = () => {
+    if (!prevVideo) return;
+    if (videoHistory.length > 0) {
+      setVideoHistory((prev) => prev.slice(0, -1));
+    }
+    if (onSelectVideo) {
+      onSelectVideo(prevVideo);
+    } else {
+      setInternalVideo(prevVideo);
     }
   };
 
@@ -612,10 +660,19 @@ export default function VideoPlayerModal<T extends VideoItem = VideoItem>({
             <div className="relative bg-black aspect-video">
               {offlineUrl ? (
                 <video
+                  key={`offline-${activeVideo.id}`}
+                  ref={videoRef}
                   src={offlineUrl}
                   poster={thumbUrl}
                   controls
                   autoPlay
+                  playsInline
+                  onCanPlay={() => {
+                    videoRef.current?.play().catch(() => {});
+                  }}
+                  onPlay={() => {
+                    if (isAudioPlaying) pauseAudio();
+                  }}
                   onEnded={handleVideoEnded}
                   className="w-full h-full"
                   controlsList="nodownload"
@@ -628,6 +685,7 @@ export default function VideoPlayerModal<T extends VideoItem = VideoItem>({
                 </div>
               ) : isIframeStream ? (
                 <iframe
+                  key={`iframe-${activeVideo.id}`}
                   src={iframeSrc}
                   title={activeVideo.title}
                   className="w-full h-full border-none"
@@ -636,10 +694,19 @@ export default function VideoPlayerModal<T extends VideoItem = VideoItem>({
                 />
               ) : (
                 <video
+                  key={`direct-${activeVideo.id}`}
+                  ref={videoRef}
                   src={directVideoSrc}
                   poster={thumbUrl}
                   controls
                   autoPlay
+                  playsInline
+                  onCanPlay={() => {
+                    videoRef.current?.play().catch(() => {});
+                  }}
+                  onPlay={() => {
+                    if (isAudioPlaying) pauseAudio();
+                  }}
                   onEnded={handleVideoEnded}
                   className="w-full h-full"
                   controlsList="nodownload"
@@ -653,6 +720,36 @@ export default function VideoPlayerModal<T extends VideoItem = VideoItem>({
                 </span>
               )}
             </div>
+
+            {/* Barra estilo YouTube: Anterior / Próximo vídeo */}
+            {(prevVideo || nextVideo) && (
+              <div className="flex items-center justify-between gap-2 px-5 py-2.5 bg-white/[0.03] border-b border-white/10">
+                <button
+                  type="button"
+                  onClick={handleSelectPrev}
+                  disabled={!prevVideo}
+                  title={prevVideo ? `Anterior: ${prevVideo.title}` : 'Sem vídeo anterior'}
+                  className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/15 text-xs font-medium text-gray-200 disabled:opacity-35 disabled:pointer-events-none transition-colors min-w-0 max-w-[48%]"
+                >
+                  <SkipBack size={14} className="flex-shrink-0" />
+                  <span className="truncate">
+                    Anterior{prevVideo ? `: ${prevVideo.title}` : ''}
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => nextVideo && handleSelectNext(nextVideo)}
+                  disabled={!nextVideo}
+                  title={nextVideo ? `Próximo: ${nextVideo.title}` : 'Sem próximo vídeo'}
+                  className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-purple-600/25 hover:bg-purple-600/40 border border-purple-500/30 text-xs font-medium text-purple-100 disabled:opacity-35 disabled:pointer-events-none transition-colors min-w-0 max-w-[48%]"
+                >
+                  <span className="truncate">
+                    Próximo{nextVideo ? `: ${nextVideo.title}` : ''}
+                  </span>
+                  <SkipForward size={14} className="flex-shrink-0" />
+                </button>
+              </div>
+            )}
 
             {/* Informação + Descrição com Ver Mais */}
             <div className="p-5">

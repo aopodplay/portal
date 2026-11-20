@@ -27,6 +27,20 @@ const publicApiRoutes = [
   '/api/v1/users/check-email',
 ];
 
+function decodeTokenPayload(token: string | undefined): { role?: string; platformOnly?: boolean } | null {
+  if (!token) return null;
+  try {
+    const parts = token.split('.');
+    if (parts.length !== 3) return null;
+    const base64 = parts[1].replace(/-/g, '+').replace(/_/g, '/');
+    const padded = base64.padEnd(base64.length + ((4 - (base64.length % 4)) % 4), '=');
+    const json = atob(padded);
+    return JSON.parse(json);
+  } catch {
+    return null;
+  }
+}
+
 export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
@@ -45,6 +59,9 @@ export function middleware(request: NextRequest) {
 
   const token = request.cookies.get('podplay_token')?.value;
   const isAuthenticated = !!token;
+  const payload = decodeTokenPayload(token);
+  const isPlatformOnly =
+    Boolean(payload?.platformOnly) || String(payload?.role || '').toLowerCase() === 'support';
 
   const isAuthRoute = authRoutes.some(
     (route) => pathname === route || pathname.startsWith(route)
@@ -60,7 +77,18 @@ export function middleware(request: NextRequest) {
   }
 
   if (isAuthenticated && isAuthRoute) {
-    return NextResponse.redirect(new URL('/', request.url));
+    return NextResponse.redirect(new URL(isPlatformOnly ? '/controle' : '/', request.url));
+  }
+
+  // Utilizadores apenas da plataforma (ex: equipa de suporte) só podem aceder ao painel /controle e /settings
+  if (isAuthenticated && isPlatformOnly && !pathname.startsWith('/api')) {
+    const allowedPlatformPaths = ['/controle', '/settings', '/forgot-password'];
+    const isAllowed = allowedPlatformPaths.some(
+      (p) => pathname === p || pathname.startsWith(p + '/')
+    );
+    if (!isAllowed) {
+      return NextResponse.redirect(new URL('/controle', request.url));
+    }
   }
 
   const response = NextResponse.next();

@@ -200,6 +200,8 @@ export default function Header() {
   const displayName = user?.fullName || user?.nome || user?.username || 'Visitante';
   const userInitial = displayName.charAt(0).toUpperCase() || 'U';
   const avatarSrc = resolveMediaUrl(user?.avatarUrl || user?.foto);
+  const headerUserRole = String((user as any)?.role || (user as any)?.type || '').toLowerCase();
+  const isPlatformOnly = Boolean(user && ((user as any)?.platformOnly || headerUserRole === 'support'));
 
   useEffect(() => {
     setAvatarError(false);
@@ -220,7 +222,7 @@ export default function Header() {
       <div className="flex items-center justify-between gap-4 px-4 sm:px-6 py-3">
         {/* Logo oficial da plataforma no mobile (sem sidebar no mobile) */}
         <div className="flex items-center">
-          <Link href="/" className="md:hidden flex items-center gap-2 text-white font-bold text-base">
+          <Link href={isPlatformOnly ? '/controle' : '/'} className="md:hidden flex items-center gap-2 text-white font-bold text-base">
             {logoUrl ? (
               <img
                 src={resolveCoverUrl(logoUrl)}
@@ -236,28 +238,36 @@ export default function Header() {
           </Link>
         </div>
 
-        {/* Barra de Pesquisa */}
-        <form onSubmit={handleSearchSubmit} className="hidden md:flex items-center relative max-w-md w-full">
-          <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400" size={17} />
-          <input
-            type="search"
-            placeholder="O que queres ouvir ou assistir?"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full pl-10 pr-4 py-2 rounded-full bg-white/[0.06] border border-white/10 focus:outline-none focus:ring-2 focus:ring-purple-500/70 focus:bg-white/10 text-sm text-white placeholder:text-gray-400 transition-all"
-          />
-        </form>
+        {/* Barra de Pesquisa (ocultada para utilizadores exclusivos do painel) */}
+        {!isPlatformOnly ? (
+          <form onSubmit={handleSearchSubmit} className="hidden md:flex items-center relative max-w-md w-full">
+            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400" size={17} />
+            <input
+              type="search"
+              placeholder={t.searchPlaceholder}
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full pl-10 pr-4 py-2 rounded-full bg-white/[0.06] border border-white/10 focus:outline-none focus:ring-2 focus:ring-purple-500/70 focus:bg-white/10 text-sm text-white placeholder:text-gray-400 transition-all"
+            />
+          </form>
+        ) : (
+          <div className="hidden md:flex items-center text-xs font-medium text-purple-300 bg-purple-500/10 border border-purple-500/20 px-3 py-1.5 rounded-full">
+            {t.exclusiveAdminAccess}
+          </div>
+        )}
 
         {/* Ações */}
         <div className="flex items-center gap-2.5">
           {/* Botão de Pesquisa Mobile */}
-          <button
-            onClick={() => setShowMobileSearch((prev) => !prev)}
-            className="md:hidden p-2 rounded-full text-gray-400 hover:text-white hover:bg-white/10 transition-all"
-            aria-label="Pesquisar"
-          >
-            <Search size={20} />
-          </button>
+          {!isPlatformOnly && (
+            <button
+              onClick={() => setShowMobileSearch((prev) => !prev)}
+              className="md:hidden p-2 rounded-full text-gray-400 hover:text-white hover:bg-white/10 transition-all"
+              aria-label="Pesquisar"
+            >
+              <Search size={20} />
+            </button>
+          )}
 
           {!user ? (
             <div className="flex items-center gap-2">
@@ -386,57 +396,59 @@ export default function Header() {
                     <User size={16} />
                     <span>{t.settingsProfile}</span>
                   </Link>
-                  <Link
-                    href="/favorites"
-                    className="flex items-center gap-3 px-4 py-2.5 text-sm text-gray-300 hover:bg-white/10 transition-colors"
-                    onClick={() => setShowUserDropdown(false)}
-                  >
-                    <Heart size={16} />
-                    <span>{t.favorites}</span>
-                  </Link>
-                  <Link
-                    href="/history"
-                    className="flex items-center gap-3 px-4 py-2.5 text-sm text-gray-300 hover:bg-white/10 transition-colors"
-                    onClick={() => setShowUserDropdown(false)}
-                  >
-                    <Clock size={16} />
-                    <span>{t.history}</span>
-                  </Link>
-                  <Link
-                    href="/playlists"
-                    className="md:hidden flex items-center gap-3 px-4 py-2.5 text-sm text-gray-300 hover:bg-white/10 transition-colors"
-                    onClick={() => setShowUserDropdown(false)}
-                  >
-                    <ListMusic size={16} />
-                    <span>{t.playlists}</span>
-                  </Link>
-                  <Link
-                    href="/studio"
-                    className="md:hidden flex items-center gap-3 px-4 py-2.5 text-sm text-gray-300 hover:bg-white/10 transition-colors"
-                    onClick={() => setShowUserDropdown(false)}
-                  >
-                    <Mic2 size={16} />
-                    <span>{t.studio}</span>
-                  </Link>
-                  <Link
-                    href="/support"
-                    className="md:hidden flex items-center gap-3 px-4 py-2.5 text-sm text-gray-300 hover:bg-white/10 transition-colors"
-                    onClick={() => setShowUserDropdown(false)}
-                  >
-                    <HelpCircle size={16} />
-                    <span>{t.support}</span>
-                  </Link>
-                  <Link
-                    href="/reports"
-                    className="md:hidden flex items-center gap-3 px-4 py-2.5 text-sm text-gray-300 hover:bg-white/10 transition-colors"
-                    onClick={() => setShowUserDropdown(false)}
-                  >
-                    <Flag size={16} />
-                    <span>Denúncias</span>
-                  </Link>
-                  {['admin', 'moderator'].includes(
-                    String((user as any)?.role || (user as any)?.type || '').toLowerCase()
-                  ) && (
+                  {!isPlatformOnly && (
+                    <>
+                      <Link
+                        href="/favorites"
+                        className="flex items-center gap-3 px-4 py-2.5 text-sm text-gray-300 hover:bg-white/10 transition-colors"
+                        onClick={() => setShowUserDropdown(false)}
+                      >
+                        <Heart size={16} />
+                        <span>{t.favorites}</span>
+                      </Link>
+                      <Link
+                        href="/history"
+                        className="flex items-center gap-3 px-4 py-2.5 text-sm text-gray-300 hover:bg-white/10 transition-colors"
+                        onClick={() => setShowUserDropdown(false)}
+                      >
+                        <Clock size={16} />
+                        <span>{t.history}</span>
+                      </Link>
+                      <Link
+                        href="/playlists"
+                        className="md:hidden flex items-center gap-3 px-4 py-2.5 text-sm text-gray-300 hover:bg-white/10 transition-colors"
+                        onClick={() => setShowUserDropdown(false)}
+                      >
+                        <ListMusic size={16} />
+                        <span>{t.playlists}</span>
+                      </Link>
+                      <Link
+                        href="/studio"
+                        className="md:hidden flex items-center gap-3 px-4 py-2.5 text-sm text-gray-300 hover:bg-white/10 transition-colors"
+                        onClick={() => setShowUserDropdown(false)}
+                      >
+                        <Mic2 size={16} />
+                        <span>{t.studio}</span>
+                      </Link>
+                      <Link
+                        href="/support"
+                        className="md:hidden flex items-center gap-3 px-4 py-2.5 text-sm text-gray-300 hover:bg-white/10 transition-colors"
+                        onClick={() => setShowUserDropdown(false)}
+                      >
+                        <HelpCircle size={16} />
+                        <span>{t.support}</span>
+                      </Link>
+                      <Link
+                        href="/reports"
+                        className="md:hidden flex items-center gap-3 px-4 py-2.5 text-sm text-gray-300 hover:bg-white/10 transition-colors"
+                        onClick={() => setShowUserDropdown(false)}
+                      >
+                        <Flag size={16} />
+                        <span>{t.reports}</span>
+                      </Link>
+                    </>
+                  )}
+                  {['admin', 'moderator', 'support'].includes(headerUserRole) && (
                     <Link
                       href="/controle"
                       className="flex items-center gap-3 px-4 py-2.5 text-sm text-gray-300 hover:bg-white/10 transition-colors"
@@ -444,9 +456,11 @@ export default function Header() {
                     >
                       <Settings size={16} />
                       <span>
-                        {String((user as any)?.role || '').toLowerCase() === 'moderator'
-                          ? t.reviewPanel
-                          : t.control}
+                        {headerUserRole === 'support'
+                          ? t.supportPanel
+                          : headerUserRole === 'moderator'
+                            ? t.reviewPanel
+                            : t.control}
                       </span>
                     </Link>
                   )}

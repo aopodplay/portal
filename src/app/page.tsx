@@ -937,9 +937,17 @@ export default function HomePage() {
     return [...filteredMusic].sort((a, b) => (b.plays ?? 0) - (a.plays ?? 0));
   }, [filteredMusic]);
 
+  const musicCards = useMemo(() => topPlayedMusic.slice(0, 6), [topPlayedMusic]);
+
+  // Singles & Lançamentos: ordenados por mais recentes e sem repetir os já exibidos em "Músicas Mais Tocadas"
   const singlesList = useMemo(() => {
-    return topPlayedMusic.filter((m) => !m.album_id && !m.album).slice(0, 6);
-  }, [topPlayedMusic]);
+    const shownIds = new Set(musicCards.map((m) => m.id));
+    const recentSingles = [...filteredMusic]
+      .filter((m) => !m.album_id && !m.album)
+      .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+    const distinct = recentSingles.filter((m) => !shownIds.has(m.id));
+    return (distinct.length > 0 ? distinct : recentSingles).slice(0, 6);
+  }, [filteredMusic, musicCards]);
 
   const topArtists = useMemo(() => {
     return [...artists]
@@ -953,7 +961,6 @@ export default function HomePage() {
       .slice(0, 6);
   }, [albums]);
 
-  const musicCards = useMemo(() => topPlayedMusic.slice(0, 6), [topPlayedMusic]);
   const [continueListening, setContinueListening] = useState<Array<{ music: MusicItem; progressPct: number }>>([]);
 
   useEffect(() => {

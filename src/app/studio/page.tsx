@@ -230,7 +230,7 @@ export default function CreatorStudioPage() {
   const [changingPlan, setChangingPlan] = useState<string | null>(null);
   const [checkoutPlan, setCheckoutPlan] = useState<any | null>(null);
   const [payoutAmount, setPayoutAmount] = useState('');
-  const [payoutMethod, setPayoutMethod] = useState<'multicaixa' | 'pix' | 'paypal' | 'iban'>('multicaixa');
+  const [payoutMethod, setPayoutMethod] = useState<'multicaixa' | 'paypay'>('multicaixa');
   const [payoutDest, setPayoutDest] = useState('');
   const [requestingPayout, setRequestingPayout] = useState(false);
   const [pitchMusicId, setPitchMusicId] = useState('');
@@ -1679,26 +1679,46 @@ export default function CreatorStudioPage() {
                           <label className="block text-xs text-gray-400 mb-1">Método</label>
                           <select
                             value={payoutMethod}
-                            onChange={(e) => setPayoutMethod(e.target.value as any)}
+                            onChange={(e) => setPayoutMethod(e.target.value as 'multicaixa' | 'paypay')}
                             className="w-full px-3 py-2 rounded-xl bg-slate-800 border border-white/15 text-sm text-white"
                           >
                             <option value="multicaixa">Multicaixa Express</option>
-                            <option value="iban">Transferência IBAN</option>
-                            <option value="pix">PIX (Brasil)</option>
-                            <option value="paypal">PayPal</option>
+                            <option value="paypay">PayPay África (Angola)</option>
                           </select>
                         </div>
                       </div>
                       <div>
-                        <label className="block text-xs text-gray-400 mb-1">Destino (Telefone / IBAN / PIX / Email)</label>
+                        <label className="block text-xs text-gray-400 mb-1">
+                          {payoutMethod === 'paypay'
+                            ? 'Conta / Telefone PayPay África'
+                            : 'Telefone Multicaixa Express'}
+                        </label>
                         <input
                           type="text"
                           required
                           value={payoutDest}
                           onChange={(e) => setPayoutDest(e.target.value)}
-                          placeholder="Ex: 923 000 000"
+                          placeholder={
+                            payoutMethod === 'paypay'
+                              ? 'Ex: +244 923 000 000 ou ID PayPay África'
+                              : 'Ex: 923 000 000'
+                          }
                           className="w-full px-3 py-2 rounded-xl bg-white/10 border border-white/15 text-sm text-white"
                         />
+                        {payoutMethod === 'paypay' && (
+                          <p className="text-[11px] text-purple-300 mt-1">
+                            Pagamentos via{' '}
+                            <a
+                              href="https://paypayafrica.com/angola/"
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="underline hover:text-white"
+                            >
+                              PayPay África Angola
+                            </a>
+                            .
+                          </p>
+                        )}
                       </div>
                       <button
                         type="submit"

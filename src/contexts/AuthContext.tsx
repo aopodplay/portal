@@ -29,6 +29,8 @@ export interface User {
   perfil?: Perfil;     
   foto?: string | null; 
   role?: string;       
+  platformOnly?: boolean;
+  mustChangePassword?: boolean;
   churchId?: number;
   avatarUrl?: string;
   isVerified: boolean;
@@ -101,12 +103,22 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         const profileData = result.data;
         setUser((prev) => {
           if (!prev) return prev;
+          const nextRole = profileData.role || prev.role;
           const merged: User = {
             ...prev,
             username: profileData.username || prev.username,
             email: profileData.email ?? prev.email,
             phone: profileData.phone ?? prev.phone,
             fullName: profileData.full_name ?? prev.fullName,
+            role: nextRole,
+            platformOnly:
+              profileData.platform_only !== undefined
+                ? Boolean(profileData.platform_only) || String(nextRole || '').toLowerCase() === 'support'
+                : prev.platformOnly,
+            mustChangePassword:
+              profileData.must_change_password !== undefined
+                ? Boolean(profileData.must_change_password)
+                : prev.mustChangePassword,
             avatarUrl: profileData.avatar_url ?? prev.avatarUrl,
             foto: profileData.avatar_url ?? prev.foto,
           };

@@ -188,11 +188,11 @@ html[data-theme="light"] textarea::placeholder {
   color: #64748b !important;
 }
 
-/* Responsividade e prevenção de scroll horizontal em dispositivos móveis */
+/* Responsividade e prevenção de scroll horizontal em dispositivos móveis (clip preserva position: sticky no Header) */
 html,
 body {
   max-width: 100%;
-  overflow-x: hidden;
+  overflow-x: clip;
 }
 
 .no-scrollbar::-webkit-scrollbar {

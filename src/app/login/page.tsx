@@ -206,7 +206,9 @@ export default function LoginPage() {
         localStorage.removeItem('rememberedIdentifier');
       }
 
-      router.push('/');
+      const loggedRole = String(result?.user?.role || '').toLowerCase();
+      const isPlatformOnly = Boolean(result?.user?.platformOnly) || loggedRole === 'support';
+      router.push(isPlatformOnly ? '/controle' : '/');
     } catch (err: any) {
       if (err.message?.toLowerCase().includes('verifique') || 
           err.message?.toLowerCase().includes('verificar')) {
